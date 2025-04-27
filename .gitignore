@@ -1,6 +1,6 @@
-# Ignore encrypted private keys
-*.key
-*.key.enc
+# Ignore certificates directory and inventory
+certs/
+inventory.yaml
 
 # Python artifacts
 __pycache__/
