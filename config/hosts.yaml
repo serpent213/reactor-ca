@@ -1,0 +1,27 @@
+hosts:
+  - name: "server1.example.com"
+    common_name: "server1.example.com"
+    alternative_names:
+      dns:
+        - "www.example.com"
+        - "api.example.com"
+      ip:
+        - "192.168.1.10"
+    destination: "../path/to/deploy/cert/server1.pem"
+    validity_days: 365
+    key:
+      algorithm: "RSA"
+      size: 2048
+
+  - name: "mushroom.vpn.reactor.de"
+    common_name: "mushroom.vpn.reactor.de"
+    alternative_names:
+      dns:
+        - "mushroom.vpn.reactor.de"
+      ip:
+        - "192.168.1.20"
+    destination: "/var/lib/vpn/ssl/server.pem"
+    validity_days: 730
+    key:
+      algorithm: "RSA"
+      size: 2048

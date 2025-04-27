@@ -1,0 +1,36 @@
+# Ignore encrypted private keys
+*.key
+*.key.enc
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.env
+.venv/
+venv/
+ENV/
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Poetry
+.poetry/
+poetry.toml
+
+# Nix
+.direnv/
+.devenv/
+.devenv.flake.nix
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,15 @@
+ca:
+  common_name: "Reactor CA"
+  organization: "Reactor Homelab"
+  organization_unit: "IT"
+  country: "DE"
+  state: "Berlin"
+  locality: "Berlin"
+  email: "admin@example.com"
+  key:
+    algorithm: "RSA"
+    size: 4096
+  validity_days: 3650
+  password:
+    min_length: 12
+    storage: "session"  # "none", "session", "keyring"
