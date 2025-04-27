@@ -12,12 +12,12 @@ from cryptography.x509.oid import NameOID
 from rich.console import Console
 from rich.table import Table
 
-from ca.ca_operations import (
+from reactor_ca.ca_operations import (
     decrypt_key,
     encrypt_key,
     generate_key,
 )
-from ca.utils import (
+from reactor_ca.utils import (
     get_password,
     load_config,
     load_hosts_config,

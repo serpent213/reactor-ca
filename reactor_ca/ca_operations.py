@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.serialization import (
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 
-from ca.utils import (
+from reactor_ca.utils import (
     create_default_config,
     get_password,
     load_config,

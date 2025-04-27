@@ -22,7 +22,7 @@ mypy = "^1.3.0"
 ruff = "^0.1.6"
 
 [tool.poetry.scripts]
-ca = "ca.main:cli"
+ca = "reactor_ca.main:cli"
 
 [tool.ruff]
 line-length = 100

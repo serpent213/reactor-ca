@@ -4,16 +4,16 @@
 import click
 from rich.console import Console
 
-from ca import __version__
-from ca.ca_operations import import_key, initialize_ca
-from ca.cert_operations import (
+from reactor_ca import __version__
+from reactor_ca.ca_operations import import_key, initialize_ca
+from reactor_ca.cert_operations import (
     generate_certificate,
     list_certificates,
     process_csr_file,
     renew_all_certificates,
     renew_certificate,
 )
-from ca.utils import change_password, commit_changes, ensure_dirs
+from reactor_ca.utils import change_password, commit_changes, ensure_dirs
 
 console = Console()
 
