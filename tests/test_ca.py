@@ -30,9 +30,8 @@ def test_cli_help():
         assert cmd in result.output
 
 
-@pytest.mark.skip(reason="Requires user interaction for password")
 def test_init_ca():
-    """Test initializing a CA (requires user input for password)."""
+    """Test initializing a CA using environment variable for password."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Change to temporary directory
         original_dir = os.getcwd()
@@ -43,7 +42,7 @@ def test_init_ca():
             Path("config").mkdir(exist_ok=True)
             Path("certs/ca").mkdir(parents=True, exist_ok=True)
 
-            # Create sample config file
+            # Create sample config file with env var for password
             config_content = """
             ca:
               common_name: "Test CA"
@@ -59,15 +58,23 @@ def test_init_ca():
               validity:
                 days: 365
               password:
-                min_length: 4
+                min_length: 8
+                env_var: "TEST_CA_PASSWORD"
             """
 
             with open("config/ca_config.yaml", "w") as f:
                 f.write(config_content)
 
+            # Set environment variable for password with at least 8 characters
+            os.environ["TEST_CA_PASSWORD"] = "testpassword"
+            
             # Run initialization
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "create"], input="testpassword\n")
+            result = runner.invoke(cli, ["ca", "create"])
+
+            print(f"Exit code: {result.exit_code}")
+            print(f"Output: {result.output}")
+            print(f"Exception: {result.exception}")
 
             assert result.exit_code == 0
             assert Path("certs/ca/ca.crt").exists()
@@ -75,5 +82,9 @@ def test_init_ca():
             assert Path("inventory.yaml").exists()
 
         finally:
+            # Clean up environment variable
+            if "TEST_CA_PASSWORD" in os.environ:
+                del os.environ["TEST_CA_PASSWORD"]
+                
             # Change back to original directory
             os.chdir(original_dir)
