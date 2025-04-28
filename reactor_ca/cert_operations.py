@@ -227,7 +227,8 @@ def create_certificate(
                     if attrs:
                         # Convert x509.Name to the correct type for DirectoryName
                         name = x509.Name(attrs)
-                        san_list.append(DirectoryName(name))  # type: ignore
+                        # Using proper typing for DirectoryName that accepts x509.Name
+                        san_list.append(DirectoryName(name))
                     else:
                         raise ValueError("No valid attributes found")
                 except Exception as e:
@@ -270,12 +271,36 @@ def create_certificate(
 
         # Only add the extension if we have SANs
         if san_list:
+            from typing import cast
+
+            from cryptography.x509 import GeneralName
+
+            # Cast san_list to the type that SubjectAlternativeName expects
+            # This tells mypy that we're confident our list is the correct type
+            # without changing the runtime behavior
+            general_names = cast(list[GeneralName], san_list)
+
             cert_builder = cert_builder.add_extension(
-                x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
+                x509.SubjectAlternativeName(general_names),
                 critical=False,
             )
 
     # Sign the certificate
+    # We need to handle the specific hash algorithm types expected by the sign method
+    # The CertificateBuilder.sign method expects specific hash algorithm types
+    assert isinstance(
+        hash_algo,
+        (
+            hashes.SHA224
+            | hashes.SHA256
+            | hashes.SHA384
+            | hashes.SHA512
+            | hashes.SHA3_224
+            | hashes.SHA3_256
+            | hashes.SHA3_384
+            | hashes.SHA3_512
+        ),
+    )
     cert = cert_builder.sign(ca_key, hash_algo)
 
     return cert
@@ -440,22 +465,39 @@ def process_csr(
                     elif isinstance(san, DirectoryName):
                         # Format the directory name as a string for display
                         dn_parts = []
-                        for attr in san.value:  # type: ignore
-                            oid = attr.oid  # type: ignore
+                        # Properly type the DirectoryName value as Name
+                        directory_name_value = san.value
+                        for attr in directory_name_value:
+                            # Each attribute in a Name has an oid property
+                            oid = attr.oid
                             if oid == NameOID.COMMON_NAME:
-                                dn_parts.append(f"CN={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"CN={value}")
                             elif oid == NameOID.ORGANIZATION_NAME:
-                                dn_parts.append(f"O={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"O={value}")
                             elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
-                                dn_parts.append(f"OU={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"OU={value}")
                             elif oid == NameOID.COUNTRY_NAME:
-                                dn_parts.append(f"C={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"C={value}")
                             elif oid == NameOID.STATE_OR_PROVINCE_NAME:
-                                dn_parts.append(f"ST={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"ST={value}")
                             elif oid == NameOID.LOCALITY_NAME:
-                                dn_parts.append(f"L={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"L={value}")
                             elif oid == NameOID.EMAIL_ADDRESS:
-                                dn_parts.append(f"E={attr.value}")
+                                # Ensure bytes are decoded if needed
+                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+                                dn_parts.append(f"E={value}")
 
                         if dn_parts:
                             alt_names["directory_name"].append(",".join(dn_parts))
@@ -561,17 +603,19 @@ def process_csr(
                 if attrs:
                     # Convert x509.Name to the correct type for DirectoryName
                     name = x509.Name(attrs)
-                    san_list.append(DirectoryName(name))  # type: ignore
+                    # Using proper typing for DirectoryName
+                    san_list.append(DirectoryName(name))
             except Exception as e:
                 console.print(f"[yellow]Warning:[/yellow] Error processing directory name {dn}: {str(e)}, skipping")
 
         # Add registered IDs (OIDs)
-        for oid in alt_names["registered_id"]:
+        for oid_str in alt_names["registered_id"]:
             try:
-                oid_obj = ObjectIdentifier(oid)  # type: ignore
+                # Create ObjectIdentifier from string
+                oid_obj = ObjectIdentifier(oid_str)
                 san_list.append(RegisteredID(oid_obj))
             except Exception as e:
-                console.print(f"[yellow]Warning:[/yellow] Error processing OID {oid}: {str(e)}, skipping")
+                console.print(f"[yellow]Warning:[/yellow] Error processing OID {oid_str}: {str(e)}, skipping")
 
         # Add other names
         for other_name in alt_names["other_name"]:
@@ -596,12 +640,29 @@ def process_csr(
 
         # Only add the extension if we have SANs
         if san_list:
+            # Explicitly define san_list with the correct type for mypy
+            typed_san_list: list[GeneralNameType] = san_list
             cert_builder = cert_builder.add_extension(
-                x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
+                x509.SubjectAlternativeName(typed_san_list),
                 critical=False,
             )
 
         # Sign the certificate with the configured hash algorithm
+        # The CertificateBuilder.sign method expects specific hash algorithm types
+        assert isinstance(
+            hash_algorithm,
+            (
+                hashes.SHA224
+                | hashes.SHA256
+                | hashes.SHA384
+                | hashes.SHA512
+                | hashes.SHA3_224
+                | hashes.SHA3_256
+                | hashes.SHA3_384
+                | hashes.SHA3_512
+                | type(None)
+            ),
+        )
         cert = cert_builder.sign(ca_key, hash_algorithm)
 
         # Save the certificate if an output path is provided
@@ -1024,7 +1085,12 @@ def export_host_key(hostname: str, out_path: str | None = None) -> bool:
         return False
 
     # Export the unencrypted key
-    unencrypted_key_data = private_key.private_bytes(  # type: ignore
+    # Use proper typing for the private_key to avoid type errors
+    from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
+
+    # Cast to the appropriate type for private_bytes method
+    pk_typed: PrivateKeyTypes = private_key
+    unencrypted_key_data = pk_typed.private_bytes(
         encoding=Encoding.PEM,
         format=PrivateFormat.PKCS8,
         encryption_algorithm=NoEncryption(),

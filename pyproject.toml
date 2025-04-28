@@ -80,9 +80,9 @@ max-branches = 18   # Default is 12
 max-statements = 60 # Default is 50
 
 [tool.ruff.per-file-ignores]
-# no typing for tests for now
+# No typing for tests for now
 "tests/*" = ["ANN"]
-# Silence specific warnings for cert_operations.py
+# Let's keep these warm for later...
 "reactor_ca/cert_operations.py" = [
     "PLR0913",
     "ANN401",
