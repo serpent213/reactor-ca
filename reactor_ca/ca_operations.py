@@ -23,6 +23,7 @@ from reactor_ca.utils import (
     load_inventory,
     save_inventory,
 )
+from reactor_ca.config_validator import validate_config_before_operation
 
 console = Console()
 
@@ -123,6 +124,11 @@ def generate_ca_cert(private_key, config, validity_days=3650):
 
 def create_ca():
     """Create a new CA with configuration and keys."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before creating the CA.")
+        return
+    
     # Check if CA already exists
     ca_cert_path = Path("certs/ca/ca.crt")
     ca_key_path = Path("certs/ca/ca.key.enc")

@@ -30,6 +30,7 @@ from reactor_ca.utils import (
     save_inventory,
     update_inventory,
 )
+from reactor_ca.config_validator import validate_config_before_operation
 
 console = Console()
 
@@ -358,6 +359,11 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
 
 def issue_certificate(hostname, no_export=False, do_deploy=False):
     """Issue or renew a certificate for a host."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before issuing certificates.")
+        return False
+        
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
         return False
@@ -481,6 +487,11 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
 
 def issue_all_certificates(no_export=False, do_deploy=False):
     """Issue or renew certificates for all hosts in configuration."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before issuing certificates.")
+        return False
+        
     hosts_config = load_hosts_config()
 
     hosts = [host["name"] for host in hosts_config.get("hosts", [])]

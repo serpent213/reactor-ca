@@ -1,0 +1,15 @@
+hosts:
+  - name: str()
+    common_name: str()
+    alternative_names:
+      dns: list(str(), required=False)
+      ip: list(str(), required=False)
+    export:
+      cert: str(required=False)
+      chain: str(required=False)
+    deploy:
+      command: str(required=False)
+    validity_days: int(min=1, required=False)
+    key:
+      algorithm: str()
+      size: int()

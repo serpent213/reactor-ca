@@ -1,0 +1,17 @@
+ca:
+  common_name: str()
+  organization: str()
+  organization_unit: str()
+  country: str()
+  state: str()
+  locality: str()
+  email: str()
+  key:
+    algorithm: enum('RSA', 'EC')
+    size: int(min=2048)
+  validity_days: int(min=1)
+  password:
+    min_length: int(min=8)
+    storage: enum('none', 'session', 'keyring')
+    file: str(required=False)
+    env_var: str(required=False)

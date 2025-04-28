@@ -25,6 +25,7 @@ from reactor_ca.cert_operations import (
     rekey_host,
 )
 from reactor_ca.utils import change_password, create_default_config, ensure_dirs
+from reactor_ca.config_validator import validate_configs, validate_config_before_operation
 
 console = Console()
 
@@ -51,9 +52,8 @@ def config_init():
 
 @config.command(name="validate")
 def config_validate():
-    """Validate configuration files."""
-    # This is a stub for future validation
-    console.print("✅ Configuration validation not yet implemented")
+    """Validate configuration files against schemas."""
+    validate_configs()
 
 
 # CA management commands
