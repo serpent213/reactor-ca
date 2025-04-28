@@ -992,7 +992,7 @@ def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
     return success_count > 0 and error_count == 0
 
 
-def import_host_key(hostname: str, key_path: str) -> bool:
+def import_host_key(hostname: str, key_path: str, password: str | None = None) -> bool:
     """Import an existing private key for a host."""
     # Check if hostname exists in hosts config
     hosts_config = load_hosts_config()
@@ -1049,9 +1049,18 @@ def import_host_key(hostname: str, key_path: str) -> bool:
         return False
 
     # Get password for encrypting the key
-    dest_password = get_password()
+    dest_password = password if password is not None else get_password()
     if not dest_password:
         return False
+
+    # Validate against CA key password to ensure consistent encryption
+    ca_key_path = Path("certs/ca/ca.key.enc")
+    if ca_key_path.exists():
+        try:
+            decrypt_key(ca_key_path, dest_password)
+        except Exception as e:
+            console.print(f"[bold red]Error:[/bold red] The provided password does not match the CA key password")
+            return False
 
     # Encrypt and save the key
     with open(key_dest_path, "wb") as f:
