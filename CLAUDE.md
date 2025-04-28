@@ -13,6 +13,7 @@ ReactorCA is a Python CLI tool to manage a homelab Certificate Authority.
 - Export unencrypted private keys when needed
 - Flexible password options (prompt, environment variable, file)
 - Run deployment commands after certificate exports
+- No backup functionality, we expect to keep the cert store in a Git repo
 
 Directory structure:
 
@@ -68,5 +69,7 @@ poetry run pytest
 # Run linting
 poetry run ruff check .
 ```
+
+Use `rg` instead of `grep`.
 
 Make sure to update the README.md and `example_config` to match source code changes.

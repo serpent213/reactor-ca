@@ -548,18 +548,6 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
     # Create directory if needed
     host_dir.mkdir(parents=True, exist_ok=True)
 
-    # Backup existing key and certificate if they exist
-    if cert_path.exists():
-        backup_cert_path = cert_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-        with open(cert_path, "rb") as src, open(backup_cert_path, "wb") as dst:
-            dst.write(src.read())
-        console.print(f"Backed up old certificate to [bold]{backup_cert_path}[/bold]")
-
-    if key_path.exists():
-        backup_key_path = key_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-        with open(key_path, "rb") as src, open(backup_key_path, "wb") as dst:
-            dst.write(src.read())
-        console.print(f"Backed up old key to [bold]{backup_key_path}[/bold]")
 
     # Generate new key
     key_algo = host_config.get("key", {}).get("algorithm", "RSA")

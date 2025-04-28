@@ -197,9 +197,7 @@ def renew_ca_cert():
         console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
         return
 
-    # Load CA certificate to extract information
-    with open(ca_cert_path, "rb") as f:
-        old_ca_cert = x509.load_pem_x509_certificate(f.read())
+    # CA certificate path exists, no need to load it for backup anymore
 
     # Get password
     password = get_password()
@@ -223,11 +221,6 @@ def renew_ca_cert():
     # Create a new CA certificate
     new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
 
-    # Backup the old certificate
-    backup_path = ca_cert_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-    with open(backup_path, "wb") as f:
-        f.write(old_ca_cert.public_bytes(encoding=Encoding.PEM))
-    console.print(f"Backed up old CA certificate to [bold]{backup_path}[/bold]")
 
     # Save the new certificate
     with open(ca_cert_path, "wb") as f:
@@ -258,9 +251,7 @@ def rekey_ca():
         console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
         return
 
-    # Load CA certificate to extract information
-    with open(ca_cert_path, "rb") as f:
-        old_ca_cert = x509.load_pem_x509_certificate(f.read())
+    # CA certificate path exists, no need to load it for backup anymore
 
     # Get password
     password = get_password()
@@ -291,18 +282,6 @@ def rekey_ca():
     # Create a new CA certificate
     new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
 
-    # Backup the old certificate and key
-    backup_cert_path = ca_cert_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-    backup_key_path = ca_key_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-
-    with open(ca_cert_path, "rb") as src, open(backup_cert_path, "wb") as dst:
-        dst.write(src.read())
-
-    with open(ca_key_path, "rb") as src, open(backup_key_path, "wb") as dst:
-        dst.write(src.read())
-
-    console.print(f"Backed up old CA certificate to [bold]{backup_cert_path}[/bold]")
-    console.print(f"Backed up old CA key to [bold]{backup_key_path}[/bold]")
 
     # Save the new certificate and key
     with open(ca_cert_path, "wb") as f:
