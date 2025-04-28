@@ -18,6 +18,7 @@ from cryptography.x509.oid import NameOID
 from rich.console import Console
 
 from reactor_ca.utils import (
+    calculate_validity_days,
     get_password,
     load_config,
     load_inventory,
@@ -156,7 +157,7 @@ def create_ca():
     private_key = generate_key(algorithm=key_algo, size=key_size)
 
     # Generate self-signed certificate
-    validity_days = config["ca"]["validity_days"]
+    validity_days = calculate_validity_days(config["ca"]["validity"])
     console.print(f"Generating self-signed CA certificate valid for {validity_days} days...")
     cert = generate_ca_cert(private_key, config, validity_days)
 
@@ -216,7 +217,7 @@ def renew_ca_cert():
     config = load_config()
 
     # Generate a new certificate with the same key
-    validity_days = config["ca"]["validity_days"]
+    validity_days = calculate_validity_days(config["ca"]["validity"])
     console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
 
     # Create a new CA certificate
@@ -284,7 +285,7 @@ def rekey_ca():
     new_ca_key = generate_key(algorithm=key_algo, size=key_size)
 
     # Generate a new certificate with the new key
-    validity_days = config["ca"]["validity_days"]
+    validity_days = calculate_validity_days(config["ca"]["validity"])
     console.print(f"Generating new CA certificate with new key (valid for {validity_days} days)...")
 
     # Create a new CA certificate

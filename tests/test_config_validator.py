@@ -23,10 +23,11 @@ def test_validate_ca_config_valid():
                     "algorithm": "RSA",
                     "size": 4096,
                 },
-                "validity_days": 3650,
+                "validity": {
+                    "years": 10,
+                },
                 "password": {
                     "min_length": 12,
-                    "storage": "session",
                     "file": "",
                     "env_var": "TEST_CA_PASSWORD",
                 },
@@ -59,10 +60,11 @@ def test_validate_ca_config_invalid():
                     "algorithm": "RSA",
                     "size": 4096,
                 },
-                "validity_days": 3650,
+                "validity": {
+                    "years": 10,
+                },
                 "password": {
                     "min_length": 12,
-                    "storage": "session",
                 },
             }
         }
@@ -93,7 +95,9 @@ def test_validate_hosts_config_valid():
                     "deploy": {
                         "command": "systemctl reload nginx",
                     },
-                    "validity_days": 365,
+                    "validity": {
+                        "days": 365,
+                    },
                     "key": {
                         "algorithm": "RSA",
                         "size": 2048,
@@ -124,7 +128,9 @@ def test_validate_hosts_config_invalid():
                         "dns": ["www.example.com"],
                         "ip": ["192.168.1.10"],
                     },
-                    "validity_days": 365,
+                    "validity": {
+                        "days": 365,
+                    },
                     "key": {
                         "algorithm": "INVALID",  # Invalid algorithm
                         "size": 2048,

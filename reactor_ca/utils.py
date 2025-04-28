@@ -22,6 +22,17 @@ def ensure_dirs():
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
 
+def calculate_validity_days(validity_config):
+    """Calculate validity period in days based on the configuration."""
+    if "days" in validity_config:
+        return validity_config["days"]
+    elif "years" in validity_config:
+        return validity_config["years"] * 365
+    else:
+        # Default to 1 year if neither is specified
+        return 365
+
+
 def create_default_config():
     """Create default configuration files."""
     ca_config = {
@@ -37,7 +48,9 @@ def create_default_config():
                 "algorithm": "RSA",
                 "size": 4096,
             },
-            "validity_days": 3650,
+            "validity": {
+                "years": 10,
+            },
             "password": {
                 "min_length": 12,
                 # Session caching is always enabled
@@ -68,7 +81,9 @@ def create_default_config():
                 "deploy": {
                     "command": "systemctl reload nginx",  # Optional deployment command
                 },
-                "validity_days": 365,
+                "validity": {
+                    "years": 1,
+                },
                 "key": {
                     "algorithm": "RSA",
                     "size": 2048,

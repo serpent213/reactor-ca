@@ -40,10 +40,11 @@ ca:
   key:
     algorithm: "RSA"  # Or "EC"
     size: 4096        # Or curve name for EC
-  validity_days: 3650   # 10 years
+  validity:
+    years: 10        # Or specify in days
   password:
     min_length: 12
-    storage: "session"  # "none", "session", "keyring"
+    # Password is cached in memory for the duration of the program execution
 ```
 
 ### 2. Hosts Configuration (hosts.yaml)
@@ -58,7 +59,8 @@ hosts:
       ip:
         - "192.168.1.10"
     destination: "../path/to/deploy/cert/server1.pem"
-    validity_days: 365
+    validity:
+      days: 365
     key:
       algorithm: "RSA"
       size: 2048
@@ -71,7 +73,8 @@ hosts:
       ip:
         - "192.168.1.20"
     destination: "/var/lib/exim/ssl/server.pem"
-    validity_days: 730
+    validity:
+      years: 2
 ```
 
 ### 4. Inventory (inventory.yaml)

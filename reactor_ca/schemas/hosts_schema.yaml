@@ -9,7 +9,9 @@ hosts:
       chain: str(required=False)
     deploy:
       command: str(required=False)
-    validity_days: int(min=1, required=False)
+    validity:
+      days: int(min=1, required=False)
+      years: int(min=1, required=False)
     key:
       algorithm: str()
       size: int()

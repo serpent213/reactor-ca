@@ -56,10 +56,10 @@ def test_init_ca():
               key:
                 algorithm: "RSA"
                 size: 2048
-              validity_days: 365
+              validity:
+                days: 365
               password:
                 min_length: 4
-                storage: "session"
             """
 
             with open("config/ca_config.yaml", "w") as f:

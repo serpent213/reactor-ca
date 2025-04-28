@@ -22,6 +22,7 @@ from reactor_ca.ca_operations import (
     generate_key,
 )
 from reactor_ca.utils import (
+    calculate_validity_days,
     get_password,
     load_config,
     load_hosts_config,
@@ -418,7 +419,7 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
             return False
 
     # Get validity period
-    validity_days = host_config.get("validity_days", 365)
+    validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
 
     # Get alternative names
     alt_names = host_config.get("alternative_names", {})
@@ -573,7 +574,7 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
         return False
 
     # Get validity period
-    validity_days = host_config.get("validity_days", 365)
+    validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
 
     # Get alternative names
     alt_names = host_config.get("alternative_names", {})

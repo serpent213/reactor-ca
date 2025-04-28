@@ -12,7 +12,8 @@ hosts:
       chain: "../path/to/export/cert/server1-chain.pem"
     deploy:
       command: "systemctl reload nginx"
-    validity_days: 365
+    validity:
+      years: 1
     key:
       algorithm: "RSA"
       size: 2048

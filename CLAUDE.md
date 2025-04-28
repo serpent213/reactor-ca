@@ -19,6 +19,7 @@ Directory structure:
 - `reactor_ca`: main source code folder
 - `reactor_ca/schemas`: YAML schemas
 - `tests`: Pytest tests
+- `example_config`: Some "full blown" config examples for users to look at
 
 ## Technical Details
 
@@ -67,3 +68,5 @@ poetry run pytest
 # Run linting
 poetry run ruff check .
 ```
+
+Make sure to update the README.md and `example_config` to match source code changes.

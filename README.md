@@ -180,7 +180,9 @@ ca:
   key:
     algorithm: "RSA"  # or "EC"
     size: 4096        # or curve name for EC
-  validity_days: 3650   # 10 years
+  validity:
+    years: 10         # Can specify years or days
+    # days: 3650      # Alternative: specify in days
   password:
     min_length: 12
     # Password is cached in memory for the duration of the program execution
@@ -209,7 +211,9 @@ hosts:
       chain: "/path/to/export/cert/server1-chain.pem"  # Optional full chain
     deploy:
       command: "systemctl reload nginx"  # Optional deployment command
-    validity_days: 365
+    validity:
+      years: 1           # Can specify years or days
+      # days: 365        # Alternative: specify in days
     key:
       algorithm: "RSA"
       size: 2048

@@ -9,7 +9,8 @@ ca:
   key:
     algorithm: "RSA"
     size: 4096
-  validity_days: 3650
+  validity:
+    years: 10
   password:
     min_length: 12
     # Session caching is always enabled

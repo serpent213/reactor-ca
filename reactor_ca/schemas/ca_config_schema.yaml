@@ -9,7 +9,9 @@ ca:
   key:
     algorithm: enum('RSA', 'EC')
     size: int(min=2048)
-  validity_days: int(min=1)
+  validity:
+    days: int(min=1, required=False)
+    years: int(min=1, required=False)
   password:
     min_length: int(min=8)
     file: str(required=False)

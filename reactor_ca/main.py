@@ -192,10 +192,23 @@ def host_deploy(hostname, all_hosts):
 @host.command(name="sign-csr")
 @click.option("--csr", required=True, help="Path to the CSR file")
 @click.option("--out", required=True, help="Output path for the signed certificate")
-@click.option("--validity", type=int, default=365, help="Validity period in days")
-def host_sign_csr(csr, out, validity):
+@click.option("--validity-days", type=int, default=None, help="Validity period in days")
+@click.option("--validity-years", type=int, default=None, help="Validity period in years")
+def host_sign_csr(csr, out, validity_days, validity_years):
     """Sign a CSR and output the certificate."""
     from reactor_ca.ca_operations import load_ca_key_cert
+    
+    # Calculate validity period
+    if validity_days is not None and validity_years is not None:
+        console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
+        return
+        
+    if validity_years is not None:
+        validity = validity_years * 365
+    elif validity_days is not None:
+        validity = validity_days
+    else:
+        validity = 365  # Default to 1 year
 
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
