@@ -7,7 +7,7 @@ import yaml
 from reactor_ca.config_validator import validate_ca_config, validate_hosts_config
 
 
-def test_validate_ca_config_valid():
+def test_validate_ca_config_valid() -> None:
     """Test validating a valid CA configuration."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
         valid_config = {
@@ -43,7 +43,7 @@ def test_validate_ca_config_valid():
         assert not errors
 
 
-def test_validate_ca_config_invalid():
+def test_validate_ca_config_invalid() -> None:
     """Test validating an invalid CA configuration."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
         invalid_config = {
@@ -76,7 +76,7 @@ def test_validate_ca_config_invalid():
         assert errors
 
 
-def test_validate_hosts_config_valid():
+def test_validate_hosts_config_valid() -> None:
     """Test validating a valid hosts configuration."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
         valid_config = {
@@ -115,7 +115,7 @@ def test_validate_hosts_config_valid():
         assert not errors
 
 
-def test_validate_hosts_config_invalid():
+def test_validate_hosts_config_invalid() -> None:
     """Test validating an invalid hosts configuration."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
         invalid_config = {

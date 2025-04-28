@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from reactor_ca.main import cli
 
 
-def test_cli_version():
+def test_cli_version() -> None:
     """Test CLI version command."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
@@ -17,7 +17,7 @@ def test_cli_version():
     assert "version" in result.output.lower()
 
 
-def test_cli_help():
+def test_cli_help() -> None:
     """Test CLI help command."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
@@ -29,7 +29,7 @@ def test_cli_help():
         assert cmd in result.output
 
 
-def test_init_ca():
+def test_init_ca() -> None:
     """Test initializing a CA using environment variable for password."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Change to temporary directory

@@ -32,7 +32,7 @@ console = Console()
 
 @click.group()
 @click.version_option(version=__version__)
-def cli():
+def cli() -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
     # Create necessary directories if they don't exist
     ensure_dirs()
@@ -40,32 +40,32 @@ def cli():
 
 # Configuration commands
 @cli.group()
-def config():
-    """Configuration management commands."""
+def config() -> None:
+    """Manage configuration files."""
     pass
 
 
 @config.command(name="init")
-def config_init():
+def config_init() -> None:
     """Initialize configuration files."""
     create_default_config()
 
 
 @config.command(name="validate")
-def config_validate():
+def config_validate() -> None:
     """Validate configuration files against schemas."""
     validate_configs()
 
 
 # CA management commands
 @cli.group()
-def ca():
+def ca() -> None:
     """Certificate Authority management commands."""
     pass
 
 
 @ca.command(name="create")
-def ca_create():
+def ca_create() -> None:
     """Create a new CA."""
     create_ca()
 
@@ -73,33 +73,33 @@ def ca_create():
 @ca.command(name="import")
 @click.option("--cert", required=True, help="Path to CA certificate file")
 @click.option("--key", required=True, help="Path to CA private key file")
-def ca_import(cert, key):
+def ca_import(cert: str, key: str) -> None:
     """Import an existing CA."""
     import_ca(cert, key)
 
 
 @ca.command(name="renew")
-def ca_renew():
+def ca_renew() -> None:
     """Renew the CA certificate using the existing key."""
     renew_ca_cert()
 
 
 @ca.command(name="rekey")
-def ca_rekey():
+def ca_rekey() -> None:
     """Generate a new key and renew the CA certificate."""
     rekey_ca()
 
 
 @ca.command(name="info")
 @click.option("--json", is_flag=True, help="Output in JSON format")
-def ca_info(json):
+def ca_info(json: bool) -> None:
     """Show information about the CA."""
     show_ca_info(json_output=json)
 
 
 # Host certificate operations
 @cli.group()
-def host():
+def host() -> None:
     """Host certificate operations."""
     pass
 
@@ -109,7 +109,7 @@ def host():
 @click.option("--all", "all_hosts", is_flag=True, help="Issue certificates for all hosts")
 @click.option("--no-export", is_flag=True, help="Skip export of certificates")
 @click.option("--deploy", is_flag=True, help="Deploy certificates after export")
-def host_issue(hostname, all_hosts, no_export, deploy):
+def host_issue(hostname: str | None, all_hosts: bool, no_export: bool, deploy: bool) -> None:
     """Issue or renew certificates for hosts."""
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -122,13 +122,15 @@ def host_issue(hostname, all_hosts, no_export, deploy):
     if all_hosts:
         issue_all_certificates(no_export=no_export, do_deploy=deploy)
     else:
+        # hostname is not None here because we checked earlier
+        assert hostname is not None
         issue_certificate(hostname, no_export=no_export, do_deploy=deploy)
 
 
 @host.command(name="import")
 @click.argument("hostname", required=True)
 @click.option("--key", required=True, help="Path to private key file")
-def host_import(hostname, key):
+def host_import(hostname: str, key: str) -> None:
     """Import an existing key for a host."""
     import_host_key(hostname, key)
 
@@ -136,7 +138,7 @@ def host_import(hostname, key):
 @host.command(name="export-key")
 @click.argument("hostname", required=True)
 @click.option("--out", help="Path to output file (stdout if not provided)")
-def host_export_key(hostname, out):
+def host_export_key(hostname: str, out: str | None) -> None:
     """Export unencrypted private key for a host."""
     export_host_key(hostname, out)
 
@@ -146,7 +148,7 @@ def host_export_key(hostname, out):
 @click.option("--all", "all_hosts", is_flag=True, help="Rekey all hosts")
 @click.option("--no-export", is_flag=True, help="Skip export of certificates")
 @click.option("--deploy", is_flag=True, help="Deploy certificates after export")
-def host_rekey(hostname, all_hosts, no_export, deploy):
+def host_rekey(hostname: str | None, all_hosts: bool, no_export: bool, deploy: bool) -> None:
     """Generate new keys and certificates for hosts."""
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -159,6 +161,8 @@ def host_rekey(hostname, all_hosts, no_export, deploy):
     if all_hosts:
         rekey_all_hosts(no_export=no_export, do_deploy=deploy)
     else:
+        # hostname is not None here because we checked earlier
+        assert hostname is not None
         rekey_host(hostname, no_export=no_export, do_deploy=deploy)
 
 
@@ -166,7 +170,7 @@ def host_rekey(hostname, all_hosts, no_export, deploy):
 @click.option("--expired", is_flag=True, help="Only show expired certificates")
 @click.option("--expiring", type=int, help="Show certificates expiring within days")
 @click.option("--json", is_flag=True, help="Output in JSON format")
-def host_list(expired, expiring, json):
+def host_list(expired: bool, expiring: int | None, json: bool) -> None:
     """List certificates with their expiration dates."""
     list_certificates(expired=expired, expiring_days=expiring, json_output=json)
 
@@ -174,7 +178,7 @@ def host_list(expired, expiring, json):
 @host.command(name="deploy")
 @click.argument("hostname", required=False)
 @click.option("--all", "all_hosts", is_flag=True, help="Deploy all hosts")
-def host_deploy(hostname, all_hosts):
+def host_deploy(hostname: str | None, all_hosts: bool) -> None:
     """Deploy certificates to configured destinations."""
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -187,6 +191,8 @@ def host_deploy(hostname, all_hosts):
     if all_hosts:
         deploy_all_hosts()
     else:
+        # hostname is not None here because we checked earlier
+        assert hostname is not None
         deploy_host(hostname)
 
 
@@ -195,15 +201,13 @@ def host_deploy(hostname, all_hosts):
 @click.option("--out", required=True, help="Output path for the signed certificate")
 @click.option("--validity-days", type=int, default=None, help="Validity period in days")
 @click.option("--validity-years", type=int, default=None, help="Validity period in years")
-def host_sign_csr(csr, out, validity_days, validity_years):
+def host_sign_csr(csr: str, out: str, validity_days: int | None, validity_years: int | None) -> None:
     """Sign a CSR and output the certificate."""
-    from reactor_ca.ca_operations import load_ca_key_cert
+    from reactor_ca.cert_operations import load_ca_key_cert
 
     # Calculate validity period
     if validity_days is not None and validity_years is not None:
-        console.print(
-            "[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years"
-        )
+        console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
         return
 
     if validity_years is not None:
@@ -224,13 +228,13 @@ def host_sign_csr(csr, out, validity_days, validity_years):
 
 # Utility operations
 @cli.group()
-def util():
-    """Utility operations."""
+def util() -> None:
+    """Perform utility operations."""
     pass
 
 
 @util.command(name="passwd")
-def util_passwd():
+def util_passwd() -> None:
     """Change password for all encrypted keys."""
     change_password()
 

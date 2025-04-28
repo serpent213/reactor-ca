@@ -2,11 +2,15 @@
 
 import datetime
 from pathlib import Path
+from typing import Any
 
 import click
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric.types import (
+    PrivateKeyTypes,  # Updated from PRIVATE_KEY_TYPES
+)
 from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption,
     Encoding,
@@ -28,19 +32,25 @@ from reactor_ca.utils import (
 
 console = Console()
 
+# Constants for expiration warnings
+EXPIRY_CRITICAL = 30  # days
+EXPIRY_WARNING = 90  # days
 
-def generate_key(algorithm="RSA", size=4096):
+# Use PrivateKeyTypes directly from cryptography
+
+
+def generate_key(algorithm: str = "RSA", size: int | str = 4096) -> PrivateKeyTypes:
     """Generate a new private key with the specified algorithm and size."""
     if algorithm.upper() == "RSA":
         return rsa.generate_private_key(
             public_exponent=65537,
-            key_size=size,
+            key_size=int(size),
         )
     elif algorithm.upper() == "EC":
         # For EC, size should be a curve name like "secp256r1"
-        curve_name = size
+        curve_name = str(size)
         if curve_name.lower() == "p256":
-            curve = ec.SECP256R1()
+            curve: ec.EllipticCurve = ec.SECP256R1()
         elif curve_name.lower() == "p384":
             curve = ec.SECP384R1()
         elif curve_name.lower() == "p521":
@@ -53,32 +63,32 @@ def generate_key(algorithm="RSA", size=4096):
         raise ValueError(f"Unsupported key algorithm: {algorithm}")
 
 
-def encrypt_key(private_key, password):
+def encrypt_key(private_key: PrivateKeyTypes, password: str | None) -> bytes:
     """Encrypt a private key with a password."""
     if not password:
         # Use no encryption if password is empty
-        return private_key.private_bytes(
+        return private_key.private_bytes(  # type: ignore
             encoding=Encoding.PEM,
             format=PrivateFormat.PKCS8,
             encryption_algorithm=NoEncryption(),
         )
 
-    return private_key.private_bytes(
+    return private_key.private_bytes(  # type: ignore
         encoding=Encoding.PEM,
         format=PrivateFormat.PKCS8,
         encryption_algorithm=BestAvailableEncryption(password.encode()),
     )
 
 
-def decrypt_key(key_path, password):
+def decrypt_key(key_path: str | Path, password: str | None) -> PrivateKeyTypes:
     """Decrypt a private key file with a password."""
     with open(key_path, "rb") as key_file:
-        return load_pem_private_key(
-            key_file.read(), password=password.encode() if password else None
-        )
+        return load_pem_private_key(key_file.read(), password=password.encode() if password else None)
 
 
-def generate_ca_cert(private_key, config, validity_days=3650):
+def generate_ca_cert(
+    private_key: PrivateKeyTypes, config: dict[str, Any], validity_days: int = 3650
+) -> x509.Certificate:
     """Generate a self-signed CA certificate."""
     subject = issuer = x509.Name(
         [
@@ -92,12 +102,12 @@ def generate_ca_cert(private_key, config, validity_days=3650):
         ]
     )
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
-        .public_key(private_key.public_key())
+        .public_key(private_key.public_key())  # type: ignore
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=validity_days))
@@ -119,13 +129,13 @@ def generate_ca_cert(private_key, config, validity_days=3650):
             ),
             critical=True,
         )
-        .sign(private_key, hashes.SHA256())
+        .sign(private_key, hashes.SHA256())  # type: ignore
     )
 
     return cert
 
 
-def create_ca():
+def create_ca() -> None:
     """Create a new CA with configuration and keys."""
     # Validate configuration first
     if not validate_config_before_operation():
@@ -179,7 +189,7 @@ def create_ca():
 
     # Initialize inventory
     inventory = {
-        "last_update": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
         "ca": {
             "serial": format(cert.serial_number, "x"),
             "not_after": cert.not_valid_after.isoformat(),
@@ -192,7 +202,7 @@ def create_ca():
     console.print("📋 Inventory initialized")
 
 
-def renew_ca_cert():
+def renew_ca_cert() -> None:
     """Renew the CA certificate using the existing key."""
     # Check if CA exists
     ca_cert_path = Path("certs/ca/ca.crt")
@@ -200,8 +210,7 @@ def renew_ca_cert():
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
-            "[bold red]Error:[/bold red] "
-            + "CA certificate or key not found. Please initialize the CA first."
+            "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         return
 
@@ -224,9 +233,7 @@ def renew_ca_cert():
 
     # Generate a new certificate with the same key
     validity_days = calculate_validity_days(config["ca"]["validity"])
-    console.print(
-        f"Renewing CA certificate with the existing key (valid for {validity_days} days)..."
-    )
+    console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
 
     # Create a new CA certificate
     new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
@@ -245,12 +252,12 @@ def renew_ca_cert():
         "not_after": new_ca_cert.not_valid_after.isoformat(),
         "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
     }
-    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
 
-def rekey_ca():
+def rekey_ca() -> None:
     """Generate a new key and renew the CA certificate."""
     # Check if CA exists
     ca_cert_path = Path("certs/ca/ca.crt")
@@ -258,8 +265,7 @@ def rekey_ca():
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
-            "[bold red]Error:[/bold red] "
-            + "CA certificate or key not found. Please initialize the CA first."
+            "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         return
 
@@ -312,12 +318,12 @@ def rekey_ca():
         "not_after": new_ca_cert.not_valid_after.isoformat(),
         "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
     }
-    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
 
-def import_ca(cert_path, key_path):
+def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
     """Import an existing CA certificate and key."""
     # Check if CA already exists
     ca_cert_dest = Path("certs/ca/ca.crt")
@@ -362,13 +368,9 @@ def import_ca(cert_path, key_path):
             src_password = None
         except (TypeError, ValueError):
             # If that fails, prompt for the source key password
-            src_password = click.prompt(
-                "Enter source key password", hide_input=True, default="", show_default=False
-            )
+            src_password = click.prompt("Enter source key password", hide_input=True, default="", show_default=False)
             try:
-                private_key = load_pem_private_key(
-                    key_data, password=src_password.encode() if src_password else None
-                )
+                private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
             except Exception as e:
                 console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
                 return False
@@ -381,19 +383,22 @@ def import_ca(cert_path, key_path):
     key_public_key = private_key.public_key()
 
     # Verify that the public keys match
-    try:
+    # Check key type and use appropriate comparison method
+    if isinstance(cert_public_key, rsa.RSAPublicKey) and isinstance(key_public_key, rsa.RSAPublicKey):
+        # For RSA keys, compare the public_numbers attributes
         cert_public_numbers = cert_public_key.public_numbers()
         key_public_numbers = key_public_key.public_numbers()
 
-        if (
-            cert_public_numbers.n != key_public_numbers.n
-            or cert_public_numbers.e != key_public_numbers.e
-        ):
+        if cert_public_numbers.n != key_public_numbers.n or cert_public_numbers.e != key_public_numbers.e:
             console.print("[bold red]Error:[/bold red] Certificate and key do not match")
             return False
-    except AttributeError:
-        # Fallback for other key types
-        if cert_public_key.public_bytes(Encoding.PEM) != key_public_key.public_bytes(Encoding.PEM):
+    else:
+        # For all other key types (including EC), use a more general comparison
+        from cryptography.hazmat.primitives.serialization import PublicFormat
+
+        if cert_public_key.public_bytes(
+            Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+        ) != key_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo):
             console.print("[bold red]Error:[/bold red] Certificate and key do not match")
             return False
 
@@ -423,22 +428,20 @@ def import_ca(cert_path, key_path):
         "not_after": cert.not_valid_after.isoformat(),
         "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
     }
-    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
     return True
 
 
-def show_ca_info(json_output=False):
+def show_ca_info(json_output: bool = False) -> None:
     """Show information about the CA certificate."""
     # Check if CA exists
     ca_cert_path = Path("certs/ca/ca.crt")
 
     if not ca_cert_path.exists():
-        console.print(
-            "[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first."
-        )
+        console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")
         return
 
     # Load the certificate
@@ -451,13 +454,11 @@ def show_ca_info(json_output=False):
         return
 
     # Extract information
-    ca_info = {
+    ca_info: dict[str, Any] = {
         "subject": {
             "common_name": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
             "organization": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value,
-            "organizational_unit": cert.subject.get_attributes_for_oid(
-                NameOID.ORGANIZATIONAL_UNIT_NAME
-            )[0].value,
+            "organizational_unit": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATIONAL_UNIT_NAME)[0].value,
             "country": cert.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value,
             "state": cert.subject.get_attributes_for_oid(NameOID.STATE_OR_PROVINCE_NAME)[0].value,
             "locality": cert.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value,
@@ -473,8 +474,8 @@ def show_ca_info(json_output=False):
     }
 
     # Calculate days until expiration
-    now = datetime.datetime.now(datetime.timezone.utc)
-    expiry_date = cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
+    expiry_date = cert.not_valid_after.replace(tzinfo=datetime.UTC)
     days_remaining = (expiry_date - now).days
 
     ca_info["days_remaining"] = days_remaining
@@ -500,9 +501,9 @@ def show_ca_info(json_output=False):
         # Format days remaining with color based on how soon it expires
         if days_remaining < 0:
             console.print(f"Days Remaining: [bold red]{days_remaining} (expired)[/bold red]")
-        elif days_remaining < 30:
+        elif days_remaining < EXPIRY_CRITICAL:
             console.print(f"Days Remaining: [bold orange]{days_remaining}[/bold orange]")
-        elif days_remaining < 90:
+        elif days_remaining < EXPIRY_WARNING:
             console.print(f"Days Remaining: [bold yellow]{days_remaining}[/bold yellow]")
         else:
             console.print(f"Days Remaining: {days_remaining}")

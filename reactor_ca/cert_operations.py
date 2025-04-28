@@ -3,6 +3,7 @@
 import datetime
 import ipaddress
 from pathlib import Path
+from typing import Any
 
 import click
 from cryptography import x509
@@ -17,6 +18,8 @@ from rich.console import Console
 from rich.table import Table
 
 from reactor_ca.ca_operations import (
+    EXPIRY_CRITICAL,
+    EXPIRY_WARNING,
     decrypt_key,
     encrypt_key,
     generate_key,
@@ -33,10 +36,13 @@ from reactor_ca.utils import (
     update_inventory,
 )
 
+# Type alias for SubjectAlternativeName items
+GeneralNameType = x509.DNSName | x509.IPAddress
+
 console = Console()
 
 
-def load_ca_key_cert():
+def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     """Load the CA key and certificate."""
     # Check if CA exists
     ca_cert_path = Path("certs/ca/ca.crt")
@@ -44,8 +50,7 @@ def load_ca_key_cert():
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
-            "[bold red]Error:[/bold red] "
-            + "CA certificate or key not found. Please initialize the CA first."
+            "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         return None, None
 
@@ -68,13 +73,13 @@ def load_ca_key_cert():
 
 
 def create_certificate(
-    private_key,
-    hostname,
-    ca_key,
-    ca_cert,
-    validity_days=365,
-    alt_names=None,
-):
+    private_key: Any,
+    hostname: str,
+    ca_key: Any,
+    ca_cert: x509.Certificate,
+    validity_days: int = 365,
+    alt_names: dict[str, list[str]] | None = None,
+) -> x509.Certificate:
     """Create a certificate signed by the CA."""
     config = load_config()
 
@@ -90,7 +95,7 @@ def create_certificate(
         ]
     )
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cert_builder = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -132,7 +137,7 @@ def create_certificate(
 
     # Add subject alternative names
     if alt_names:
-        san_list = []
+        san_list: list[GeneralNameType] = []
 
         # Add DNS names
         if "dns" in alt_names:
@@ -151,7 +156,7 @@ def create_certificate(
         # Only add the extension if we have SANs
         if san_list:
             cert_builder = cert_builder.add_extension(
-                x509.SubjectAlternativeName(san_list),
+                x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
                 critical=False,
             )
 
@@ -161,7 +166,9 @@ def create_certificate(
     return cert
 
 
-def export_certificate(hostname, certificate, key=None, chain=True, no_export=False):
+def export_certificate(
+    hostname: str, certificate: x509.Certificate, key: Any | None = None, chain: bool = True, no_export: bool = False
+) -> bool:
     """Export a certificate and optionally its private key and chain to the configured location."""
     if no_export:
         console.print(f"Certificate export skipped for [bold]{hostname}[/bold] (--no-export flag)")
@@ -176,16 +183,12 @@ def export_certificate(hostname, certificate, key=None, chain=True, no_export=Fa
             break
 
     if not host_config:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
-        )
+        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
         return False
 
     # Get export paths from config
     if "export" not in host_config:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] No export paths configured for {hostname}"
-        )
+        console.print(f"[bold yellow]Warning:[/bold yellow] No export paths configured for {hostname}")
         return False
 
     export_config = host_config["export"]
@@ -194,8 +197,7 @@ def export_certificate(hostname, certificate, key=None, chain=True, no_export=Fa
 
     if not cert_path:
         console.print(
-            "[bold yellow]Warning:[/bold yellow] "
-            + f"No certificate export path configured for {hostname}"
+            "[bold yellow]Warning:[/bold yellow] " + f"No certificate export path configured for {hostname}"
         )
         return False
 
@@ -241,7 +243,7 @@ def export_certificate(hostname, certificate, key=None, chain=True, no_export=Fa
     return export_success
 
 
-def deploy_host(hostname):
+def deploy_host(hostname: str) -> bool:
     """Run the deployment script for a host."""
     hosts_config = load_hosts_config()
     host_config = None
@@ -252,23 +254,21 @@ def deploy_host(hostname):
             break
 
     if not host_config:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
-        )
+        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
         return False
 
     # Check if deployment is configured
     if "deploy" not in host_config or "command" not in host_config["deploy"]:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] No deployment command configured for {hostname}"
-        )
+        console.print(f"[bold yellow]Warning:[/bold yellow] No deployment command configured for {hostname}")
         return False
 
     deploy_command = host_config["deploy"]["command"]
     return run_deploy_command(hostname, deploy_command)
 
 
-def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
+def process_csr(
+    csr_path: str, ca_key: Any, ca_cert: x509.Certificate, validity_days: int = 365, out_path: str | None = None
+) -> tuple[str | None, x509.Certificate | None]:
     """Process a Certificate Signing Request."""
     try:
         with open(csr_path, "rb") as f:
@@ -285,7 +285,8 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
         hostname = None
         for attr in csr.subject:
             if attr.oid == NameOID.COMMON_NAME:
-                hostname = attr.value
+                # Handle both string and bytes value types
+                hostname = attr.value.decode("utf-8") if isinstance(attr.value, bytes) else attr.value
                 break
 
         if not hostname:
@@ -295,7 +296,7 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
         console.print(f"Processing CSR for [bold]{hostname}[/bold]")
 
         # Extract any SANs from the CSR
-        alt_names = {"dns": [], "ip": []}
+        alt_names: dict[str, list[str]] = {"dns": [], "ip": []}
         for ext in csr.extensions:
             if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
                 for san in ext.value:
@@ -305,7 +306,7 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
                         alt_names["ip"].append(str(san.value))
 
         # Create certificate
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         cert_builder = (
             x509.CertificateBuilder()
             .subject_name(csr.subject)
@@ -344,7 +345,7 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
         )
 
         # Add SANs from CSR if any
-        san_list = []
+        san_list: list[GeneralNameType] = []
         if alt_names["dns"] or alt_names["ip"]:
             for dns_name in alt_names["dns"]:
                 san_list.append(x509.DNSName(dns_name))
@@ -358,7 +359,7 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
 
             if san_list:
                 cert_builder = cert_builder.add_extension(
-                    x509.SubjectAlternativeName(san_list),
+                    x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
                     critical=False,
                 )
 
@@ -367,10 +368,10 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
 
         # Save the certificate if an output path is provided
         if out_path:
-            out_path = Path(out_path)
-            with open(out_path, "wb") as f:
+            out_file_path = Path(out_path)
+            with open(out_file_path, "wb") as f:
                 f.write(cert.public_bytes(encoding=Encoding.PEM))
-            console.print(f"✅ Certificate saved to [bold]{out_path}[/bold]")
+            console.print(f"✅ Certificate saved to [bold]{out_file_path}[/bold]")
 
         return hostname, cert
 
@@ -379,7 +380,7 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
         return None, None
 
 
-def issue_certificate(hostname, no_export=False, do_deploy=False):
+def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Issue or renew a certificate for a host."""
     # Validate configuration first
     if not validate_config_before_operation():
@@ -403,9 +404,7 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
             break
 
     if not host_config:
-        console.print(
-            f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration"
-        )
+        console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
     # Check if certificate and key exist
@@ -472,9 +471,7 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(encoding=Encoding.PEM))
 
-    console.print(
-        f"✅ Certificate {action.lower()[:-3]}ed successfully for [bold]{hostname}[/bold]"
-    )
+    console.print(f"✅ Certificate {action.lower()[:-3]}ed successfully for [bold]{hostname}[/bold]")
     console.print(f"   Certificate: [bold]{cert_path}[/bold]")
     if is_new:
         console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
@@ -509,14 +506,14 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
             }
         )
 
-    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
     return True
 
 
-def issue_all_certificates(no_export=False, do_deploy=False):
+def issue_all_certificates(no_export: bool = False, do_deploy: bool = False) -> bool:
     """Issue or renew certificates for all hosts in configuration."""
     # Validate configuration first
     if not validate_config_before_operation():
@@ -528,7 +525,8 @@ def issue_all_certificates(no_export=False, do_deploy=False):
 
     hosts_config = load_hosts_config()
 
-    hosts = [host["name"] for host in hosts_config.get("hosts", [])]
+    # Explicitly typing this as List[str] to avoid Collection[str] typing issue
+    hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
     if not hosts:
         console.print("[bold yellow]Warning:[/bold yellow] No hosts found in configuration")
         return False
@@ -554,7 +552,7 @@ def issue_all_certificates(no_export=False, do_deploy=False):
     return success_count > 0 and error_count == 0
 
 
-def rekey_host(hostname, no_export=False, do_deploy=False):
+def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Generate a new key and certificate for a host."""
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
@@ -570,9 +568,7 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
             break
 
     if not host_config:
-        console.print(
-            f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration"
-        )
+        console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
     # Create host directory if it doesn't exist
@@ -655,18 +651,19 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
             }
         )
 
-    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
     return True
 
 
-def rekey_all_hosts(no_export=False, do_deploy=False):
+def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
     """Rekey all hosts in configuration."""
     hosts_config = load_hosts_config()
 
-    hosts = [host["name"] for host in hosts_config.get("hosts", [])]
+    # Explicitly typing this as List[str] to avoid Collection[str] typing issue
+    hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
     if not hosts:
         console.print("[bold yellow]Warning:[/bold yellow] No hosts found in configuration")
         return False
@@ -692,7 +689,7 @@ def rekey_all_hosts(no_export=False, do_deploy=False):
     return success_count > 0 and error_count == 0
 
 
-def import_host_key(hostname, key_path):
+def import_host_key(hostname: str, key_path: str) -> bool:
     """Import an existing private key for a host."""
     # Check if hostname exists in hosts config
     hosts_config = load_hosts_config()
@@ -704,9 +701,7 @@ def import_host_key(hostname, key_path):
             break
 
     if not host_exists:
-        console.print(
-            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
-        )
+        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
         console.print("You will need to add it to the configuration file manually.")
 
     # Check if source key file exists
@@ -721,9 +716,7 @@ def import_host_key(hostname, key_path):
     key_dest_path = host_dir / "cert.key.enc"
 
     if cert_path.exists() or key_dest_path.exists():
-        if not click.confirm(
-            f"Certificate or key for {hostname} already exists. Overwrite?", default=False
-        ):
+        if not click.confirm(f"Certificate or key for {hostname} already exists. Overwrite?", default=False):
             return False
 
     # Create host directory if it doesn't exist
@@ -742,13 +735,9 @@ def import_host_key(hostname, key_path):
             src_password = None
         except (TypeError, ValueError):
             # If that fails, prompt for the source key password
-            src_password = click.prompt(
-                "Enter source key password", hide_input=True, default="", show_default=False
-            )
+            src_password = click.prompt("Enter source key password", hide_input=True, default="", show_default=False)
             try:
-                private_key = load_pem_private_key(
-                    key_data, password=src_password.encode() if src_password else None
-                )
+                private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
             except Exception as e:
                 console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
                 return False
@@ -771,7 +760,7 @@ def import_host_key(hostname, key_path):
     return True
 
 
-def export_host_key(hostname, out_path=None):
+def export_host_key(hostname: str, out_path: str | None = None) -> bool:
     """Export an unencrypted private key for a host."""
     # Check if host key exists
     host_dir = Path(f"certs/hosts/{hostname}")
@@ -793,7 +782,7 @@ def export_host_key(hostname, out_path=None):
         return False
 
     # Export the unencrypted key
-    unencrypted_key_data = private_key.private_bytes(
+    unencrypted_key_data = private_key.private_bytes(  # type: ignore
         encoding=Encoding.PEM,
         format=PrivateFormat.PKCS8,
         encryption_algorithm=NoEncryption(),
@@ -817,7 +806,7 @@ def export_host_key(hostname, out_path=None):
     return True
 
 
-def list_certificates(expired=False, expiring_days=None, json_output=False):
+def list_certificates(expired: bool = False, expiring_days: int | None = None, json_output: bool = False) -> None:
     """List all certificates with their expiration dates."""
     # Ensure inventory is up to date
     update_inventory()
@@ -832,13 +821,13 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
         return
 
     # Calculate days until CA expiration
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     ca_days_remaining = None
 
     if "not_after" in ca_info:
         try:
             ca_expiry_date = datetime.datetime.fromisoformat(ca_info["not_after"])
-            ca_expiry_date = ca_expiry_date.replace(tzinfo=datetime.timezone.utc)
+            ca_expiry_date = ca_expiry_date.replace(tzinfo=datetime.UTC)
             ca_days_remaining = (ca_expiry_date - now).days
         except (ValueError, TypeError):
             pass
@@ -854,7 +843,7 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
         if not_after != "Unknown":
             try:
                 expiry_date = datetime.datetime.fromisoformat(not_after)
-                expiry_date = expiry_date.replace(tzinfo=datetime.timezone.utc)
+                expiry_date = expiry_date.replace(tzinfo=datetime.UTC)
                 days_remaining = (expiry_date - now).days
 
                 # Apply filters
@@ -870,10 +859,9 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
                 # Include hosts with invalid dates if not filtering
                 if not expired and expiring_days is None:
                     filtered_hosts.append(host)
-        else:
+        elif not expired and expiring_days is None:
             # Include hosts with unknown expiry if not filtering
-            if not expired and expiring_days is None:
-                filtered_hosts.append(host)
+            filtered_hosts.append(host)
 
     # Output JSON if requested
     if json_output:
@@ -903,9 +891,9 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
     if ca_days_remaining is not None:
         if ca_days_remaining < 0:
             days_formatted = f"[bold red]{ca_days_remaining} (expired)[/bold red]"
-        elif ca_days_remaining < 30:
+        elif ca_days_remaining < EXPIRY_CRITICAL:
             days_formatted = f"[bold orange]{ca_days_remaining}[/bold orange]"
-        elif ca_days_remaining < 90:
+        elif ca_days_remaining < EXPIRY_WARNING:
             days_formatted = f"[bold yellow]{ca_days_remaining}[/bold yellow]"
         else:
             days_formatted = f"{ca_days_remaining}"
@@ -945,12 +933,12 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
 
         # Format days remaining with color
         days_formatted = "Unknown"
-        if days_remaining != "Unknown":
+        if days_remaining != "Unknown" and days_remaining is not None:
             if days_remaining < 0:
                 days_formatted = f"[bold red]{days_remaining} (expired)[/bold red]"
-            elif days_remaining < 30:
+            elif days_remaining < EXPIRY_CRITICAL:
                 days_formatted = f"[bold orange]{days_remaining}[/bold orange]"
-            elif days_remaining < 90:
+            elif days_remaining < EXPIRY_WARNING:
                 days_formatted = f"[bold yellow]{days_remaining}[/bold yellow]"
             else:
                 days_formatted = f"{days_remaining}"
@@ -965,11 +953,12 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
     console.print(f"\nLast updated: {last_update}")
 
 
-def deploy_all_hosts():
+def deploy_all_hosts() -> bool:
     """Deploy all host certificates."""
     hosts_config = load_hosts_config()
 
-    hosts = [host["name"] for host in hosts_config.get("hosts", [])]
+    # Explicitly typing this as List[str] to avoid Collection[str] typing issue
+    hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
     if not hosts:
         console.print("[bold yellow]Warning:[/bold yellow] No hosts found in configuration")
         return False

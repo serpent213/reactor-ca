@@ -1,24 +1,25 @@
 """Configuration validation for ReactorCA."""
 
 from pathlib import Path
-from typing import List, Tuple
 
-import yamale
+import yamale  # type: ignore
 from rich.console import Console
 
 console = Console()
 
 
-def validate_ca_config(config_path: str) -> Tuple[bool, List[str]]:
-    """
-    Validate CA configuration file against the schema.
+def validate_ca_config(config_path: str) -> tuple[bool, list[str]]:
+    """Validate CA configuration file against the schema.
 
     Args:
+    ----
         config_path: Path to the CA configuration file.
 
     Returns:
+    -------
         A tuple containing a boolean indicating if validation passed
         and a list of validation error messages.
+
     """
     try:
         # Get the schema file path relative to this module
@@ -45,16 +46,18 @@ def validate_ca_config(config_path: str) -> Tuple[bool, List[str]]:
         return False, [f"Unexpected error during validation: {str(e)}"]
 
 
-def validate_hosts_config(hosts_path: str) -> Tuple[bool, List[str]]:
-    """
-    Validate hosts configuration file against the schema.
+def validate_hosts_config(hosts_path: str) -> tuple[bool, list[str]]:
+    """Validate hosts configuration file against the schema.
 
     Args:
+    ----
         hosts_path: Path to the hosts configuration file.
 
     Returns:
+    -------
         A tuple containing a boolean indicating if validation passed
         and a list of validation error messages.
+
     """
     try:
         # Get the schema file path relative to this module
@@ -82,11 +85,12 @@ def validate_hosts_config(hosts_path: str) -> Tuple[bool, List[str]]:
 
 
 def validate_configs() -> bool:
-    """
-    Validate all configuration files.
+    """Validate all configuration files.
 
-    Returns:
+    Returns
+    -------
         True if all validations pass, False otherwise.
+
     """
     config_dir = Path("config")
     ca_config_path = config_dir / "ca_config.yaml"
@@ -96,16 +100,13 @@ def validate_configs() -> bool:
 
     # Check if files exist
     if not ca_config_path.exists():
-        console.print(
-            f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}"
-        )
+        console.print(f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}")
         console.print("Run 'ca config init' to create a default configuration.")
         return False
 
     if not hosts_config_path.exists():
         console.print(
-            "[bold yellow]Warning:[/bold yellow] "
-            + "Hosts configuration file not found: {hosts_config_path}"
+            "[bold yellow]Warning:[/bold yellow] " + "Hosts configuration file not found: {hosts_config_path}"
         )
         console.print("You may want to create a hosts configuration to issue certificates.")
 
@@ -134,11 +135,12 @@ def validate_configs() -> bool:
 
 
 def validate_config_before_operation() -> bool:
-    """
-    Quick validation check before performing operations.
+    """Quick validation check before performing operations.
 
-    Returns:
+    Returns
+    -------
         True if validation passes, False otherwise.
+
     """
     try:
         return validate_configs()

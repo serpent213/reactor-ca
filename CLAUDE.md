@@ -2,6 +2,31 @@
 
 ReactorCA is a Python CLI tool to manage a homelab Certificate Authority.
 
+## Development Commands
+
+**IMPORTANT: Use these commands for development tasks:**
+
+```bash
+# Format code
+poetry run poe format
+
+# Run linting
+poetry run poe lint
+
+# Run type checking
+poetry run poe typecheck
+
+# Run tests
+poetry run poe test
+
+# Run all checks and tests
+poetry run poe check
+```
+
+Use `rg` instead of `grep` for code searching.
+
+Remember to run `poetry install` after modifying dependencies.
+
 ## Overview
 
 - Create and manage a self-signed Certificate Authority
@@ -59,17 +84,5 @@ ca
 └── util           # Utility operations
     └── passwd     # Change encryption password
 ```
-
-## Development
-
-```bash
-# Run tests
-poetry run pytest
-
-# Run linting
-poetry run ruff check .
-```
-
-Use `rg` instead of `grep`.
 
 Make sure to update the README.md and `example_config` to match source code changes.

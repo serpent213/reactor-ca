@@ -23,10 +23,10 @@ def run_command(command):
     result = subprocess.run(
         command,
         shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
-        timeout=10,  # Add timeout to prevent hanging
+        timeout=10,
+        check=False,  # Add timeout to prevent hanging
     )
     return result
 
@@ -139,7 +139,7 @@ def create_test_configs(temp_dir):
 class TestReactorCAIntegration:
     """Integration tests for ReactorCA."""
 
-    def test_config_init(self, temp_dir):
+    def test_config_init(self, temp_dir) -> None:
         """Test initializing configuration."""
         runner = CliRunner()
         result = runner.invoke(cli, ["config", "init"])
@@ -148,7 +148,7 @@ class TestReactorCAIntegration:
         assert os.path.exists(os.path.join("config", "ca_config.yaml"))
         assert os.path.exists(os.path.join("config", "hosts.yaml"))
 
-    def test_ca_create(self, temp_dir, create_test_configs):
+    def test_ca_create(self, temp_dir, create_test_configs) -> None:
         """Test creating a new CA."""
         # Create CA (configs are already created by fixture)
         runner = CliRunner()
@@ -168,7 +168,7 @@ class TestReactorCAIntegration:
         assert ca_info["subject"]["organization"] == "Test Org"
         assert ca_info["days_remaining"] > 0
 
-    def test_basic_workflow(self, temp_dir, create_test_configs):
+    def test_basic_workflow(self, temp_dir, create_test_configs) -> None:
         """Test a basic workflow with CA creation and certificate issuance."""
         runner = CliRunner()
 
@@ -199,7 +199,7 @@ class TestReactorCAIntegration:
         assert certs_info["hosts"][0]["days_remaining"] > 0
 
     @requires_openssl
-    def test_openssl_verification(self, temp_dir, create_test_configs):
+    def test_openssl_verification(self, temp_dir, create_test_configs) -> None:
         """Test certificate verification using OpenSSL."""
         runner = CliRunner()
 
@@ -238,7 +238,7 @@ class TestReactorCAIntegration:
         assert "DNS:www.testserver.local" in sans_verify_result.stdout
         assert "IP Address:192.168.1.10" in sans_verify_result.stdout
 
-    def test_renew_and_rekey(self, temp_dir, create_test_configs):
+    def test_renew_and_rekey(self, temp_dir, create_test_configs) -> None:
         """Test renewing and rekeying certificates."""
         runner = CliRunner()
 

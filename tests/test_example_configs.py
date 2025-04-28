@@ -8,7 +8,7 @@ from reactor_ca.config_validator import (
 )
 
 
-def test_example_ca_config_is_valid():
+def test_example_ca_config_is_valid() -> None:
     """Test that the example CA config is valid against the schema."""
     # Get the path to the example CA config
     example_ca_config_path = Path("example_config/ca_config.yaml")
@@ -23,7 +23,7 @@ def test_example_ca_config_is_valid():
     assert valid is True, f"Example CA config does not validate against schema: {errors}"
 
 
-def test_example_hosts_config_is_valid():
+def test_example_hosts_config_is_valid() -> None:
     """Test that the example hosts config is valid against the schema."""
     # Get the path to the example hosts config
     example_hosts_config_path = Path("example_config/hosts.yaml")
