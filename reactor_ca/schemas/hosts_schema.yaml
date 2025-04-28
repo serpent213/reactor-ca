@@ -1,17 +1,16 @@
-hosts:
-  - name: str()
-    common_name: str()
-    alternative_names:
-      dns: list(str(), required=False)
-      ip: list(str(), required=False)
-    export:
-      cert: str(required=False)
-      chain: str(required=False)
-    deploy:
-      command: str(required=False)
-    validity:
-      days: int(min=1, required=False)
-      years: int(min=1, required=False)
-    key:
-      algorithm: str()
-      size: int()
+hosts: list(include('host'))
+
+---
+host:
+  name: str()
+  common_name: str(required=False)
+  alternative_names: map(required=False)
+  export: map(required=False)
+  deploy: map(required=False)
+  validity: map(required=False)
+  key: include('key', required=False)
+  hash_algorithm: enum('SHA256', 'SHA384', 'SHA512', required=False)
+
+key:
+  algorithm: enum('RSA', 'EC', 'ED25519', 'ED448')
+  size: any(required=False)

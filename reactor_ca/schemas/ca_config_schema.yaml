@@ -7,8 +7,9 @@ ca:
   locality: str()
   email: str()
   key:
-    algorithm: enum('RSA', 'EC')
-    size: int(min=2048)
+    algorithm: enum('RSA', 'EC', 'ED25519', 'ED448')
+    size: any()
+  hash_algorithm: enum('SHA256', 'SHA384', 'SHA512', required=False)
   validity:
     days: int(min=1, required=False)
     years: int(min=1, required=False)

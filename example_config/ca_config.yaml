@@ -7,8 +7,11 @@ ca:
   locality: "Berlin"
   email: "admin@example.com"
   key:
-    algorithm: "RSA"
-    size: 4096
+    algorithm: "RSA"  # Options: RSA, EC, ED25519, ED448
+    size: 4096        # For RSA, use bit size (2048, 4096)
+                      # For EC, use curve name (P256, P384, P521)
+                      # For ED25519 and ED448, this field is ignored
+  hash_algorithm: "SHA256"  # Options: SHA256, SHA384, SHA512
   validity:
     years: 10
   password:

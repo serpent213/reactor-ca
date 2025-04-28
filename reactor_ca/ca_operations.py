@@ -1,13 +1,14 @@
 """Certificate Authority operations for ReactorCA."""
 
 import datetime
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
 from cryptography.hazmat.primitives.asymmetric.types import (
     PrivateKeyTypes,  # Updated from PRIVATE_KEY_TYPES
 )
@@ -36,17 +37,42 @@ console = Console()
 EXPIRY_CRITICAL = 30  # days
 EXPIRY_WARNING = 90  # days
 
-# Use PrivateKeyTypes directly from cryptography
+# Hash algorithm mapping
+HASH_ALGORITHMS: dict[str, Callable[[], hashes.HashAlgorithm]] = {
+    "SHA256": hashes.SHA256,
+    "SHA384": hashes.SHA384,
+    "SHA512": hashes.SHA512,
+}
+
+# Default hash algorithm
+DEFAULT_HASH_ALGORITHM = "SHA256"
+
+
+def get_hash_algorithm(algorithm_name: str | None = None) -> hashes.HashAlgorithm:
+    """Get a hash algorithm instance by name."""
+    if algorithm_name is None:
+        algorithm_name = DEFAULT_HASH_ALGORITHM
+
+    algorithm_name = algorithm_name.upper()
+    if algorithm_name not in HASH_ALGORITHMS:
+        console.print(
+            f"[yellow]Warning:[/yellow] Unknown hash algorithm '{algorithm_name}', using {DEFAULT_HASH_ALGORITHM}"
+        )
+        algorithm_name = DEFAULT_HASH_ALGORITHM
+
+    return HASH_ALGORITHMS[algorithm_name]()
 
 
 def generate_key(algorithm: str = "RSA", size: int | str = 4096) -> PrivateKeyTypes:
     """Generate a new private key with the specified algorithm and size."""
-    if algorithm.upper() == "RSA":
+    algorithm = algorithm.upper()
+
+    if algorithm == "RSA":
         return rsa.generate_private_key(
             public_exponent=65537,
             key_size=int(size),
         )
-    elif algorithm.upper() == "EC":
+    elif algorithm == "EC":
         # For EC, size should be a curve name like "secp256r1"
         curve_name = str(size)
         if curve_name.lower() == "p256":
@@ -59,6 +85,10 @@ def generate_key(algorithm: str = "RSA", size: int | str = 4096) -> PrivateKeyTy
             curve = ec.SECP256R1()  # Default
 
         return ec.generate_private_key(curve=curve)
+    elif algorithm == "ED25519":
+        return ed25519.Ed25519PrivateKey.generate()
+    elif algorithm == "ED448":
+        return ed448.Ed448PrivateKey.generate()
     else:
         raise ValueError(f"Unsupported key algorithm: {algorithm}")
 
@@ -102,6 +132,10 @@ def generate_ca_cert(
         ]
     )
 
+    # Get the hash algorithm from the config or use default
+    hash_algorithm_name = config["ca"].get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+    hash_algorithm = get_hash_algorithm(hash_algorithm_name)
+
     now = datetime.datetime.now(datetime.UTC)
     cert = (
         x509.CertificateBuilder()
@@ -129,7 +163,7 @@ def generate_ca_cert(
             ),
             critical=True,
         )
-        .sign(private_key, hashes.SHA256())  # type: ignore
+        .sign(private_key, hash_algorithm)  # type: ignore
     )
 
     return cert

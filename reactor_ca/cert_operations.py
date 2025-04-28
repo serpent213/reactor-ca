@@ -2,8 +2,10 @@
 
 import datetime
 import ipaddress
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import click
 from cryptography import x509
@@ -13,16 +15,22 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
+
+# Import ObjectIdentifier from the correct location
+from cryptography.x509 import ObjectIdentifier
+from cryptography.x509.general_name import DirectoryName, OtherName, RegisteredID, UniformResourceIdentifier
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 from rich.table import Table
 
 from reactor_ca.ca_operations import (
+    DEFAULT_HASH_ALGORITHM,
     EXPIRY_CRITICAL,
     EXPIRY_WARNING,
     decrypt_key,
     encrypt_key,
     generate_key,
+    get_hash_algorithm,
 )
 from reactor_ca.config_validator import validate_config_before_operation
 from reactor_ca.utils import (
@@ -37,7 +45,15 @@ from reactor_ca.utils import (
 )
 
 # Type alias for SubjectAlternativeName items
-GeneralNameType = x509.DNSName | x509.IPAddress
+GeneralNameType = (
+    x509.DNSName
+    | x509.IPAddress
+    | x509.RFC822Name  # Email
+    | UniformResourceIdentifier  # URI
+    | DirectoryName  # Directory name (Distinguished Name)
+    | RegisteredID  # OID
+    | OtherName  # Other Name
+)
 
 console = Console()
 
@@ -79,9 +95,16 @@ def create_certificate(
     ca_cert: x509.Certificate,
     validity_days: int = 365,
     alt_names: dict[str, list[str]] | None = None,
+    hash_algorithm: str | None = None,
 ) -> x509.Certificate:
     """Create a certificate signed by the CA."""
     config = load_config()
+
+    # Get hash algorithm from config or parameter
+    if hash_algorithm is None:
+        hash_algorithm = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+
+    hash_algo = get_hash_algorithm(hash_algorithm)
 
     subject = x509.Name(
         [
@@ -153,6 +176,98 @@ def create_certificate(
                 except ValueError:
                     console.print(f"[yellow]Warning:[/yellow] Invalid IP address {ip}, skipping")
 
+        # Add email addresses
+        if "email" in alt_names:
+            for email in alt_names["email"]:
+                # Simple email validation
+                if re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                    san_list.append(x509.RFC822Name(email))
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid email address {email}, skipping")
+
+        # Add URIs
+        if "uri" in alt_names:
+            for uri in alt_names["uri"]:
+                try:
+                    # Validate URI
+                    parsed = urlparse(uri)
+                    if parsed.scheme and parsed.netloc:
+                        san_list.append(UniformResourceIdentifier(uri))
+                    else:
+                        raise ValueError("Invalid URI format")
+                except Exception:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid URI {uri}, skipping")
+
+        # Add directory names
+        if "directory_name" in alt_names:
+            for dn in alt_names["directory_name"]:
+                try:
+                    # Expect format like "CN=example,O=org,C=US"
+                    attrs = []
+                    for part in dn.split(","):
+                        if "=" in part:
+                            attr_type, value = part.strip().split("=", 1)
+                            attr_type = attr_type.upper()
+
+                            if attr_type == "CN":
+                                attrs.append(x509.NameAttribute(NameOID.COMMON_NAME, value))
+                            elif attr_type == "O":
+                                attrs.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, value))
+                            elif attr_type == "OU":
+                                attrs.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, value))
+                            elif attr_type == "C":
+                                attrs.append(x509.NameAttribute(NameOID.COUNTRY_NAME, value))
+                            elif attr_type == "ST":
+                                attrs.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, value))
+                            elif attr_type == "L":
+                                attrs.append(x509.NameAttribute(NameOID.LOCALITY_NAME, value))
+                            elif attr_type == "E":
+                                attrs.append(x509.NameAttribute(NameOID.EMAIL_ADDRESS, value))
+
+                    if attrs:
+                        # Convert x509.Name to the correct type for DirectoryName
+                        name = x509.Name(attrs)
+                        san_list.append(DirectoryName(name))  # type: ignore
+                    else:
+                        raise ValueError("No valid attributes found")
+                except Exception as e:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid directory name {dn}: {str(e)}, skipping")
+
+        # Add registered IDs (OIDs)
+        if "registered_id" in alt_names:
+            for oid in alt_names["registered_id"]:
+                try:
+                    # Validate OID format
+                    if re.match(r"^\d+(\.\d+)*$", oid):
+                        san_list.append(RegisteredID(ObjectIdentifier(oid)))
+                    else:
+                        raise ValueError("Invalid OID format")
+                except Exception as e:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid OID {oid}: {str(e)}, skipping")
+
+        # Add other names (custom OID and value pairs)
+        if "other_name" in alt_names:
+            for other_name in alt_names["other_name"]:
+                try:
+                    # Format expected: "oid:value"
+                    if ":" in other_name:
+                        oid_str, value = other_name.split(":", 1)
+                        oid_str = oid_str.strip()
+                        value = value.strip()
+
+                        # Validate OID format
+                        if re.match(r"^\d+(\.\d+)*$", oid_str):
+                            oid_obj = ObjectIdentifier(oid_str)
+                            # Encode value as bytes
+                            value_bytes = value.encode("utf-8")
+                            san_list.append(OtherName(oid_obj, value_bytes))
+                        else:
+                            raise ValueError("Invalid OID format")
+                    else:
+                        raise ValueError("Invalid format, expected 'oid:value'")
+                except Exception as e:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid other name {other_name}: {str(e)}, skipping")
+
         # Only add the extension if we have SANs
         if san_list:
             cert_builder = cert_builder.add_extension(
@@ -161,7 +276,7 @@ def create_certificate(
             )
 
     # Sign the certificate
-    cert = cert_builder.sign(ca_key, hashes.SHA256())
+    cert = cert_builder.sign(ca_key, hash_algo)
 
     return cert
 
@@ -295,8 +410,22 @@ def process_csr(
 
         console.print(f"Processing CSR for [bold]{hostname}[/bold]")
 
+        # Load configuration to get the hash algorithm
+        config = load_config()
+        hash_algorithm_name = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+        hash_algorithm = get_hash_algorithm(hash_algorithm_name)
+
         # Extract any SANs from the CSR
-        alt_names: dict[str, list[str]] = {"dns": [], "ip": []}
+        alt_names: dict[str, list[str]] = {
+            "dns": [],
+            "ip": [],
+            "email": [],
+            "uri": [],
+            "directory_name": [],
+            "registered_id": [],
+            "other_name": [],
+        }
+
         for ext in csr.extensions:
             if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
                 for san in ext.value:
@@ -304,6 +433,43 @@ def process_csr(
                         alt_names["dns"].append(san.value)
                     elif isinstance(san, x509.IPAddress):
                         alt_names["ip"].append(str(san.value))
+                    elif isinstance(san, x509.RFC822Name):
+                        alt_names["email"].append(san.value)
+                    elif isinstance(san, UniformResourceIdentifier):
+                        alt_names["uri"].append(san.value)
+                    elif isinstance(san, DirectoryName):
+                        # Format the directory name as a string for display
+                        dn_parts = []
+                        for attr in san.value:  # type: ignore
+                            oid = attr.oid  # type: ignore
+                            if oid == NameOID.COMMON_NAME:
+                                dn_parts.append(f"CN={attr.value}")
+                            elif oid == NameOID.ORGANIZATION_NAME:
+                                dn_parts.append(f"O={attr.value}")
+                            elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
+                                dn_parts.append(f"OU={attr.value}")
+                            elif oid == NameOID.COUNTRY_NAME:
+                                dn_parts.append(f"C={attr.value}")
+                            elif oid == NameOID.STATE_OR_PROVINCE_NAME:
+                                dn_parts.append(f"ST={attr.value}")
+                            elif oid == NameOID.LOCALITY_NAME:
+                                dn_parts.append(f"L={attr.value}")
+                            elif oid == NameOID.EMAIL_ADDRESS:
+                                dn_parts.append(f"E={attr.value}")
+
+                        if dn_parts:
+                            alt_names["directory_name"].append(",".join(dn_parts))
+                    elif isinstance(san, RegisteredID):
+                        alt_names["registered_id"].append(san.value.dotted_string)
+                    elif isinstance(san, OtherName):
+                        # Format as OID:value
+                        try:
+                            value = san.value.decode("utf-8")
+                            alt_names["other_name"].append(f"{san.type_id.dotted_string}:{value}")
+                        except UnicodeDecodeError:
+                            # If it's not UTF-8 decodable, use a hex representation
+                            hex_value = san.value.hex()
+                            alt_names["other_name"].append(f"{san.type_id.dotted_string}:{hex_value}")
 
         # Create certificate
         now = datetime.datetime.now(datetime.UTC)
@@ -344,27 +510,99 @@ def process_csr(
             )
         )
 
-        # Add SANs from CSR if any
+        # Process and add all SANs from CSR
         san_list: list[GeneralNameType] = []
-        if alt_names["dns"] or alt_names["ip"]:
-            for dns_name in alt_names["dns"]:
-                san_list.append(x509.DNSName(dns_name))
 
-            for ip in alt_names["ip"]:
-                try:
-                    ip_obj = ipaddress.ip_address(ip)
-                    san_list.append(x509.IPAddress(ip_obj))
-                except ValueError:
-                    console.print(f"[yellow]Warning:[/yellow] Invalid IP address {ip}, skipping")
+        # Add DNS names
+        for dns_name in alt_names["dns"]:
+            san_list.append(x509.DNSName(dns_name))
 
-            if san_list:
-                cert_builder = cert_builder.add_extension(
-                    x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
-                    critical=False,
+        # Add IP addresses
+        for ip in alt_names["ip"]:
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                san_list.append(x509.IPAddress(ip_obj))
+            except ValueError:
+                console.print(f"[yellow]Warning:[/yellow] Invalid IP address {ip}, skipping")
+
+        # Add email addresses
+        for email in alt_names["email"]:
+            san_list.append(x509.RFC822Name(email))
+
+        # Add URIs
+        for uri in alt_names["uri"]:
+            san_list.append(UniformResourceIdentifier(uri))
+
+        # Add directory names
+        for dn in alt_names["directory_name"]:
+            try:
+                # We've already validated these when extracting from the CSR
+                attrs = []
+                for part in dn.split(","):
+                    if "=" in part:
+                        attr_type, value = part.strip().split("=", 1)
+                        attr_type = attr_type.upper()
+
+                        if attr_type == "CN":
+                            attrs.append(x509.NameAttribute(NameOID.COMMON_NAME, value))
+                        elif attr_type == "O":
+                            attrs.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, value))
+                        elif attr_type == "OU":
+                            attrs.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, value))
+                        elif attr_type == "C":
+                            attrs.append(x509.NameAttribute(NameOID.COUNTRY_NAME, value))
+                        elif attr_type == "ST":
+                            attrs.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, value))
+                        elif attr_type == "L":
+                            attrs.append(x509.NameAttribute(NameOID.LOCALITY_NAME, value))
+                        elif attr_type == "E":
+                            attrs.append(x509.NameAttribute(NameOID.EMAIL_ADDRESS, value))
+
+                if attrs:
+                    # Convert x509.Name to the correct type for DirectoryName
+                    name = x509.Name(attrs)
+                    san_list.append(DirectoryName(name))  # type: ignore
+            except Exception as e:
+                console.print(f"[yellow]Warning:[/yellow] Error processing directory name {dn}: {str(e)}, skipping")
+
+        # Add registered IDs (OIDs)
+        for oid in alt_names["registered_id"]:
+            try:
+                oid_obj = ObjectIdentifier(oid)  # type: ignore
+                san_list.append(RegisteredID(oid_obj))
+            except Exception as e:
+                console.print(f"[yellow]Warning:[/yellow] Error processing OID {oid}: {str(e)}, skipping")
+
+        # Add other names
+        for other_name in alt_names["other_name"]:
+            try:
+                if ":" in other_name:
+                    oid_str, value = other_name.split(":", 1)
+                    oid_obj = ObjectIdentifier(oid_str)
+                    # Try to decode hex if needed
+                    if all(c in "0123456789abcdefABCDEF" for c in value):
+                        try:
+                            value_bytes = bytes.fromhex(value)
+                        except ValueError:
+                            value_bytes = value.encode("utf-8")
+                    else:
+                        value_bytes = value.encode("utf-8")
+
+                    san_list.append(OtherName(oid_obj, value_bytes))
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning:[/yellow] Error processing other name {other_name}: {str(e)}, skipping"
                 )
 
-        # Sign the certificate
-        cert = cert_builder.sign(ca_key, hashes.SHA256())
+        # Only add the extension if we have SANs
+        if san_list:
+            cert_builder = cert_builder.add_extension(
+                x509.SubjectAlternativeName(san_list),  # type: ignore[arg-type]
+                critical=False,
+            )
+
+        # Sign the certificate with the configured hash algorithm
+        cert = cert_builder.sign(ca_key, hash_algorithm)
 
         # Save the certificate if an output path is provided
         if out_path:
@@ -452,6 +690,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     action = "Generating" if is_new else "Renewing"
     console.print(f"{action} certificate for {hostname} valid for {validity_days} days...")
 
+    # Get hash algorithm if specified in host config
+    hash_algorithm = host_config.get("hash_algorithm")
+
     # Create certificate
     cert = create_certificate(
         private_key,
@@ -460,6 +701,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         ca_cert,
         validity_days,
         alt_names,
+        hash_algorithm,
     )
 
     # Save key if new or certificate
