@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption,
     Encoding,
+    NoEncryption,
     PrivateFormat,
     load_pem_private_key,
 )
@@ -17,12 +18,10 @@ from cryptography.x509.oid import NameOID
 from rich.console import Console
 
 from reactor_ca.utils import (
-    create_default_config,
     get_password,
     load_config,
     load_inventory,
     save_inventory,
-    update_inventory,
 )
 
 console = Console()
@@ -53,6 +52,14 @@ def generate_key(algorithm="RSA", size=4096):
 
 def encrypt_key(private_key, password):
     """Encrypt a private key with a password."""
+    if not password:
+        # Use no encryption if password is empty
+        return private_key.private_bytes(
+            encoding=Encoding.PEM,
+            format=PrivateFormat.PKCS8,
+            encryption_algorithm=NoEncryption(),
+        )
+
     return private_key.private_bytes(
         encoding=Encoding.PEM,
         format=PrivateFormat.PKCS8,
@@ -63,7 +70,10 @@ def encrypt_key(private_key, password):
 def decrypt_key(key_path, password):
     """Decrypt a private key file with a password."""
     with open(key_path, "rb") as key_file:
-        return load_pem_private_key(key_file.read(), password=password.encode())
+        return load_pem_private_key(
+            key_file.read(),
+            password=password.encode() if password else None
+        )
 
 
 def generate_ca_cert(private_key, config, validity_days=3650):
@@ -111,8 +121,8 @@ def generate_ca_cert(private_key, config, validity_days=3650):
     return cert
 
 
-def initialize_ca():
-    """Initialize a new CA with configuration and keys."""
+def create_ca():
+    """Create a new CA with configuration and keys."""
     # Check if CA already exists
     ca_cert_path = Path("certs/ca/ca.crt")
     ca_key_path = Path("certs/ca/ca.key.enc")
@@ -121,25 +131,15 @@ def initialize_ca():
         if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
             return
 
-    # Create config directories if they don't exist
-    Path("config").mkdir(exist_ok=True)
+    # Create certificate directories
     Path("certs/ca").mkdir(parents=True, exist_ok=True)
-
-    # Create default config if it doesn't exist
-    config_path = Path("config/ca_config.yaml")
-
-    if not config_path.exists():
-        create_default_config()
-        console.print(f"Created default configuration at [bold]{config_path}[/bold]")
-        console.print("Please review and customize it before proceeding.")
-        return
 
     # Load config
     config = load_config()
 
     # Get password for key encryption
     password = get_password()
-    if not password:
+    if not password and config["ca"]["password"]["min_length"] > 0:
         return
 
     # Generate key
@@ -161,9 +161,9 @@ def initialize_ca():
     with open(ca_cert_path, "wb") as f:
         f.write(cert.public_bytes(encoding=Encoding.PEM))
 
-    console.print("✅ CA initialized successfully")
-    console.print(f"  Certificate: [bold]{ca_cert_path}[/bold]")
-    console.print(f"  Private key (encrypted): [bold]{ca_key_path}[/bold]")
+    console.print("✅ CA created successfully")
+    console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
+    console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
 
     # Initialize inventory
     inventory = {
@@ -180,42 +180,181 @@ def initialize_ca():
     console.print("📋 Inventory initialized")
 
 
-def import_key(key_type, hostname, key_path, cert_path=None):
-    """Import an existing private key and optionally a certificate."""
-    if key_type not in ["ca", "host"]:
-        raise ValueError("Key type must be 'ca' or 'host'")
+def renew_ca_cert():
+    """Renew the CA certificate using the existing key."""
+    # Check if CA exists
+    ca_cert_path = Path("certs/ca/ca.crt")
+    ca_key_path = Path("certs/ca/ca.key.enc")
 
-    if key_type == "host" and not hostname:
-        raise ValueError("Hostname is required for host key import")
-
-    # Check if source files exist
-    src_key_path = Path(key_path)
-    if not src_key_path.exists():
-        console.print(f"[bold red]Error:[/bold red] Key file not found: {key_path}")
+    if not ca_cert_path.exists() or not ca_key_path.exists():
+        console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
         return
 
-    if cert_path:
-        src_cert_path = Path(cert_path)
-        if not src_cert_path.exists():
-            console.print(f"[bold red]Error:[/bold red] Certificate file not found: {cert_path}")
-            return
+    # Load CA certificate to extract information
+    with open(ca_cert_path, "rb") as f:
+        old_ca_cert = x509.load_pem_x509_certificate(f.read())
 
-    # Determine destination paths
-    if key_type == "ca":
-        dst_key_path = Path("certs/ca/ca.key.enc")
-        dst_cert_path = Path("certs/ca/ca.crt") if cert_path else None
-    else:  # host
-        host_dir = Path(f"certs/hosts/{hostname}")
-        host_dir.mkdir(parents=True, exist_ok=True)
-        dst_key_path = host_dir / "cert.key.enc"
-        dst_cert_path = host_dir / "cert.crt" if cert_path else None
-
-    # Get password for key encryption
+    # Get password
     password = get_password()
     if not password:
         return
 
-    # Read the key, encrypt it, and save it
+    # Decrypt the CA key
+    try:
+        ca_key = decrypt_key(ca_key_path, password)
+    except Exception as e:
+        console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+        return
+
+    # Load config
+    config = load_config()
+
+    # Generate a new certificate with the same key
+    validity_days = config["ca"]["validity_days"]
+    console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
+
+    # Create a new CA certificate
+    new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
+
+    # Backup the old certificate
+    backup_path = ca_cert_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+    with open(backup_path, "wb") as f:
+        f.write(old_ca_cert.public_bytes(encoding=Encoding.PEM))
+    console.print(f"Backed up old CA certificate to [bold]{backup_path}[/bold]")
+
+    # Save the new certificate
+    with open(ca_cert_path, "wb") as f:
+        f.write(new_ca_cert.public_bytes(encoding=Encoding.PEM))
+
+    console.print("✅ CA certificate renewed successfully")
+    console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
+
+    # Update inventory
+    inventory = load_inventory()
+    inventory["ca"] = {
+        "serial": format(new_ca_cert.serial_number, "x"),
+        "not_after": new_ca_cert.not_valid_after.isoformat(),
+        "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
+    }
+    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    save_inventory(inventory)
+    console.print("📋 Inventory updated")
+
+
+def rekey_ca():
+    """Generate a new key and renew the CA certificate."""
+    # Check if CA exists
+    ca_cert_path = Path("certs/ca/ca.crt")
+    ca_key_path = Path("certs/ca/ca.key.enc")
+
+    if not ca_cert_path.exists() or not ca_key_path.exists():
+        console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
+        return
+
+    # Load CA certificate to extract information
+    with open(ca_cert_path, "rb") as f:
+        old_ca_cert = x509.load_pem_x509_certificate(f.read())
+
+    # Get password
+    password = get_password()
+    if not password:
+        return
+
+    # Decrypt the old CA key to validate password
+    try:
+        decrypt_key(ca_key_path, password)
+    except Exception as e:
+        console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+        return
+
+    # Load config
+    config = load_config()
+
+    # Generate a new key
+    key_algo = config["ca"]["key"]["algorithm"]
+    key_size = config["ca"]["key"]["size"]
+
+    console.print(f"Generating new {key_algo} key...")
+    new_ca_key = generate_key(algorithm=key_algo, size=key_size)
+
+    # Generate a new certificate with the new key
+    validity_days = config["ca"]["validity_days"]
+    console.print(f"Generating new CA certificate with new key (valid for {validity_days} days)...")
+
+    # Create a new CA certificate
+    new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
+
+    # Backup the old certificate and key
+    backup_cert_path = ca_cert_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+    backup_key_path = ca_key_path.with_suffix(f".bak.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+
+    with open(ca_cert_path, "rb") as src, open(backup_cert_path, "wb") as dst:
+        dst.write(src.read())
+
+    with open(ca_key_path, "rb") as src, open(backup_key_path, "wb") as dst:
+        dst.write(src.read())
+
+    console.print(f"Backed up old CA certificate to [bold]{backup_cert_path}[/bold]")
+    console.print(f"Backed up old CA key to [bold]{backup_key_path}[/bold]")
+
+    # Save the new certificate and key
+    with open(ca_cert_path, "wb") as f:
+        f.write(new_ca_cert.public_bytes(encoding=Encoding.PEM))
+
+    with open(ca_key_path, "wb") as f:
+        f.write(encrypt_key(new_ca_key, password))
+
+    console.print("✅ CA rekeyed successfully")
+    console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
+    console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
+
+    # Update inventory
+    inventory = load_inventory()
+    inventory["ca"] = {
+        "serial": format(new_ca_cert.serial_number, "x"),
+        "not_after": new_ca_cert.not_valid_after.isoformat(),
+        "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
+    }
+    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    save_inventory(inventory)
+    console.print("📋 Inventory updated")
+
+
+def import_ca(cert_path, key_path):
+    """Import an existing CA certificate and key."""
+    # Check if CA already exists
+    ca_cert_dest = Path("certs/ca/ca.crt")
+    ca_key_dest = Path("certs/ca/ca.key.enc")
+
+    if ca_cert_dest.exists() or ca_key_dest.exists():
+        if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
+            return False
+
+    # Check if source files exist
+    src_cert_path = Path(cert_path)
+    src_key_path = Path(key_path)
+
+    if not src_cert_path.exists():
+        console.print(f"[bold red]Error:[/bold red] Certificate file not found: {cert_path}")
+        return False
+
+    if not src_key_path.exists():
+        console.print(f"[bold red]Error:[/bold red] Key file not found: {key_path}")
+        return False
+
+    # Create certificate directories
+    Path("certs/ca").mkdir(parents=True, exist_ok=True)
+
+    # Load the certificate to extract information
+    try:
+        with open(src_cert_path, "rb") as f:
+            cert_data = f.read()
+        cert = x509.load_pem_x509_certificate(cert_data)
+    except Exception as e:
+        console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
+        return False
+
+    # Load the key
     try:
         with open(src_key_path, "rb") as f:
             key_data = f.read()
@@ -223,50 +362,143 @@ def import_key(key_type, hostname, key_path, cert_path=None):
         # Try to load it without password first
         try:
             private_key = load_pem_private_key(key_data, password=None)
+            src_password = None
         except (TypeError, ValueError):
             # If that fails, prompt for the source key password
             src_password = click.prompt(
                 "Enter source key password", hide_input=True, default="", show_default=False
             )
-            if src_password:
-                private_key = load_pem_private_key(key_data, password=src_password.encode())
-            else:
-                console.print("[bold red]Error:[/bold red] Source key is encrypted but no password provided")
-                return
-
-        # Encrypt with the new password and save
-        with open(dst_key_path, "wb") as f:
-            f.write(encrypt_key(private_key, password))
-
-        console.print(f"✅ Key imported and encrypted: [bold]{dst_key_path}[/bold]")
-
-        # Copy certificate if provided
-        if cert_path and dst_cert_path:
-            with open(src_cert_path, "rb") as src, open(dst_cert_path, "wb") as dst:
-                dst.write(src.read())
-            console.print(f"✅ Certificate imported: [bold]{dst_cert_path}[/bold]")
-
-            # Update inventory
-            if key_type == "ca":
-                # Load the certificate to extract information
-                with open(dst_cert_path, "rb") as f:
-                    cert_data = f.read()
-                cert = x509.load_pem_x509_certificate(cert_data)
-
-                inventory = load_inventory()
-                inventory["ca"] = {
-                    "serial": format(cert.serial_number, "x"),
-                    "not_after": cert.not_valid_after.isoformat(),
-                    "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                }
-                inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                save_inventory(inventory)
-                console.print("📋 Inventory updated")
-
-            elif hostname:
-                update_inventory()
-                console.print("📋 Inventory updated")
-
+            try:
+                private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
+            except Exception as e:
+                console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
+                return False
     except Exception as e:
-        console.print(f"[bold red]Error importing key:[/bold red] {str(e)}")
+        console.print(f"[bold red]Error loading key:[/bold red] {str(e)}")
+        return False
+
+    # Verify that the certificate and key match
+    cert_public_key = cert.public_key()
+    key_public_key = private_key.public_key()
+
+    # Verify that the public keys match
+    try:
+        cert_public_numbers = cert_public_key.public_numbers()
+        key_public_numbers = key_public_key.public_numbers()
+
+        if cert_public_numbers.n != key_public_numbers.n or cert_public_numbers.e != key_public_numbers.e:
+            console.print("[bold red]Error:[/bold red] Certificate and key do not match")
+            return False
+    except AttributeError:
+        # Fallback for other key types
+        if cert_public_key.public_bytes(Encoding.PEM) != key_public_key.public_bytes(Encoding.PEM):
+            console.print("[bold red]Error:[/bold red] Certificate and key do not match")
+            return False
+
+    console.print("✅ Verified that certificate and key match")
+
+    # Get password for encrypting the key
+    dest_password = get_password()
+    if not dest_password:
+        return False
+
+    # Encrypt and save the key
+    with open(ca_key_dest, "wb") as f:
+        f.write(encrypt_key(private_key, dest_password))
+
+    # Save the certificate
+    with open(ca_cert_dest, "wb") as f:
+        f.write(cert_data)
+
+    console.print("✅ CA imported successfully")
+    console.print(f"   Certificate: [bold]{ca_cert_dest}[/bold]")
+    console.print(f"   Private key (encrypted): [bold]{ca_key_dest}[/bold]")
+
+    # Update inventory
+    inventory = load_inventory()
+    inventory["ca"] = {
+        "serial": format(cert.serial_number, "x"),
+        "not_after": cert.not_valid_after.isoformat(),
+        "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+    }
+    inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    save_inventory(inventory)
+    console.print("📋 Inventory updated")
+
+    return True
+
+
+def show_ca_info(json_output=False):
+    """Show information about the CA certificate."""
+    # Check if CA exists
+    ca_cert_path = Path("certs/ca/ca.crt")
+
+    if not ca_cert_path.exists():
+        console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")
         return
+
+    # Load the certificate
+    try:
+        with open(ca_cert_path, "rb") as f:
+            cert_data = f.read()
+        cert = x509.load_pem_x509_certificate(cert_data)
+    except Exception as e:
+        console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
+        return
+
+    # Extract information
+    ca_info = {
+        "subject": {
+            "common_name": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+            "organization": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value,
+            "organizational_unit": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATIONAL_UNIT_NAME)[0].value,
+            "country": cert.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value,
+            "state": cert.subject.get_attributes_for_oid(NameOID.STATE_OR_PROVINCE_NAME)[0].value,
+            "locality": cert.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value,
+            "email": cert.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)[0].value,
+        },
+        "serial": format(cert.serial_number, "x"),
+        "not_before": cert.not_valid_before.isoformat(),
+        "not_after": cert.not_valid_after.isoformat(),
+        "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+        "public_key": {
+            "type": cert.public_key().__class__.__name__,
+        }
+    }
+
+    # Calculate days until expiration
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expiry_date = cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+    days_remaining = (expiry_date - now).days
+
+    ca_info["days_remaining"] = days_remaining
+
+    # Display the information
+    if json_output:
+        import json
+        console.print(json.dumps(ca_info, indent=2))
+    else:
+        console.print("[bold]CA Certificate Information[/bold]")
+        console.print(f"Subject: {ca_info['subject']['common_name']}")
+        console.print(f"Organization: {ca_info['subject']['organization']}")
+        console.print(f"Organizational Unit: {ca_info['subject']['organizational_unit']}")
+        console.print(f"Country: {ca_info['subject']['country']}")
+        console.print(f"State/Province: {ca_info['subject']['state']}")
+        console.print(f"Locality: {ca_info['subject']['locality']}")
+        console.print(f"Email: {ca_info['subject']['email']}")
+        console.print(f"Serial: {ca_info['serial']}")
+        console.print(f"Valid From: {ca_info['not_before']}")
+        console.print(f"Valid Until: {ca_info['not_after']}")
+
+        # Format days remaining with color based on how soon it expires
+        if days_remaining < 0:
+            console.print(f"Days Remaining: [bold red]{days_remaining} (expired)[/bold red]")
+        elif days_remaining < 30:
+            console.print(f"Days Remaining: [bold orange]{days_remaining}[/bold orange]")
+        elif days_remaining < 90:
+            console.print(f"Days Remaining: [bold yellow]{days_remaining}[/bold yellow]")
+        else:
+            console.print(f"Days Remaining: {days_remaining}")
+
+        console.print(f"Fingerprint: {ca_info['fingerprint']}")
+        console.print(f"Public Key Type: {ca_info['public_key']['type']}")

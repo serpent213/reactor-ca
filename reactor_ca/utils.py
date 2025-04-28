@@ -1,11 +1,11 @@
 """Utility functions for ReactorCA."""
 
 import datetime
+import os
 import sys
 from pathlib import Path
 
 import click
-import git
 import yaml
 from rich.console import Console
 
@@ -41,6 +41,8 @@ def create_default_config():
             "password": {
                 "min_length": 12,
                 "storage": "session",  # "none", "session", "keyring"
+                "file": "",  # Path to password file
+                "env_var": "REACTOR_CA_PASSWORD",  # Environment variable for password
             },
         }
     }
@@ -59,7 +61,13 @@ def create_default_config():
                         "192.168.1.10",
                     ],
                 },
-                "destination": "../path/to/deploy/cert/server1.pem",
+                "export": {
+                    "cert": "../path/to/export/cert/server1.pem",
+                    "chain": "../path/to/export/cert/server1-chain.pem",  # Optional full chain
+                },
+                "deploy": {
+                    "command": "systemctl reload nginx",  # Optional deployment command
+                },
                 "validity_days": 365,
                 "key": {
                     "algorithm": "RSA",
@@ -72,14 +80,20 @@ def create_default_config():
     # Create config directory if it doesn't exist
     Path("config").mkdir(exist_ok=True)
 
-    # Write CA config
+    # Write CA config with header comment
     ca_config_path = Path("config/ca_config.yaml")
     with open(ca_config_path, "w") as f:
+        f.write("# ReactorCA Configuration\n")
+        f.write("# This file contains settings for the Certificate Authority\n")
+        f.write("# It is safe to modify this file directly\n\n")
         yaml.dump(ca_config, f, default_flow_style=False, sort_keys=False)
 
-    # Write hosts config
+    # Write hosts config with header comment
     hosts_config_path = Path("config/hosts.yaml")
     with open(hosts_config_path, "w") as f:
+        f.write("# ReactorCA Hosts Configuration\n")
+        f.write("# This file contains settings for host certificates\n")
+        f.write("# It is safe to modify this file directly\n\n")
         yaml.dump(hosts_config, f, default_flow_style=False, sort_keys=False)
 
     console.print("✅ Created default configuration files:")
@@ -94,7 +108,7 @@ def load_config():
 
     if not config_path.exists():
         console.print(f"[bold red]Error:[/bold red] Configuration file not found: {config_path}")
-        console.print("Run with --init to create a default configuration.")
+        console.print("Run 'ca config init' to create a default configuration.")
         sys.exit(1)
 
     try:
@@ -125,20 +139,48 @@ def load_hosts_config():
         return {"hosts": []}
 
 
+def read_password_from_file(password_file):
+    """Read password from a file."""
+    try:
+        with open(password_file, "r") as f:
+            return f.read().strip()
+    except Exception as e:
+        console.print(f"[bold red]Error reading password file:[/bold red] {str(e)}")
+        return None
+
+
 def get_password():
-    """Get password for key encryption/decryption, with optional caching."""
+    """Get password for key encryption/decryption, with multiple sources."""
     global _password_cache
 
     # Load config to check password storage setting
     config = load_config()
     storage_mode = config["ca"]["password"]["storage"]
     min_length = config["ca"]["password"]["min_length"]
+    password_file = config["ca"]["password"].get("file", "")
+    env_var = config["ca"]["password"].get("env_var", "")
 
     # If password is already cached and storage is set to session, return it
     if storage_mode == "session" and _password_cache:
         return _password_cache
 
-    # Prompt for password
+    # Try to get the password from a file
+    if password_file:
+        password = read_password_from_file(password_file)
+        if password and len(password) >= min_length:
+            if storage_mode == "session":
+                _password_cache = password
+            return password
+
+    # Try to get the password from an environment variable
+    if env_var and env_var in os.environ:
+        password = os.environ[env_var]
+        if password and len(password) >= min_length:
+            if storage_mode == "session":
+                _password_cache = password
+            return password
+
+    # If we still don't have a password, prompt the user
     password = click.prompt(
         "Enter password for key encryption/decryption",
         hide_input=True,
@@ -208,27 +250,20 @@ def scan_cert_files():
     ca_dir = Path("certs/ca")
     hosts_dir = Path("certs/hosts")
 
-    # Update timestamp for comparison
-    last_update = datetime.datetime.fromisoformat(inventory.get("last_update", "1970-01-01T00:00:00+00:00"))
-
     # Check CA certificate
     ca_cert_path = ca_dir / "ca.crt"
     if ca_cert_path.exists():
-        # Check if file is newer than last update
-        mod_time = datetime.datetime.fromtimestamp(ca_cert_path.stat().st_mtime, tz=datetime.timezone.utc)
+        try:
+            with open(ca_cert_path, "rb") as f:
+                ca_cert = x509.load_pem_x509_certificate(f.read())
 
-        if mod_time > last_update:
-            try:
-                with open(ca_cert_path, "rb") as f:
-                    ca_cert = x509.load_pem_x509_certificate(f.read())
-
-                inventory["ca"] = {
-                    "serial": format(ca_cert.serial_number, "x"),
-                    "not_after": ca_cert.not_valid_after.isoformat(),
-                    "fingerprint": "SHA256:" + ca_cert.fingerprint(hashes.SHA256()).hex(),
-                }
-            except Exception as e:
-                console.print(f"[bold red]Error loading CA certificate:[/bold red] {str(e)}")
+            inventory["ca"] = {
+                "serial": format(ca_cert.serial_number, "x"),
+                "not_after": ca_cert.not_valid_after.isoformat(),
+                "fingerprint": "SHA256:" + ca_cert.fingerprint(hashes.SHA256()).hex(),
+            }
+        except Exception as e:
+            console.print(f"[bold red]Error loading CA certificate:[/bold red] {str(e)}")
 
     # Check host certificates
     if hosts_dir.exists():
@@ -239,35 +274,31 @@ def scan_cert_files():
             cert_path = host_dir / "cert.crt"
 
             if cert_path.exists():
-                # Check if file is newer than last update
-                mod_time = datetime.datetime.fromtimestamp(cert_path.stat().st_mtime, tz=datetime.timezone.utc)
+                try:
+                    with open(cert_path, "rb") as f:
+                        cert = x509.load_pem_x509_certificate(f.read())
 
-                if mod_time > last_update:
-                    try:
-                        with open(cert_path, "rb") as f:
-                            cert = x509.load_pem_x509_certificate(f.read())
-
-                        # Find existing host entry or create new one
-                        for host in inventory.setdefault("hosts", []):
-                            if host["name"] == hostname:
-                                host["serial"] = format(cert.serial_number, "x")
-                                host["not_after"] = cert.not_valid_after.isoformat()
-                                host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
-                                # Keep renewal count if exists
-                                break
-                        else:
-                            # Add new entry if not found
-                            inventory.setdefault("hosts", []).append({
-                                "name": hostname,
-                                "serial": format(cert.serial_number, "x"),
-                                "not_after": cert.not_valid_after.isoformat(),
-                                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                                "renewal_count": 0,
-                            })
-                    except Exception as e:
-                        console.print(
-                            f"[bold red]Error loading certificate for {hostname}:[/bold red] {str(e)}"
-                        )
+                    # Find existing host entry or create new one
+                    for host in inventory.setdefault("hosts", []):
+                        if host["name"] == hostname:
+                            host["serial"] = format(cert.serial_number, "x")
+                            host["not_after"] = cert.not_valid_after.isoformat()
+                            host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
+                            # Keep renewal count if exists
+                            break
+                    else:
+                        # Add new entry if not found
+                        inventory.setdefault("hosts", []).append({
+                            "name": hostname,
+                            "serial": format(cert.serial_number, "x"),
+                            "not_after": cert.not_valid_after.isoformat(),
+                            "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                            "renewal_count": 0,
+                        })
+                except Exception as e:
+                    console.print(
+                        f"[bold red]Error loading certificate for {hostname}:[/bold red] {str(e)}"
+                    )
 
     # Update last_update timestamp
     inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -281,99 +312,6 @@ def scan_cert_files():
 def update_inventory():
     """Update inventory based on certificate files."""
     return scan_cert_files()
-
-
-def commit_changes():
-    """Commit all changes to Git."""
-    try:
-        # Check if git repo exists
-        repo_path = Path(".")
-        try:
-            repo = git.Repo(repo_path)
-        except git.exc.InvalidGitRepositoryError:
-            console.print("[bold red]Error:[/bold red] Not a Git repository")
-            if click.confirm("Initialize a new Git repository?"):
-                repo = git.Repo.init(repo_path)
-            else:
-                return
-
-        # Check for changes
-        changed = [item.a_path for item in repo.index.diff(None)]
-        staged = [item.a_path for item in repo.index.diff("HEAD")]
-        untracked = repo.untracked_files
-
-        if not (changed or staged or untracked):
-            console.print("No changes to commit")
-            return
-
-        console.print("Changes to commit:")
-        for path in changed:
-            console.print(f"  Modified: {path}")
-        for path in untracked:
-            console.print(f"  Untracked: {path}")
-
-        # Add files
-        files_to_add = []
-
-        # Add or update .gitignore if needed
-        gitignore_path = Path(".gitignore")
-
-        if not gitignore_path.exists():
-            # Create .gitignore file with private keys excluded
-            with open(gitignore_path, "w") as f:
-                f.write("# Ignore encrypted private keys\n")
-                f.write("**/*.key\n")
-                f.write("**/*.key.enc\n")
-                f.write("# Python artifacts\n")
-                f.write("__pycache__/\n")
-                f.write("*.py[cod]\n")
-                f.write("*$py.class\n")
-                f.write("*.so\n")
-                f.write(".Python\n")
-                f.write("env/\n")
-                f.write(".env\n")
-                f.write(".venv\n")
-                f.write(".pytest_cache/\n")
-
-            files_to_add.append(".gitignore")
-
-        # Add configuration files
-        if Path("config").exists():
-            for file in Path("config").glob("*.yaml"):
-                files_to_add.append(str(file))
-
-        # Add certificates (but not private keys)
-        if Path("certs").exists():
-            for cert_file in Path("certs").glob("**/*.crt"):
-                files_to_add.append(str(cert_file))
-
-        # Add inventory
-        if Path("inventory.yaml").exists():
-            files_to_add.append("inventory.yaml")
-
-        # Add Python source files
-        for py_file in Path(".").glob("**/*.py"):
-            if ".venv" not in str(py_file):
-                files_to_add.append(str(py_file))
-
-        # Add files
-        for file in files_to_add:
-            try:
-                repo.git.add(file)
-                console.print(f"Added {file}")
-            except git.exc.GitCommandError as e:
-                console.print(f"[bold red]Error adding {file}:[/bold red] {str(e)}")
-
-        # Commit
-        if click.confirm("Commit changes?"):
-            message = click.prompt("Enter commit message", default="Update certificates")
-            repo.git.commit("-m", message)
-            console.print(f"✅ Changes committed with message: [bold]{message}[/bold]")
-        else:
-            console.print("Commit cancelled")
-
-    except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}")
 
 
 def change_password():
@@ -478,3 +416,23 @@ def change_password():
     console.print(f"\n✅ Changed password for {success_count} key files")
     if error_count > 0:
         console.print(f"❌ Failed to change password for {error_count} key files")
+
+
+def run_deploy_command(hostname, command):
+    """Run a deployment command for a host."""
+    if not command:
+        return False
+
+    try:
+        console.print(f"Running deployment command for [bold]{hostname}[/bold]...")
+        result = os.system(command)
+
+        if result == 0:
+            console.print(f"✅ Deployment for [bold]{hostname}[/bold] completed successfully")
+            return True
+        else:
+            console.print(f"[bold red]Deployment for {hostname} failed with exit code {result}[/bold red]")
+            return False
+    except Exception as e:
+        console.print(f"[bold red]Error during deployment for {hostname}:[/bold red] {str(e)}")
+        return False

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from ca.main import cli
+from reactor_ca.main import cli
 
 
 def test_cli_version():
@@ -24,9 +24,9 @@ def test_cli_help():
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
 
-    # Verify all commands are included in help
-    commands = ["init", "generate", "renew", "renew-all", "list", "commit", "passwd", "import-key-cmd"]
-    for cmd in commands:
+    # Verify command groups are included in help
+    command_groups = ["config", "ca", "host", "util"]
+    for cmd in command_groups:
         assert cmd in result.output
 
 
@@ -67,7 +67,7 @@ def test_init_ca():
 
             # Run initialization
             runner = CliRunner()
-            result = runner.invoke(cli, ["init"], input="testpassword\n")
+            result = runner.invoke(cli, ["ca", "create"], input="testpassword\n")
 
             assert result.exit_code == 0
             assert Path("certs/ca/ca.crt").exists()

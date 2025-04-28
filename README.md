@@ -9,8 +9,11 @@ A Python CLI tool to manage a homelab Certificate Authority.
 - Support for DNS and IP alternative names
 - Strong key encryption with password protection
 - Certificate inventory tracking
-- Git integration for tracking changes
 - Simple deployment to target locations
+- Certificate chain support (CA + host certificate)
+- Flexible password options (prompt, environment variable, file)
+- Export unencrypted private keys when needed
+- Run deployment scripts after certificate exports
 
 ## Getting Started
 
@@ -23,32 +26,32 @@ ReactorCA uses Poetry for dependency management. To install:
 poetry install
 ```
 
-### Initialize
+### Initialize Configuration
 
 First, create the default config files:
 
 ```bash
-poetry run ca init
+poetry run ca config init
 ```
 
 This will create default configuration files in the `config/` directory. Edit them according to your needs.
 
-### Generate CA Certificate
+### Create CA Certificate
 
-After editing the configuration, initialize the CA:
+After editing the configuration, create the CA:
 
 ```bash
-poetry run ca init
+poetry run ca ca create
 ```
 
 This will create a self-signed CA certificate and private key (encrypted with the password you provide).
 
-### Generate Host Certificate
+### Issue Host Certificate
 
-To generate a certificate for a host defined in your hosts.yaml:
+To issue a certificate for a host defined in your hosts.yaml:
 
 ```bash
-poetry run ca generate hostname
+poetry run ca host issue hostname
 ```
 
 ### List Certificates
@@ -56,7 +59,7 @@ poetry run ca generate hostname
 To list all certificates with their expiration dates:
 
 ```bash
-poetry run ca list
+poetry run ca host list
 ```
 
 ### Renew Certificates
@@ -64,13 +67,13 @@ poetry run ca list
 To renew a specific certificate:
 
 ```bash
-poetry run ca renew hostname
+poetry run ca host issue hostname
 ```
 
 Or to renew all certificates:
 
 ```bash
-poetry run ca renew-all
+poetry run ca host issue --all
 ```
 
 ### Change Password
@@ -78,15 +81,83 @@ poetry run ca renew-all
 To change the password for all encrypted private keys:
 
 ```bash
-poetry run ca passwd
+poetry run ca util passwd
 ```
 
-### Commit Changes to Git
+## Common Workflows
 
-To stage and commit all changes:
+### New CA Workflow
 
 ```bash
-poetry run ca commit
+# Initialize configuration
+poetry run ca config init
+
+# Edit configuration
+vim config/ca_config.yaml
+
+# Create the CA
+poetry run ca ca create
+
+# Create host config
+vim config/hosts.yaml
+
+# Issue certificates
+poetry run ca host issue server1.example.com
+```
+
+### Import CA Workflow
+
+```bash
+# Initialize configuration (optional)
+poetry run ca config init
+
+# Import existing CA
+poetry run ca ca import --cert path/to/ca.crt --key path/to/ca.key
+
+# Create host config
+vim config/hosts.yaml
+
+# Issue certificates
+poetry run ca host issue server1.example.com
+```
+
+### Import Host Keys Workflow
+
+```bash
+# Import existing key
+poetry run ca host import server1.example.com --key path/to/key.pem
+
+# Finalize host config
+vim config/hosts.yaml
+
+# Issue certificate using imported key
+poetry run ca host issue server1.example.com
+```
+
+### Key Rotation Workflow
+
+```bash
+# Rotate the CA key and certificate
+poetry run ca ca rekey
+
+# Rotate a specific host key and certificate
+poetry run ca host rekey server1.example.com
+
+# Rotate all host keys and certificates
+poetry run ca host rekey --all
+```
+
+### Deploy Certificates
+
+```bash
+# Deploy a specific certificate
+poetry run ca host deploy server1.example.com
+
+# Deploy all certificates
+poetry run ca host deploy --all
+
+# Issue and deploy in one step
+poetry run ca host issue server1.example.com --deploy
 ```
 
 ## Configuration
@@ -111,6 +182,8 @@ ca:
   password:
     min_length: 12
     storage: "session"  # "none", "session", "keyring"
+    file: ""          # Path to password file
+    env_var: "REACTOR_CA_PASSWORD"  # Environment variable for password
 ```
 
 ### Hosts Configuration
@@ -127,12 +200,26 @@ hosts:
         - "api.example.com"
       ip:
         - "192.168.1.10"
-    destination: "../path/to/deploy/cert/server1.pem"
+    export:
+      cert: "/path/to/export/cert/server1.pem"
+      chain: "/path/to/export/cert/server1-chain.pem"  # Optional full chain
+    deploy:
+      command: "systemctl reload nginx"  # Optional deployment command
     validity_days: 365
     key:
       algorithm: "RSA"
       size: 2048
 ```
+
+## Password Management Options
+
+ReactorCA offers several ways to provide the master password:
+
+1. **Interactive Prompt** (default): The tool will ask for the password when needed
+2. **Environment Variable**: Set the `REACTOR_CA_PASSWORD` environment variable
+3. **Password File**: Specify a file path in the `ca_config.yaml` file's `password.file` setting
+
+The tool tries these methods in order: file, environment variable, interactive prompt.
 
 ## Development
 
@@ -147,6 +234,14 @@ poetry run pytest
 ```bash
 poetry run ruff check .
 ```
+
+## Limitations and Future Work
+
+ReactorCA is designed for homelab use and has some limitations:
+
+- No revocation/CRL support (for now)
+- No PKCS#12 support (for now)
+- No automation for rekeying/key deployment (for now)
 
 ## License
 
