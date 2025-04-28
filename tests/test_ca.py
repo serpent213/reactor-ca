@@ -4,7 +4,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from reactor_ca.main import cli
@@ -67,7 +66,7 @@ def test_init_ca():
 
             # Set environment variable for password with at least 8 characters
             os.environ["TEST_CA_PASSWORD"] = "testpassword"
-            
+
             # Run initialization
             runner = CliRunner()
             result = runner.invoke(cli, ["ca", "create"])
@@ -85,6 +84,6 @@ def test_init_ca():
             # Clean up environment variable
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]
-                
+
             # Change back to original directory
             os.chdir(original_dir)

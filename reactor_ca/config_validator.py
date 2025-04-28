@@ -93,7 +93,7 @@ def validate_configs() -> bool:
     hosts_config_path = config_dir / "hosts.yaml"
 
     all_valid = True
-    
+
     # Check if files exist
     if not ca_config_path.exists():
         console.print(
@@ -101,13 +101,14 @@ def validate_configs() -> bool:
         )
         console.print("Run 'ca config init' to create a default configuration.")
         return False
-    
+
     if not hosts_config_path.exists():
         console.print(
-            f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_config_path}"
+            "[bold yellow]Warning:[/bold yellow] "
+            + "Hosts configuration file not found: {hosts_config_path}"
         )
         console.print("You may want to create a hosts configuration to issue certificates.")
-    
+
     # Validate CA config
     ca_valid, ca_errors = validate_ca_config(str(ca_config_path))
     if not ca_valid:
@@ -117,7 +118,7 @@ def validate_configs() -> bool:
         all_valid = False
     else:
         console.print("✅ CA configuration is valid")
-    
+
     # Validate hosts config if it exists
     if hosts_config_path.exists():
         hosts_valid, hosts_errors = validate_hosts_config(str(hosts_config_path))
@@ -128,14 +129,14 @@ def validate_configs() -> bool:
             all_valid = False
         else:
             console.print("✅ Hosts configuration is valid")
-    
+
     return all_valid
 
 
 def validate_config_before_operation() -> bool:
     """
     Quick validation check before performing operations.
-    
+
     Returns:
         True if validation passes, False otherwise.
     """

@@ -24,10 +24,11 @@ from reactor_ca.cert_operations import (
     rekey_all_hosts,
     rekey_host,
 )
+from reactor_ca.config_validator import validate_configs
 from reactor_ca.utils import change_password, create_default_config, ensure_dirs
-from reactor_ca.config_validator import validate_configs, validate_config_before_operation
 
 console = Console()
+
 
 @click.group()
 @click.version_option(version=__version__)
@@ -197,12 +198,14 @@ def host_deploy(hostname, all_hosts):
 def host_sign_csr(csr, out, validity_days, validity_years):
     """Sign a CSR and output the certificate."""
     from reactor_ca.ca_operations import load_ca_key_cert
-    
+
     # Calculate validity period
     if validity_days is not None and validity_years is not None:
-        console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
+        console.print(
+            "[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years"
+        )
         return
-        
+
     if validity_years is not None:
         validity = validity_years * 365
     elif validity_days is not None:

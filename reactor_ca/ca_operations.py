@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.serialization import (
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 
+from reactor_ca.config_validator import validate_config_before_operation
 from reactor_ca.utils import (
     calculate_validity_days,
     get_password,
@@ -24,9 +25,9 @@ from reactor_ca.utils import (
     load_inventory,
     save_inventory,
 )
-from reactor_ca.config_validator import validate_config_before_operation
 
 console = Console()
+
 
 def generate_key(algorithm="RSA", size=4096):
     """Generate a new private key with the specified algorithm and size."""
@@ -73,22 +74,23 @@ def decrypt_key(key_path, password):
     """Decrypt a private key file with a password."""
     with open(key_path, "rb") as key_file:
         return load_pem_private_key(
-            key_file.read(),
-            password=password.encode() if password else None
+            key_file.read(), password=password.encode() if password else None
         )
 
 
 def generate_ca_cert(private_key, config, validity_days=3650):
     """Generate a self-signed CA certificate."""
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, config["ca"]["common_name"]),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
-        x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, config["ca"]["common_name"]),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
+            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
+            x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
+            x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
+        ]
+    )
 
     now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
@@ -127,9 +129,12 @@ def create_ca():
     """Create a new CA with configuration and keys."""
     # Validate configuration first
     if not validate_config_before_operation():
-        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before creating the CA.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before creating the CA."
+        )
         return
-    
+
     # Check if CA already exists
     ca_cert_path = Path("certs/ca/ca.crt")
     ca_key_path = Path("certs/ca/ca.key.enc")
@@ -180,7 +185,7 @@ def create_ca():
             "not_after": cert.not_valid_after.isoformat(),
             "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
         },
-        "hosts": []
+        "hosts": [],
     }
 
     save_inventory(inventory)
@@ -194,7 +199,10 @@ def renew_ca_cert():
     ca_key_path = Path("certs/ca/ca.key.enc")
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
-        console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "CA certificate or key not found. Please initialize the CA first."
+        )
         return
 
     # CA certificate path exists, no need to load it for backup anymore
@@ -216,11 +224,12 @@ def renew_ca_cert():
 
     # Generate a new certificate with the same key
     validity_days = calculate_validity_days(config["ca"]["validity"])
-    console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
+    console.print(
+        f"Renewing CA certificate with the existing key (valid for {validity_days} days)..."
+    )
 
     # Create a new CA certificate
     new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
-
 
     # Save the new certificate
     with open(ca_cert_path, "wb") as f:
@@ -248,7 +257,10 @@ def rekey_ca():
     ca_key_path = Path("certs/ca/ca.key.enc")
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
-        console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "CA certificate or key not found. Please initialize the CA first."
+        )
         return
 
     # CA certificate path exists, no need to load it for backup anymore
@@ -281,7 +293,6 @@ def rekey_ca():
 
     # Create a new CA certificate
     new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
-
 
     # Save the new certificate and key
     with open(ca_cert_path, "wb") as f:
@@ -355,7 +366,9 @@ def import_ca(cert_path, key_path):
                 "Enter source key password", hide_input=True, default="", show_default=False
             )
             try:
-                private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
+                private_key = load_pem_private_key(
+                    key_data, password=src_password.encode() if src_password else None
+                )
             except Exception as e:
                 console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
                 return False
@@ -372,7 +385,10 @@ def import_ca(cert_path, key_path):
         cert_public_numbers = cert_public_key.public_numbers()
         key_public_numbers = key_public_key.public_numbers()
 
-        if cert_public_numbers.n != key_public_numbers.n or cert_public_numbers.e != key_public_numbers.e:
+        if (
+            cert_public_numbers.n != key_public_numbers.n
+            or cert_public_numbers.e != key_public_numbers.e
+        ):
             console.print("[bold red]Error:[/bold red] Certificate and key do not match")
             return False
     except AttributeError:
@@ -420,7 +436,9 @@ def show_ca_info(json_output=False):
     ca_cert_path = Path("certs/ca/ca.crt")
 
     if not ca_cert_path.exists():
-        console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")
+        console.print(
+            "[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first."
+        )
         return
 
     # Load the certificate
@@ -437,7 +455,9 @@ def show_ca_info(json_output=False):
         "subject": {
             "common_name": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
             "organization": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value,
-            "organizational_unit": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATIONAL_UNIT_NAME)[0].value,
+            "organizational_unit": cert.subject.get_attributes_for_oid(
+                NameOID.ORGANIZATIONAL_UNIT_NAME
+            )[0].value,
             "country": cert.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value,
             "state": cert.subject.get_attributes_for_oid(NameOID.STATE_OR_PROVINCE_NAME)[0].value,
             "locality": cert.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value,
@@ -449,7 +469,7 @@ def show_ca_info(json_output=False):
         "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
         "public_key": {
             "type": cert.public_key().__class__.__name__,
-        }
+        },
     }
 
     # Calculate days until expiration
@@ -462,6 +482,7 @@ def show_ca_info(json_output=False):
     # Display the information
     if json_output:
         import json
+
         console.print(json.dumps(ca_info, indent=2))
     else:
         console.print("[bold]CA Certificate Information[/bold]")

@@ -54,6 +54,6 @@ ruff = "^0.1.6"
 ca = "reactor_ca.main:cli"
 
 [tool.ruff]
-line-length = 100
+line-length = 118
 target-version = "py312"
 select = ["E", "F", "I", "N", "W", "B"]

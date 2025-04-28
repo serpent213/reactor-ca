@@ -141,7 +141,9 @@ def load_hosts_config():
     hosts_path = Path("config/hosts.yaml")
 
     if not hosts_path.exists():
-        console.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_path}")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_path}"
+        )
         return {"hosts": []}
 
     try:
@@ -294,18 +296,22 @@ def scan_cert_files():
                         if host["name"] == hostname:
                             host["serial"] = format(cert.serial_number, "x")
                             host["not_after"] = cert.not_valid_after.isoformat()
-                            host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
+                            host["fingerprint"] = (
+                                "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
+                            )
                             # Keep renewal count if exists
                             break
                     else:
                         # Add new entry if not found
-                        inventory.setdefault("hosts", []).append({
-                            "name": hostname,
-                            "serial": format(cert.serial_number, "x"),
-                            "not_after": cert.not_valid_after.isoformat(),
-                            "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                            "renewal_count": 0,
-                        })
+                        inventory.setdefault("hosts", []).append(
+                            {
+                                "name": hostname,
+                                "serial": format(cert.serial_number, "x"),
+                                "not_after": cert.not_valid_after.isoformat(),
+                                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                                "renewal_count": 0,
+                            }
+                        )
                 except Exception as e:
                     console.print(
                         f"[bold red]Error loading certificate for {hostname}:[/bold red] {str(e)}"
@@ -441,7 +447,9 @@ def run_deploy_command(hostname, command):
             console.print(f"✅ Deployment for [bold]{hostname}[/bold] completed successfully")
             return True
         else:
-            console.print(f"[bold red]Deployment for {hostname} failed with exit code {result}[/bold red]")
+            console.print(
+                f"[bold red]Deployment for {hostname} failed with exit code {result}[/bold red]"
+            )
             return False
     except Exception as e:
         console.print(f"[bold red]Error during deployment for {hostname}:[/bold red] {str(e)}")

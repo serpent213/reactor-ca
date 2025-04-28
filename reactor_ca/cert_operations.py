@@ -21,6 +21,7 @@ from reactor_ca.ca_operations import (
     encrypt_key,
     generate_key,
 )
+from reactor_ca.config_validator import validate_config_before_operation
 from reactor_ca.utils import (
     calculate_validity_days,
     get_password,
@@ -31,9 +32,9 @@ from reactor_ca.utils import (
     save_inventory,
     update_inventory,
 )
-from reactor_ca.config_validator import validate_config_before_operation
 
 console = Console()
+
 
 def load_ca_key_cert():
     """Load the CA key and certificate."""
@@ -42,7 +43,10 @@ def load_ca_key_cert():
     ca_key_path = Path("certs/ca/ca.key.enc")
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
-        console.print("[bold red]Error:[/bold red] CA certificate or key not found. Please initialize the CA first.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "CA certificate or key not found. Please initialize the CA first."
+        )
         return None, None
 
     # Load CA certificate
@@ -74,15 +78,17 @@ def create_certificate(
     """Create a certificate signed by the CA."""
     config = load_config()
 
-    subject = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
-        x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
-    ])
+    subject = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
+            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
+            x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
+            x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
+        ]
+    )
 
     now = datetime.datetime.now(datetime.timezone.utc)
     cert_builder = (
@@ -115,10 +121,12 @@ def create_certificate(
 
     # Add extended key usage
     cert_builder = cert_builder.add_extension(
-        x509.ExtendedKeyUsage([
-            x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-            x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]),
+        x509.ExtendedKeyUsage(
+            [
+                x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
+                x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
+            ]
+        ),
         critical=False,
     )
 
@@ -168,12 +176,16 @@ def export_certificate(hostname, certificate, key=None, chain=True, no_export=Fa
             break
 
     if not host_config:
-        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
+        )
         return False
 
     # Get export paths from config
     if "export" not in host_config:
-        console.print(f"[bold yellow]Warning:[/bold yellow] No export paths configured for {hostname}")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] No export paths configured for {hostname}"
+        )
         return False
 
     export_config = host_config["export"]
@@ -181,7 +193,10 @@ def export_certificate(hostname, certificate, key=None, chain=True, no_export=Fa
     chain_path = export_config.get("chain")
 
     if not cert_path:
-        console.print(f"[bold yellow]Warning:[/bold yellow] No certificate export path configured for {hostname}")
+        console.print(
+            "[bold yellow]Warning:[/bold yellow] "
+            + f"No certificate export path configured for {hostname}"
+        )
         return False
 
     export_success = False
@@ -237,12 +252,16 @@ def deploy_host(hostname):
             break
 
     if not host_config:
-        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
+        )
         return False
 
     # Check if deployment is configured
     if "deploy" not in host_config or "command" not in host_config["deploy"]:
-        console.print(f"[bold yellow]Warning:[/bold yellow] No deployment command configured for {hostname}")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] No deployment command configured for {hostname}"
+        )
         return False
 
     deploy_command = host_config["deploy"]["command"]
@@ -314,10 +333,12 @@ def process_csr(csr_path, ca_key, ca_cert, validity_days=365, out_path=None):
                 critical=True,
             )
             .add_extension(
-                x509.ExtendedKeyUsage([
-                    x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-                    x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
-                ]),
+                x509.ExtendedKeyUsage(
+                    [
+                        x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
+                        x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
+                    ]
+                ),
                 critical=False,
             )
         )
@@ -362,9 +383,12 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
     """Issue or renew a certificate for a host."""
     # Validate configuration first
     if not validate_config_before_operation():
-        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before issuing certificates.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before issuing certificates."
+        )
         return False
-        
+
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
         return False
@@ -379,7 +403,9 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
             break
 
     if not host_config:
-        console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
+        console.print(
+            f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration"
+        )
         return False
 
     # Check if certificate and key exist
@@ -446,7 +472,9 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(encoding=Encoding.PEM))
 
-    console.print(f"✅ Certificate {action.lower()[:-3]}ed successfully for [bold]{hostname}[/bold]")
+    console.print(
+        f"✅ Certificate {action.lower()[:-3]}ed successfully for [bold]{hostname}[/bold]"
+    )
     console.print(f"   Certificate: [bold]{cert_path}[/bold]")
     if is_new:
         console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
@@ -471,13 +499,15 @@ def issue_certificate(hostname, no_export=False, do_deploy=False):
             break
     else:
         # Add new entry if not found
-        inventory.setdefault("hosts", []).append({
-            "name": hostname,
-            "serial": format(cert.serial_number, "x"),
-            "not_after": cert.not_valid_after.isoformat(),
-            "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-            "renewal_count": 1,
-        })
+        inventory.setdefault("hosts", []).append(
+            {
+                "name": hostname,
+                "serial": format(cert.serial_number, "x"),
+                "not_after": cert.not_valid_after.isoformat(),
+                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                "renewal_count": 1,
+            }
+        )
 
     inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     save_inventory(inventory)
@@ -490,9 +520,12 @@ def issue_all_certificates(no_export=False, do_deploy=False):
     """Issue or renew certificates for all hosts in configuration."""
     # Validate configuration first
     if not validate_config_before_operation():
-        console.print("[bold red]Error:[/bold red] Configuration validation failed. Please correct the configuration before issuing certificates.")
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before issuing certificates."
+        )
         return False
-        
+
     hosts_config = load_hosts_config()
 
     hosts = [host["name"] for host in hosts_config.get("hosts", [])]
@@ -537,7 +570,9 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
             break
 
     if not host_config:
-        console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
+        console.print(
+            f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration"
+        )
         return False
 
     # Create host directory if it doesn't exist
@@ -547,7 +582,6 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
 
     # Create directory if needed
     host_dir.mkdir(parents=True, exist_ok=True)
-
 
     # Generate new key
     key_algo = host_config.get("key", {}).get("algorithm", "RSA")
@@ -610,14 +644,16 @@ def rekey_host(hostname, no_export=False, do_deploy=False):
             break
     else:
         # Add new entry if not found
-        inventory.setdefault("hosts", []).append({
-            "name": hostname,
-            "serial": format(cert.serial_number, "x"),
-            "not_after": cert.not_valid_after.isoformat(),
-            "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-            "renewal_count": 1,
-            "rekeyed": True,
-        })
+        inventory.setdefault("hosts", []).append(
+            {
+                "name": hostname,
+                "serial": format(cert.serial_number, "x"),
+                "not_after": cert.not_valid_after.isoformat(),
+                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                "renewal_count": 1,
+                "rekeyed": True,
+            }
+        )
 
     inventory["last_update"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     save_inventory(inventory)
@@ -668,7 +704,9 @@ def import_host_key(hostname, key_path):
             break
 
     if not host_exists:
-        console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration"
+        )
         console.print("You will need to add it to the configuration file manually.")
 
     # Check if source key file exists
@@ -683,7 +721,9 @@ def import_host_key(hostname, key_path):
     key_dest_path = host_dir / "cert.key.enc"
 
     if cert_path.exists() or key_dest_path.exists():
-        if not click.confirm(f"Certificate or key for {hostname} already exists. Overwrite?", default=False):
+        if not click.confirm(
+            f"Certificate or key for {hostname} already exists. Overwrite?", default=False
+        ):
             return False
 
     # Create host directory if it doesn't exist
@@ -697,6 +737,7 @@ def import_host_key(hostname, key_path):
         # Try to load it without password first
         try:
             from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
             private_key = load_pem_private_key(key_data, password=None)
             src_password = None
         except (TypeError, ValueError):
@@ -705,7 +746,9 @@ def import_host_key(hostname, key_path):
                 "Enter source key password", hide_input=True, default="", show_default=False
             )
             try:
-                private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
+                private_key = load_pem_private_key(
+                    key_data, password=src_password.encode() if src_password else None
+                )
             except Exception as e:
                 console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
                 return False
@@ -769,7 +812,7 @@ def export_host_key(hostname, out_path=None):
             return False
     else:
         # Print to stdout
-        console.print(unencrypted_key_data.decode('utf-8'))
+        console.print(unencrypted_key_data.decode("utf-8"))
 
     return True
 
@@ -835,6 +878,7 @@ def list_certificates(expired=False, expiring_days=None, json_output=False):
     # Output JSON if requested
     if json_output:
         import json
+
         result = {
             "ca": ca_info,
             "hosts": filtered_hosts,

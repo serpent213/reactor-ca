@@ -35,7 +35,7 @@ def test_validate_ca_config_valid():
         }
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
-        
+
         valid, errors = validate_ca_config(tmp_file.name)
         if not valid:
             print(f"Validation errors: {errors}")
@@ -70,7 +70,7 @@ def test_validate_ca_config_invalid():
         }
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
-        
+
         valid, errors = validate_ca_config(tmp_file.name)
         assert not valid
         assert errors
@@ -107,7 +107,7 @@ def test_validate_hosts_config_valid():
         }
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
-        
+
         valid, errors = validate_hosts_config(tmp_file.name)
         if not valid:
             print(f"Validation errors: {errors}")
@@ -140,7 +140,7 @@ def test_validate_hosts_config_invalid():
         }
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
-        
+
         valid, errors = validate_hosts_config(tmp_file.name)
         assert not valid
         assert errors
