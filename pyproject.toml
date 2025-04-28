@@ -3,17 +3,17 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [project]
-name = "reactorca"
+name = "reactor_ca"
 version = "0.1.0"
 description = "A Python CLI tool to manage a homelab CA"
-authors = [{ name = "Reactor Admin", email = "admin@example.com" }]
+authors = [{ name = "Steffen Beyer", email = "steffen@beyer.io" }]
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
-license = { text = "MIT" }
+license = { text = "BSD" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -26,10 +26,10 @@ classifiers = [
 ca = "reactor_ca.main:cli"
 
 [tool.poetry]
-name = "reactorca"
+name = "reactor_ca"
 version = "0.1.0"
 description = "A Python CLI tool to manage a homelab CA"
-authors = ["Reactor Admin"]
+authors = ["Steffen Beyer"]
 readme = "README.md"
 package-mode = false
 

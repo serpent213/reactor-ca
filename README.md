@@ -2,17 +2,18 @@
 
 A Python CLI tool to manage a homelab Certificate Authority.
 
+**Currently in ALPHA state, use at your own risk!**
+
 ## Features
 
 - Create and manage a self-signed Certificate Authority
 - Generate and renew certificates for hosts
-- Support for DNS and IP alternative names
 - Strong key encryption with password protection
-- Certificate inventory tracking
-- Simple deployment to target locations
+- Certificate inventory cache
 - Certificate chain support (CA + host certificate)
 - Flexible password options (prompt, environment variable, file)
 - Export unencrypted private keys when needed
+- Simple deployment to target locations
 - Run deployment scripts after certificate exports
 
 ## Getting Started
@@ -31,7 +32,7 @@ poetry install
 First, create the default config files:
 
 ```bash
-poetry run ca config init
+ca config init
 ```
 
 This will create default configuration files in the `config/` directory. Edit them according to your needs.
@@ -43,7 +44,7 @@ This will create default configuration files in the `config/` directory. Edit th
 After editing the configuration, create the CA:
 
 ```bash
-poetry run ca ca create
+ca ca create
 ```
 
 This will create a self-signed CA certificate and private key (encrypted with the password you provide).
@@ -53,7 +54,7 @@ This will create a self-signed CA certificate and private key (encrypted with th
 To issue a certificate for a host defined in your hosts.yaml:
 
 ```bash
-poetry run ca host issue hostname
+ca host issue hostname
 ```
 
 ### List Certificates
@@ -61,7 +62,7 @@ poetry run ca host issue hostname
 To list all certificates with their expiration dates:
 
 ```bash
-poetry run ca host list
+ca host list
 ```
 
 ### Renew Certificates
@@ -69,13 +70,13 @@ poetry run ca host list
 To renew a specific certificate:
 
 ```bash
-poetry run ca host issue hostname
+ca host issue hostname
 ```
 
 Or to renew all certificates:
 
 ```bash
-poetry run ca host issue --all
+ca host issue --all
 ```
 
 ### Change Password
@@ -83,7 +84,7 @@ poetry run ca host issue --all
 To change the password for all encrypted private keys:
 
 ```bash
-poetry run ca util passwd
+ca util passwd
 ```
 
 ## Common Workflows
@@ -92,74 +93,74 @@ poetry run ca util passwd
 
 ```bash
 # Initialize configuration
-poetry run ca config init
+ca config init
 
 # Edit configuration
 vim config/ca_config.yaml
 
 # Create the CA
-poetry run ca ca create
+ca ca create
 
 # Create host config
 vim config/hosts.yaml
 
 # Issue certificates
-poetry run ca host issue server1.example.com
+ca host issue server1.example.com
 ```
 
 ### Import CA Workflow
 
 ```bash
 # Initialize configuration (optional)
-poetry run ca config init
+ca config init
 
 # Import existing CA
-poetry run ca ca import --cert path/to/ca.crt --key path/to/ca.key
+ca ca import --cert path/to/ca.crt --key path/to/ca.key
 
 # Create host config
 vim config/hosts.yaml
 
 # Issue certificates
-poetry run ca host issue server1.example.com
+ca host issue server1.example.com
 ```
 
 ### Import Host Keys Workflow
 
 ```bash
 # Import existing key
-poetry run ca host import server1.example.com --key path/to/key.pem
+ca host import server1.example.com --key path/to/key.pem
 
 # Finalize host config
 vim config/hosts.yaml
 
 # Issue certificate using imported key
-poetry run ca host issue server1.example.com
+ca host issue server1.example.com
 ```
 
 ### Key Rotation Workflow
 
 ```bash
 # Rotate the CA key and certificate
-poetry run ca ca rekey
+ca ca rekey
 
 # Rotate a specific host key and certificate
-poetry run ca host rekey server1.example.com
+ca host rekey server1.example.com
 
 # Rotate all host keys and certificates
-poetry run ca host rekey --all
+ca host rekey --all
 ```
 
 ### Deploy Certificates
 
 ```bash
 # Deploy a specific certificate
-poetry run ca host deploy server1.example.com
+ca host deploy server1.example.com
 
 # Deploy all certificates
-poetry run ca host deploy --all
+ca host deploy --all
 
 # Issue and deploy in one step
-poetry run ca host issue server1.example.com --deploy
+ca host issue server1.example.com --deploy
 ```
 
 ## Configuration
@@ -219,6 +220,105 @@ hosts:
       size: 2048
 ```
 
+## Cryptographic Options
+
+### Key Types
+
+ReactorCA supports the following key types:
+
+1. **RSA**
+   - Traditional asymmetric algorithm
+   - Specify key size in bits (e.g., 2048, 4096)
+   - Example: `algorithm: "RSA", size: 4096`
+
+2. **EC (Elliptic Curve)**
+   - More efficient than RSA with smaller key sizes
+   - Specify curve name (P256, P384, P521)
+   - Example: `algorithm: "EC", size: "P384"`
+
+3. **ED25519**
+   - Modern Edwards-curve algorithm
+   - Fixed key size (no size parameter needed)
+   - Example: `algorithm: "ED25519"`
+
+4. **ED448**
+   - Higher security Edwards-curve algorithm
+   - Fixed key size (no size parameter needed)
+   - Example: `algorithm: "ED448"`
+
+### Hash Algorithms
+
+ReactorCA supports multiple hash algorithms for certificate signatures:
+
+1. **SHA256**
+   - Default option, good balance of security and compatibility
+   - Example: `hash_algorithm: "SHA256"`
+
+2. **SHA384**
+   - Stronger hash, recommended for use with EC P-384
+   - Example: `hash_algorithm: "SHA384"`
+
+3. **SHA512**
+   - Strongest hash, recommended for high-security certificates
+   - Example: `hash_algorithm: "SHA512"`
+
+## Subject Alternative Name (SAN) Types
+
+ReactorCA supports a wide range of SAN types:
+
+1. **DNS Names**
+   ```yaml
+   dns:
+     - "example.com"
+     - "www.example.com"
+   ```
+
+2. **IP Addresses** (IPv4 and IPv6)
+   ```yaml
+   ip:
+     - "192.168.1.10"
+     - "2001:db8::1"
+   ```
+
+3. **Email Addresses**
+   ```yaml
+   email:
+     - "admin@example.com"
+   ```
+
+4. **URIs**
+   ```yaml
+   uri:
+     - "https://example.com"
+   ```
+
+5. **Directory Names** (Distinguished Names)
+   ```yaml
+   directory_name:
+     - "CN=example,O=Example Inc,C=US"
+   ```
+
+6. **Registered IDs** (OIDs)
+   ```yaml
+   registered_id:
+     - "1.3.6.1.4.1.311.20.2.3"
+   ```
+
+7. **Other Names** (Custom OIDs with values)
+   ```yaml
+   other_name:
+     - "1.3.6.1.4.1.311.20.2.3:Custom Value"
+   ```
+
+## Compatibility Considerations
+
+- **RSA 2048+ with SHA256** has excellent compatibility with all browsers
+- **EC P-256/P-384 with SHA256** works with all modern browsers (5+ years old)
+- **ED25519/ED448 and SHA384/SHA512** may have limited compatibility with very old clients
+- For maximum compatibility, use RSA 2048 with SHA256
+- For future-proofing with good compatibility, use EC P-384 with SHA384
+- For highest security, use ED448 with SHA512
+
 ## Password Management Options
 
 ReactorCA offers several ways to provide the master password:
@@ -231,26 +331,16 @@ The tool tries these methods in order: file, environment variable, interactive p
 
 ## Development
 
-### Testing
+### Linting & Testing
 
 ```bash
-poetry run pytest
-```
-
-### Linting
-
-```bash
-poetry run ruff check .
+poetry run check
 ```
 
 ## Limitations and Future Work
 
 ReactorCA is designed for homelab use and has some limitations:
 
-- No revocation/CRL support (for now)
-- No PKCS#12 support (for now)
-- No automation for rekeying/key deployment (for now)
-
-## License
-
-This project is open source under the MIT license.
+- No revocation/CRL support
+- No PKCS#12 support
+- No automation for rekeying/key deployment
