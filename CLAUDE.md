@@ -14,6 +14,12 @@ ReactorCA is a Python CLI tool to manage a homelab Certificate Authority.
 - Flexible password options (prompt, environment variable, file)
 - Run deployment commands after certificate exports
 
+Directory structure:
+
+- `reactor_ca`: main source code folder
+- `reactor_ca/schemas`: YAML schemas
+- `tests`: Pytest tests
+
 ## Technical Details
 
 - Python script with main entry point called `ca`
@@ -31,25 +37,25 @@ ReactorCA is a Python CLI tool to manage a homelab Certificate Authority.
 
 ```
 ca
-├── config       # Configuration management
-│   ├── init     # Generate initial config files
-│   └── validate # Validate config files
-├── ca           # CA management
-│   ├── create   # Create a new CA
-│   ├── import   # Import existing CA (cert+key)
-│   ├── renew    # Renew the CA certificate
-│   ├── rekey    # Generate new key and renew CA certificate
-│   └── info     # Show CA info
-├── host         # Host certificate operations
-│   ├── issue    # Issue/renew certificates
-│   ├── import   # Import existing key
+├── config         # Configuration management
+│   ├── init       # Generate initial config files
+│   └── validate   # Validate config files
+├── ca             # CA management
+│   ├── create     # Create a new CA
+│   ├── import     # Import existing CA (cert+key)
+│   ├── renew      # Renew the CA certificate
+│   ├── rekey      # Generate new key and renew CA certificate
+│   └── info       # Show CA info
+├── host           # Host certificate operations
+│   ├── issue      # Issue/renew certificates
+│   ├── import     # Import existing key
 │   ├── export-key # Export unencrypted private key
-│   ├── rekey    # Generate new key and issue certificate
-│   ├── list     # List all certificates
-│   ├── deploy   # Deploy certificates
-│   └── sign-csr # Sign CSRs (standalone operation)
-└── util         # Utility operations
-    └── passwd   # Change encryption password
+│   ├── rekey      # Generate new key and issue certificate
+│   ├── list       # List all certificates
+│   ├── deploy     # Deploy certificates
+│   └── sign-csr   # Sign CSR (standalone operation)
+└── util           # Utility operations
+    └── passwd     # Change encryption password
 ```
 
 ## Development

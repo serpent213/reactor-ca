@@ -36,6 +36,8 @@ poetry run ca config init
 
 This will create default configuration files in the `config/` directory. Edit them according to your needs.
 
+> **Note**: The `config` directory is excluded from version control. Example configurations can be found in the `example_config` directory for reference.
+
 ### Create CA Certificate
 
 After editing the configuration, create the CA:
@@ -181,10 +183,12 @@ ca:
   validity_days: 3650   # 10 years
   password:
     min_length: 12
-    storage: "session"  # "none", "session", "keyring"
-    file: ""          # Path to password file
-    env_var: "REACTOR_CA_PASSWORD"  # Environment variable for password
+    # Password is cached in memory for the duration of the program execution
+    file: ""          # Path to password file (optional)
+    env_var: "REACTOR_CA_PASSWORD"  # Environment variable for password (optional)
 ```
+
+See the `example_config` directory for reference examples.
 
 ### Hosts Configuration
 

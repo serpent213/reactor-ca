@@ -12,4 +12,4 @@ ca:
   validity_days: 3650
   password:
     min_length: 12
-    storage: "session"  # "none", "session", "keyring"
+    # Session caching is always enabled

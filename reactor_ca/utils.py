@@ -40,7 +40,7 @@ def create_default_config():
             "validity_days": 3650,
             "password": {
                 "min_length": 12,
-                "storage": "session",  # "none", "session", "keyring"
+                # Session caching is always enabled
                 "file": "",  # Path to password file
                 "env_var": "REACTOR_CA_PASSWORD",  # Environment variable for password
             },
@@ -153,31 +153,28 @@ def get_password():
     """Get password for key encryption/decryption, with multiple sources."""
     global _password_cache
 
-    # Load config to check password storage setting
+    # Load config to check password settings
     config = load_config()
-    storage_mode = config["ca"]["password"]["storage"]
     min_length = config["ca"]["password"]["min_length"]
     password_file = config["ca"]["password"].get("file", "")
     env_var = config["ca"]["password"].get("env_var", "")
 
-    # If password is already cached and storage is set to session, return it
-    if storage_mode == "session" and _password_cache:
+    # If password is already cached, return it
+    if _password_cache:
         return _password_cache
 
     # Try to get the password from a file
     if password_file:
         password = read_password_from_file(password_file)
         if password and len(password) >= min_length:
-            if storage_mode == "session":
-                _password_cache = password
+            _password_cache = password
             return password
 
     # Try to get the password from an environment variable
     if env_var and env_var in os.environ:
         password = os.environ[env_var]
         if password and len(password) >= min_length:
-            if storage_mode == "session":
-                _password_cache = password
+            _password_cache = password
             return password
 
     # If we still don't have a password, prompt the user
@@ -194,9 +191,8 @@ def get_password():
         )
         return None
 
-    # Cache password if configured to do so
-    if storage_mode == "session":
-        _password_cache = password
+    # Cache password for session
+    _password_cache = password
 
     return password
 
@@ -407,10 +403,9 @@ def change_password():
             console.print(f"[bold red]Error processing {key_path}:[/bold red] {str(e)}")
             error_count += 1
 
-    # Update password cache if we're using session storage
+    # Update password cache for session
     global _password_cache
-    if config["ca"]["password"]["storage"] == "session":
-        _password_cache = new_password
+    _password_cache = new_password
 
     # Summary
     console.print(f"\n✅ Changed password for {success_count} key files")

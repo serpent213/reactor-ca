@@ -1,5 +1,6 @@
-# Ignore certificates directory and inventory
+# Ignore certificates directory, config, and inventory
 certs/
+config/
 inventory.yaml
 
 # Python artifacts
