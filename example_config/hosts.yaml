@@ -11,7 +11,7 @@ hosts:
       cert: "../path/to/export/cert/server1.pem"
       chain: "../path/to/export/cert/server1-chain.pem"
     deploy:
-      command: "systemctl reload nginx"
+      command: "cp ${cert} /etc/nginx/ssl/server1.pem && cp ${private_key} /etc/nginx/ssl/server1.key && systemctl reload nginx"
     validity:
       years: 1
     key:
@@ -31,6 +31,10 @@ hosts:
         - "admin@example.com"  # Email SAN
       uri:
         - "https://vpn.example.com"  # URI SAN
+    # No export paths specified for this host
+    deploy:
+      # Deploy command that only uses the certificate file from our store
+      command: "scp ${cert} vpnserver:/etc/openvpn/server.crt && ssh vpnserver systemctl restart openvpn"
     validity:
       days: 365
     key:
@@ -63,6 +67,10 @@ hosts:
         - "192.168.1.200"
       other_name:
         - "1.3.6.1.4.1.311.20.2.3:IoT Device"  # Custom OID with value
+    # Only deploy the private key
+    deploy:
+      # Deploy command that only uses the private key
+      command: "scp ${private_key} iotserver:/etc/mqtt/private.key && ssh iotserver 'chmod 600 /etc/mqtt/private.key && systemctl restart mosquitto'"
     validity:
       years: 3
     key:

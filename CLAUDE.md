@@ -39,6 +39,7 @@ Remember to run `poetry install` after modifying dependencies.
 - Flexible password options (prompt, environment variable, file)
 - Run deployment commands after certificate exports
 - No backup functionality, we expect to keep the cert store in a Git repo
+- Do not take care of backward compatibility when making changes
 
 Directory structure:
 
@@ -85,4 +86,4 @@ ca
     └── passwd     # Change encryption password
 ```
 
-Make sure to update the README.md and `example_config` to match source code changes.
+Make sure to update the README.md (only in the root folder!) and `example_config` to match source code changes.

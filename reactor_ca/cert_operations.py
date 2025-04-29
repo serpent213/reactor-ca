@@ -312,7 +312,7 @@ def export_certificate(
     """Export a certificate and optionally its private key and chain to the configured location."""
     if no_export:
         console.print(f"Certificate export skipped for [bold]{hostname}[/bold] (--no-export flag)")
-        return False
+        return True  # Return True to allow deployment to proceed
 
     hosts_config = load_hosts_config()
     host_config = None
@@ -326,24 +326,23 @@ def export_certificate(
         console.print(f"[bold yellow]Warning:[/bold yellow] Host {hostname} not found in hosts configuration")
         return False
 
-    # Get export paths from config
+    # Check if export configuration exists
     if "export" not in host_config:
-        console.print(f"[bold yellow]Warning:[/bold yellow] No export paths configured for {hostname}")
-        return False
-
+        # Silently skip export without any warning message
+        return True  # Return True to allow deployment to proceed
+    
     export_config = host_config["export"]
     cert_path = export_config.get("cert")
     chain_path = export_config.get("chain")
 
-    if not cert_path:
-        console.print(
-            "[bold yellow]Warning:[/bold yellow] " + f"No certificate export path configured for {hostname}"
-        )
-        return False
+    # Skip export if no export paths are configured
+    if not cert_path and not chain_path:
+        # Silently skip export without any warning message
+        return True  # Return True to allow deployment to proceed
 
     export_success = False
 
-    # Ensure parent directories exist
+    # Export certificate if path is configured
     if cert_path:
         cert_export_path = Path(cert_path)
         cert_export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -380,7 +379,8 @@ def export_certificate(
         except Exception as e:
             console.print(f"[bold red]Error exporting certificate chain:[/bold red] {str(e)}")
 
-    return export_success
+    # Return True if either no paths were configured or at least one export succeeded
+    return export_success or not (cert_path or chain_path)
 
 
 def deploy_host(hostname: str) -> bool:
@@ -782,8 +782,8 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     # Export certificate
     export_success = export_certificate(hostname, cert, no_export=no_export)
 
-    # Deploy if requested and export was successful
-    if do_deploy and export_success:
+    # Deploy if requested (regardless of export success)
+    if do_deploy:
         deploy_host(hostname)
 
     # Update inventory
@@ -925,8 +925,8 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     # Export certificate
     export_success = export_certificate(hostname, cert, no_export=no_export)
 
-    # Deploy if requested and export was successful
-    if do_deploy and export_success:
+    # Deploy if requested (regardless of export success)
+    if do_deploy:
         deploy_host(hostname)
 
     # Update inventory
@@ -1058,8 +1058,8 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
     if ca_key_path.exists():
         try:
             decrypt_key(ca_key_path, dest_password)
-        except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] The provided password does not match the CA key password")
+        except Exception:
+            console.print("[bold red]Error:[/bold red] The provided password does not match the CA key password")
             return False
 
     # Encrypt and save the key

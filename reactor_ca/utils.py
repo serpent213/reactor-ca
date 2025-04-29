@@ -81,7 +81,9 @@ def create_default_config() -> None:
                     "chain": "../path/to/export/cert/server1-chain.pem",  # Optional full chain
                 },
                 "deploy": {
-                    "command": "systemctl reload nginx",  # Optional deployment command
+                    # Optional deployment command with variable substitution
+                    "command": "cp ${cert} /etc/nginx/ssl/server1.pem "
+                    + "&& cp ${private_key} /etc/nginx/ssl/server1.key && systemctl reload nginx",
                 },
                 "validity": {
                     "years": 1,
@@ -206,7 +208,7 @@ def get_password() -> str | None:
 
     # If we still don't have a password, prompt the user
     password = click.prompt(
-        "Enter password for key encryption/decryption",
+        "Enter CA master password",
         hide_input=True,
         confirmation_prompt=False,
     )
@@ -436,13 +438,94 @@ def change_password() -> None:
 
 
 def run_deploy_command(hostname: str, command: str) -> bool:
-    """Run a deployment command for a host."""
+    """Run a deployment command for a host.
+
+    Supports variable substitution:
+    - ${cert} - Path to the host certificate file
+    - ${private_key} - Path to a temporary file containing the decrypted private key
+    """
     if not command:
         return False
 
     try:
-        console.print(f"Running deployment command for [bold]{hostname}[/bold]...")
-        result = os.system(command)
+        import stat
+        import tempfile
+        from pathlib import Path
+
+        from reactor_ca.ca_operations import decrypt_key
+
+        temp_files = []
+        modified_command = command
+
+        # Check if we need to perform variable substitution
+        host_dir = Path(f"certs/hosts/{hostname}")
+        cert_path = host_dir / "cert.crt"
+        key_path = host_dir / "cert.key.enc"
+
+        # Replace ${cert} with certificate path if it exists
+        if "${cert}" in command and cert_path.exists():
+            modified_command = modified_command.replace("${cert}", str(cert_path.absolute()))
+
+        # Handle ${private_key} if it exists in the command
+        if "${private_key}" in command and key_path.exists():
+            # Get password and decrypt the key
+            from reactor_ca.utils import get_password
+
+            password = get_password()
+            if not password:
+                console.print("[bold red]Error:[/bold red] Cannot decrypt private key - no password provided")
+                return False
+
+            try:
+                private_key = decrypt_key(key_path, password)
+
+                # Create a temporary file for the private key with restricted permissions
+                fd, temp_key_path = tempfile.mkstemp(suffix=".key", prefix=f"{hostname}-")
+                temp_files.append(temp_key_path)
+
+                # Close the file descriptor
+                os.close(fd)
+
+                # Set secure permissions (600 - owner read/write only)
+                os.chmod(temp_key_path, stat.S_IRUSR | stat.S_IWUSR)
+
+                # Write the decrypted key to the temporary file
+                from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
+
+                with open(temp_key_path, "wb") as f:
+                    f.write(
+                        private_key.private_bytes(
+                            encoding=Encoding.PEM,
+                            format=PrivateFormat.PKCS8,
+                            encryption_algorithm=NoEncryption(),
+                        )
+                    )
+
+                # Replace the variable in the command
+                modified_command = modified_command.replace("${private_key}", temp_key_path)
+
+            except Exception as e:
+                console.print(f"[bold red]Error preparing private key for {hostname}:[/bold red] {str(e)}")
+                # Clean up any temporary files created so far
+                for temp_file in temp_files:
+                    try:
+                        os.unlink(temp_file)
+                    except Exception as ie:
+                        console.print(f"[bold red]Error removing temp file:[/bold red] {str(ie)}")
+                return False
+
+        # Run the modified command
+        console.print(f"Running deployment command for [bold]{hostname}[/bold]: {modified_command}")
+        result = os.system(modified_command)
+
+        # Clean up any temporary files
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+            except Exception as e:
+                console.print(
+                    f"[bold yellow]Warning:[/bold yellow] Could not delete temporary file {temp_file}: {str(e)}"
+                )
 
         if result == 0:
             console.print(f"✅ Deployment for [bold]{hostname}[/bold] completed successfully")

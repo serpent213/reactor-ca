@@ -220,6 +220,19 @@ hosts:
       size: 2048
 ```
 
+#### Deployment Commands
+
+When configuring host certificates in `hosts.yaml`, you can specify a `deploy.command` that will be executed after issuing or renewing a certificate. This command supports the following variable substitutions:
+
+- `${cert}` - Will be replaced with the absolute path to the certificate file
+- `${private_key}` - Will be replaced with the absolute path to a temporary file containing the decrypted private key that will be automatically removed after the command completes.
+
+Example:
+```yaml
+deploy:
+  command: "cp ${cert} /etc/nginx/ssl/server.pem && cp ${private_key} /etc/nginx/ssl/server.key && systemctl reload nginx"
+```
+
 ## Cryptographic Options
 
 ### Key Types
@@ -245,6 +258,19 @@ ReactorCA supports the following key types:
    - Higher security Edwards-curve algorithm
    - Fixed key size (no size parameter needed)
    - Example: `algorithm: "ED448"`
+
+### Performance Implications
+
+Different algorithms impact TLS handshake performance:
+
+     Algorithm     Handshake Speed   CPU Load   Security      Notes
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     RSA-2048      Medium            Medium     Adequate      Legacy support
+     RSA-4096      Slow              High       Strong        CPU-intensive
+     ECDSA P-256   Fast              Low        Strong        Good balance
+     ECDSA P-384   Medium            Medium     Stronger      More CPU than P-256
+     Ed25519       Very Fast         Very Low   Strong        Modern choice
+     Ed448         Fast              Low        Very Strong   Overkill for most
 
 ### Hash Algorithms
 
