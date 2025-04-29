@@ -96,6 +96,7 @@ def create_certificate(
     validity_days: int = 365,
     alt_names: dict[str, list[str]] | None = None,
     hash_algorithm: str | None = None,
+    host_config: dict[str, Any] | None = None,
 ) -> x509.Certificate:
     """Create a certificate signed by the CA."""
     config = load_config()
@@ -106,17 +107,40 @@ def create_certificate(
 
     hash_algo = get_hash_algorithm(hash_algorithm)
 
-    subject = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
-            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
-            x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
-            x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
-        ]
-    )
+    # Use host-specific certificate metadata fields if provided, otherwise fall back to CA config
+    subject_attributes = [
+        x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+        x509.NameAttribute(
+            NameOID.ORGANIZATION_NAME,
+            host_config.get("organization", config["ca"]["organization"])
+            if host_config
+            else config["ca"]["organization"],
+        ),
+        x509.NameAttribute(
+            NameOID.ORGANIZATIONAL_UNIT_NAME,
+            host_config.get("organization_unit", config["ca"]["organization_unit"])
+            if host_config
+            else config["ca"]["organization_unit"],
+        ),
+        x509.NameAttribute(
+            NameOID.COUNTRY_NAME,
+            host_config.get("country", config["ca"]["country"]) if host_config else config["ca"]["country"],
+        ),
+        x509.NameAttribute(
+            NameOID.STATE_OR_PROVINCE_NAME,
+            host_config.get("state", config["ca"]["state"]) if host_config else config["ca"]["state"],
+        ),
+        x509.NameAttribute(
+            NameOID.LOCALITY_NAME,
+            host_config.get("locality", config["ca"]["locality"]) if host_config else config["ca"]["locality"],
+        ),
+        x509.NameAttribute(
+            NameOID.EMAIL_ADDRESS,
+            host_config.get("email", config["ca"]["email"]) if host_config else config["ca"]["email"],
+        ),
+    ]
+
+    subject = x509.Name(subject_attributes)
 
     now = datetime.datetime.now(datetime.UTC)
     cert_builder = (
@@ -330,7 +354,7 @@ def export_certificate(
     if "export" not in host_config:
         # Silently skip export without any warning message
         return True  # Return True to allow deployment to proceed
-    
+
     export_config = host_config["export"]
     cert_path = export_config.get("cert")
     chain_path = export_config.get("chain")
@@ -763,6 +787,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         validity_days,
         alt_names,
         hash_algorithm,
+        host_config,
     )
 
     # Save key if new or certificate
@@ -780,7 +805,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
 
     # Export certificate
-    export_success = export_certificate(hostname, cert, no_export=no_export)
+    export_certificate(hostname, cert, no_export=no_export)
 
     # Deploy if requested (regardless of export success)
     if do_deploy:
@@ -909,6 +934,7 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
         ca_cert,
         validity_days,
         alt_names,
+        host_config=host_config,
     )
 
     # Save key and certificate
@@ -923,7 +949,7 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
 
     # Export certificate
-    export_success = export_certificate(hostname, cert, no_export=no_export)
+    export_certificate(hostname, cert, no_export=no_export)
 
     # Deploy if requested (regardless of export success)
     if do_deploy:

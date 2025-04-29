@@ -95,6 +95,10 @@ def create_test_configs(temp_dir):
             {
                 "name": "testserver.local",
                 "common_name": "testserver.local",
+                # Test partial override of certificate metadata fields
+                # Only override organization_unit and email, inherit the rest from CA
+                "organization_unit": "Test Override Unit",
+                "email": "override@example.com",
                 "alternative_names": {
                     "dns": ["www.testserver.local"],
                     "ip": ["192.168.1.10"],
@@ -237,6 +241,23 @@ class TestReactorCAIntegration:
         assert sans_verify_result.returncode == 0
         assert "DNS:www.testserver.local" in sans_verify_result.stdout
         assert "IP Address:192.168.1.10" in sans_verify_result.stdout
+
+        # Verify overridden and inherited certificate metadata fields are used correctly
+        subject_verify_result = run_command(f"openssl x509 -in {host_cert_path} -noout -subject")
+        assert subject_verify_result.returncode == 0
+
+        # Print the actual output for debugging
+        print(f"Subject output: {subject_verify_result.stdout}")
+
+        # These fields should be inherited from CA
+        assert "O=Test Org" in subject_verify_result.stdout
+        assert "C=US" in subject_verify_result.stdout
+        assert "ST=Test State" in subject_verify_result.stdout
+        assert "L=Test City" in subject_verify_result.stdout
+
+        # These fields should be overridden by host config
+        assert "OU=Test Override Unit" in subject_verify_result.stdout
+        assert "emailAddress=override@example.com" in subject_verify_result.stdout
 
     def test_renew_and_rekey(self, temp_dir, create_test_configs) -> None:
         """Test renewing and rekeying certificates."""

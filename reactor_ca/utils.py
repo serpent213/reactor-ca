@@ -67,6 +67,13 @@ def create_default_config() -> None:
             {
                 "name": "server1.example.com",
                 "common_name": "server1.example.com",
+                # Optional certificate metadata fields (will use CA defaults if not specified)
+                # "organization": "Custom Organization",
+                # "organization_unit": "Custom Department",
+                # "country": "US",
+                # "state": "California",
+                # "locality": "San Francisco",
+                # "email": "admin@custom.com",
                 "alternative_names": {
                     "dns": [
                         "www.example.com",

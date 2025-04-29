@@ -44,6 +44,13 @@ hosts:
   
   - name: "auth.example.com"
     common_name: "auth.example.com"
+    # Example of host-specific certificate metadata fields
+    organization: "Auth Services Inc"
+    organization_unit: "Security Department"
+    country: "US"
+    state: "Washington"
+    locality: "Seattle"
+    email: "security@example.com"
     alternative_names:
       dns:
         - "auth.example.com"
