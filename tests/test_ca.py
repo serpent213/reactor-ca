@@ -65,9 +65,9 @@ def test_ca_info() -> None:
             # Set environment variable for password with at least 8 characters
             os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
-            # Create the CA first
+            # Create the CA first using the new 'issue' command
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "create"])
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
             assert result.exit_code == 0
             assert Path("certs/ca/ca.crt").exists()
             assert Path("certs/ca/ca.key.enc").exists()
@@ -105,8 +105,8 @@ def test_ca_info() -> None:
             os.chdir(original_dir)
 
 
-def test_init_ca() -> None:
-    """Test initializing a CA using environment variable for password."""
+def test_ca_issue_new() -> None:
+    """Test 'ca issue' command to create a new CA."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Change to temporary directory
         original_dir = os.getcwd()
@@ -141,9 +141,9 @@ def test_init_ca() -> None:
             # Set environment variable for password with at least 8 characters
             os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
-            # Run initialization
+            # Run initialization with new 'issue' command
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "create"])
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
 
             print(f"Exit code: {result.exit_code}")
             print(f"Output: {result.output}")
@@ -153,6 +153,249 @@ def test_init_ca() -> None:
             assert Path("certs/ca/ca.crt").exists()
             assert Path("certs/ca/ca.key.enc").exists()
             assert Path("inventory.yaml").exists()
+            assert "CA created successfully" in result.output
+
+        finally:
+            # Clean up environment variable
+            if "TEST_CA_PASSWORD" in os.environ:
+                del os.environ["TEST_CA_PASSWORD"]
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+
+def test_ca_issue_renew() -> None:
+    """Test 'ca issue' command to renew an existing CA."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Change to temporary directory
+        original_dir = os.getcwd()
+        os.chdir(tmpdir)
+
+        try:
+            # Create necessary directories
+            Path("config").mkdir(exist_ok=True)
+            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+
+            # Create sample config file with env var for password
+            config_content = """
+            ca:
+              common_name: "Test CA"
+              organization: "Test Org"
+              organization_unit: "IT"
+              country: "US"
+              state: "Test State"
+              locality: "Test City"
+              email: "test@example.com"
+              key_algorithm: "RSA2048"
+              validity:
+                days: 365
+              password:
+                min_length: 8
+                env_var: "TEST_CA_PASSWORD"
+            """
+
+            with open("config/ca_config.yaml", "w") as f:
+                f.write(config_content)
+
+            # Set environment variable for password with at least 8 characters
+            os.environ["TEST_CA_PASSWORD"] = "testpassword"
+
+            # First create a CA
+            runner = CliRunner()
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            assert result.exit_code == 0
+
+            # Get the creation date of the certificate
+            original_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+
+            # Now renew the CA
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\n")
+            assert result.exit_code == 0
+
+            # Verify the certificate was updated
+            new_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+            assert new_mtime > original_mtime
+            assert "CA certificate renewed successfully" in result.output
+
+        finally:
+            # Clean up environment variable
+            if "TEST_CA_PASSWORD" in os.environ:
+                del os.environ["TEST_CA_PASSWORD"]
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+
+def test_ca_rekey() -> None:
+    """Test 'ca rekey' command to rekey an existing CA."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Change to temporary directory
+        original_dir = os.getcwd()
+        os.chdir(tmpdir)
+
+        try:
+            # Create necessary directories
+            Path("config").mkdir(exist_ok=True)
+            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+
+            # Create sample config file with env var for password
+            config_content = """
+            ca:
+              common_name: "Test CA"
+              organization: "Test Org"
+              organization_unit: "IT"
+              country: "US"
+              state: "Test State"
+              locality: "Test City"
+              email: "test@example.com"
+              key_algorithm: "RSA2048"
+              validity:
+                days: 365
+              password:
+                min_length: 8
+                env_var: "TEST_CA_PASSWORD"
+            """
+
+            with open("config/ca_config.yaml", "w") as f:
+                f.write(config_content)
+
+            # Set environment variable for password with at least 8 characters
+            os.environ["TEST_CA_PASSWORD"] = "testpassword"
+
+            # First create a CA
+            runner = CliRunner()
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            assert result.exit_code == 0
+
+            # Get the original certificate and key modification times
+            original_cert_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+            original_key_mtime = Path("certs/ca/ca.key.enc").stat().st_mtime
+
+            # Now rekey the CA using the dedicated 'rekey' command
+            result = runner.invoke(cli, ["ca", "rekey"], input="testpassword\n")
+            assert result.exit_code == 0
+
+            # Verify both the certificate and key were updated
+            new_cert_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+            new_key_mtime = Path("certs/ca/ca.key.enc").stat().st_mtime
+
+            assert new_cert_mtime > original_cert_mtime
+            assert new_key_mtime > original_key_mtime
+            assert "CA rekeyed successfully" in result.output
+
+        finally:
+            # Clean up environment variable
+            if "TEST_CA_PASSWORD" in os.environ:
+                del os.environ["TEST_CA_PASSWORD"]
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+
+def test_ca_help() -> None:
+    """Test 'ca help' command."""
+    runner = CliRunner()
+    help_result = runner.invoke(cli, ["ca", "help"])
+    direct_help_result = runner.invoke(cli, ["ca", "--help"])
+
+    assert help_result.exit_code == 0
+    assert direct_help_result.exit_code == 0
+    # Verify that the outputs are the same
+    assert help_result.output == direct_help_result.output
+
+
+def test_host_issue_with_key_check() -> None:
+    """Test 'host issue' command with key algorithm verification."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Change to temporary directory
+        original_dir = os.getcwd()
+        os.chdir(tmpdir)
+
+        try:
+            # Create necessary directories
+            Path("config").mkdir(exist_ok=True)
+            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+
+            # Create sample CA config
+            ca_config_content = """
+            ca:
+              common_name: "Test CA"
+              organization: "Test Org"
+              organization_unit: "IT"
+              country: "US"
+              state: "Test State"
+              locality: "Test City"
+              email: "test@example.com"
+              key_algorithm: "RSA2048"
+              validity:
+                days: 365
+              password:
+                min_length: 8
+                env_var: "TEST_CA_PASSWORD"
+            """
+
+            # Create sample hosts config with a host
+            hosts_config_content = """
+            hosts:
+              - name: "test.example.com"
+                common_name: "test.example.com"
+                key_algorithm: "RSA2048"
+                validity:
+                  days: 365
+            """
+
+            with open("config/ca_config.yaml", "w") as f:
+                f.write(ca_config_content)
+
+            with open("config/hosts.yaml", "w") as f:
+                f.write(hosts_config_content)
+
+            # Set environment variable for password with at least 8 characters
+            os.environ["TEST_CA_PASSWORD"] = "testpassword"
+
+            # Create the CA first
+            runner = CliRunner()
+            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            assert result.exit_code == 0
+
+            # Issue host certificate
+            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\ntestpassword\n")
+            assert result.exit_code == 0
+            assert Path("certs/hosts/test.example.com/cert.crt").exists()
+            assert Path("certs/hosts/test.example.com/cert.key.enc").exists()
+
+            # Get the original certificate modification time
+            original_cert_mtime = Path("certs/hosts/test.example.com/cert.crt").stat().st_mtime
+
+            # Now renew the certificate
+            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
+            assert result.exit_code == 0
+
+            # Verify certificate was updated
+            new_cert_mtime = Path("certs/hosts/test.example.com/cert.crt").stat().st_mtime
+            assert new_cert_mtime > original_cert_mtime
+
+            # Change the key algorithm in the hosts config to test the validation
+            hosts_config_content = """
+            hosts:
+              - name: "test.example.com"
+                common_name: "test.example.com"
+                key_algorithm: "RSA4096"  # Changed from RSA2048
+                validity:
+                  days: 365
+            """
+
+            with open("config/hosts.yaml", "w") as f:
+                f.write(hosts_config_content)
+
+            # Try to renew the certificate - should fail due to key algorithm mismatch
+            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
+            assert "The existing key algorithm does not match the configuration" in result.output
+
+            # Rekey should work with new algorithm
+            result = runner.invoke(cli, ["host", "rekey", "test.example.com"], input="testpassword\n")
+            assert result.exit_code == 0
+            assert "rekeyed successfully" in result.output
 
         finally:
             # Clean up environment variable

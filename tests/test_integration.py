@@ -150,7 +150,7 @@ class TestReactorCAIntegration:
         """Test creating a new CA."""
         # Create CA (configs are already created by fixture)
         runner = CliRunner()
-        result = runner.invoke(cli, ["ca", "create"])
+        result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
 
         assert result.exit_code == 0
         assert os.path.exists(os.path.join("certs", "ca", "ca.crt"))
@@ -171,11 +171,11 @@ class TestReactorCAIntegration:
         runner = CliRunner()
 
         # Create CA
-        ca_result = runner.invoke(cli, ["ca", "create"])
+        ca_result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
         assert ca_result.exit_code == 0
 
         # Issue certificate for the test host
-        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"])
+        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
         assert cert_result.exit_code == 0
 
         # Verify certificate was created
@@ -202,11 +202,11 @@ class TestReactorCAIntegration:
         runner = CliRunner()
 
         # Create CA
-        ca_result = runner.invoke(cli, ["ca", "create"])
+        ca_result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
         assert ca_result.exit_code == 0
 
         # Issue certificate for the test host
-        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"])
+        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
         assert cert_result.exit_code == 0
 
         # Get file paths
@@ -258,8 +258,8 @@ class TestReactorCAIntegration:
         runner = CliRunner()
 
         # Create CA and issue certificate
-        runner.invoke(cli, ["ca", "create"])
-        runner.invoke(cli, ["host", "issue", "testserver.local"])
+        runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+        runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
 
         # Get initial certificate data
         ca_cert_path = os.path.join("certs", "ca", "ca.crt")
@@ -271,11 +271,11 @@ class TestReactorCAIntegration:
         with open(host_cert_path, "rb") as f:
             initial_host_cert = x509.load_pem_x509_certificate(f.read())
 
-        # Renew CA certificate
-        runner.invoke(cli, ["ca", "renew"])
+        # Renew CA certificate (now using 'ca issue' instead of 'ca renew')
+        runner.invoke(cli, ["ca", "issue"], input="testpassword\n")
 
         # Rekey host certificate
-        runner.invoke(cli, ["host", "rekey", "testserver.local"])
+        runner.invoke(cli, ["host", "rekey", "testserver.local"], input="testpassword\n")
 
         # Load renewed certificates
         with open(ca_cert_path, "rb") as f:

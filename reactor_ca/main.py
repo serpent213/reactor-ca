@@ -5,10 +5,8 @@ import click
 
 from reactor_ca import __version__
 from reactor_ca.ca_operations import (
-    create_ca,
     import_ca,
     rekey_ca,
-    renew_ca_cert,
     show_ca_info,
 )
 from reactor_ca.cert_operations import (
@@ -67,10 +65,20 @@ def ca() -> None:
     pass
 
 
-@ca.command(name="create")
-def ca_create() -> None:
-    """Create a new CA."""
-    create_ca()
+@ca.command(name="issue")
+def ca_issue() -> None:
+    """Create or renew a CA certificate."""
+    from reactor_ca.ca_operations import issue_ca
+
+    issue_ca()
+
+
+@ca.command(name="help")
+@click.pass_context
+def ca_help(ctx: click.Context) -> None:
+    """Show help information for CA commands."""
+    # Display the same help as 'ca --help' would show
+    click.echo(ctx.parent.get_help())
 
 
 @ca.command(name="import")
@@ -79,12 +87,6 @@ def ca_create() -> None:
 def ca_import(cert: str, key: str) -> None:
     """Import an existing CA."""
     import_ca(cert, key)
-
-
-@ca.command(name="renew")
-def ca_renew() -> None:
-    """Renew the CA certificate using the existing key."""
-    renew_ca_cert()
 
 
 @ca.command(name="rekey")
@@ -113,7 +115,7 @@ def host() -> None:
 @click.option("--no-export", is_flag=True, help="Skip export of certificates")
 @click.option("--deploy", is_flag=True, help="Deploy certificates after export")
 def host_issue(hostname: str | None, all_hosts: bool, no_export: bool, deploy: bool) -> None:
-    """Issue or renew certificates for hosts."""
+    """Create or renew certificates for hosts."""
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
         return

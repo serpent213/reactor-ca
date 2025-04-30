@@ -185,120 +185,177 @@ def generate_ca_cert(
     return sign_certificate(cert_builder, private_key, hash_algorithm)
 
 
-def create_ca() -> None:
-    """Create a new CA with configuration and keys."""
+def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
+    """Verify that a key matches the expected algorithm and size.
+
+    Args:
+    ----
+        key: The private key to verify
+        expected_algorithm: The expected algorithm identifier (e.g., 'RSA4096', 'ECP256')
+
+    Returns:
+    -------
+        True if the key matches the expected algorithm, False otherwise
+
+    """
+    expected_algorithm = expected_algorithm.upper()
+
+    # Determine the actual key algorithm
+    actual_algorithm = _determine_key_algorithm(key)
+
+    # Compare with expected algorithm
+    if actual_algorithm != expected_algorithm:
+        console.print(
+            f"[bold red]Error:[/bold red] Key algorithm mismatch. "
+            f"Expected {expected_algorithm}, but found {actual_algorithm}"
+        )
+        return False
+
+    return True
+
+
+def get_confirmed_password() -> str | None:
+    """Get password with confirmation for key encryption."""
+    # Load config to check password settings
+    config = load_config()
+    min_length = config["ca"]["password"]["min_length"]
+
+    # Get password
+    password = click.prompt(
+        "Enter CA master password",
+        hide_input=True,
+        confirmation_prompt=False,
+    )
+
+    # Validate password length
+    if password and len(password) < min_length:
+        console.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
+        return None
+
+    # Confirm password
+    password_confirm = click.prompt(
+        "Confirm CA master password",
+        hide_input=True,
+        confirmation_prompt=False,
+    )
+
+    # Check if passwords match
+    if password != password_confirm:
+        console.print("[bold red]Error:[/bold red] Passwords do not match")
+        return None
+
+    return password
+
+
+def issue_ca() -> None:
+    """Issue a CA certificate. Creates one if it doesn't exist, renews if it does."""
     # Validate configuration first
     if not validate_config_before_operation():
         console.print(
             "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before creating the CA."
+            + "Configuration validation failed. Please correct the configuration before issuing the CA certificate."
         )
         return
 
     # Check if CA already exists
     ca_cert_path = Path("certs/ca/ca.crt")
     ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_exists = ca_cert_path.exists() or ca_key_path.exists()
 
-    if ca_cert_path.exists() or ca_key_path.exists():
-        if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
-            return
+    # Load config
+    config = load_config()
+
+    # Get expected key algorithm from config
+    key_algorithm = config["ca"]["key_algorithm"]
 
     # Create certificate directories
     ensure_directory_exists("certs/ca")
 
-    # Load config
-    config = load_config()
+    if not ca_exists:
+        # Creating a new CA
+        if ca_exists:  # This check is for situations where files might be changed while processing
+            if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
+                return
 
-    # Get password for key encryption
-    password = get_password()
-    if not password and config["ca"]["password"]["min_length"] > 0:
-        return
+        # Get password with confirmation for new key
+        password = get_confirmed_password()
+        if not password and config["ca"]["password"]["min_length"] > 0:
+            return
 
-    # Generate key
-    key_algorithm = config["ca"]["key_algorithm"]
+        # Generate key
+        console.print(f"Generating {key_algorithm} key...")
+        private_key = generate_key(key_algorithm=key_algorithm)
 
-    console.print(f"Generating {key_algorithm} key...")
-    private_key = generate_key(key_algorithm=key_algorithm)
+        # Generate self-signed certificate
+        validity_days = calculate_validity_days(config["ca"]["validity"])
+        console.print(f"Generating self-signed CA certificate valid for {validity_days} days...")
+        cert = generate_ca_cert(private_key, config, validity_days)
 
-    # Generate self-signed certificate
-    validity_days = calculate_validity_days(config["ca"]["validity"])
-    console.print(f"Generating self-signed CA certificate valid for {validity_days} days...")
-    cert = generate_ca_cert(private_key, config, validity_days)
+        # Save encrypted key and certificate
+        save_private_key(private_key, ca_key_path, password.encode() if password else None)
+        save_certificate(cert, ca_cert_path)
 
-    # Save encrypted key and certificate
-    save_private_key(private_key, ca_key_path, password.encode() if password else None)
+        console.print("✅ CA created successfully")
+        console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
+        console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
 
-    save_certificate(cert, ca_cert_path)
+        # Initialize inventory
+        inventory = {
+            "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
+            "ca": {
+                "serial": format(cert.serial_number, "x"),
+                "not_after": cert.not_valid_after.isoformat(),
+                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+            },
+            "hosts": [],
+        }
+        save_inventory(inventory)
+        console.print("📋 Inventory initialized")
+    else:
+        # Renewing existing CA certificate
+        # Get password
+        password = get_password()
+        if not password:
+            return
 
-    console.print("✅ CA created successfully")
-    console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
-    console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
+        # Decrypt the CA key
+        try:
+            ca_key = decrypt_key(ca_key_path, password)
+        except Exception as e:
+            console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+            return
 
-    # Initialize inventory with certificate metadata
-    inventory = {
-        "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
-        "ca": {
-            "serial": format(cert.serial_number, "x"),
-            "not_after": cert.not_valid_after.isoformat(),
-            "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-        },
-        "hosts": [],
-    }
+        # Verify that the existing key matches the algorithm in the config
+        if not verify_key_algorithm(ca_key, key_algorithm):
+            console.print(
+                "[bold red]Error:[/bold red] The existing key algorithm does not match the configuration. "
+                "Use 'ca rekey' to generate a new key with the configured algorithm."
+            )
+            return
 
-    save_inventory(inventory)
-    console.print("📋 Inventory initialized")
+        # Generate a new certificate with the same key
+        validity_days = calculate_validity_days(config["ca"]["validity"])
+        console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
 
+        # Create a new CA certificate
+        new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
 
-def renew_ca_cert() -> None:
-    """Renew the CA certificate using the existing key."""
-    # Check if CA exists
-    ca_cert_path = Path("certs/ca/ca.crt")
-    ca_key_path = Path("certs/ca/ca.key.enc")
+        # Save the new certificate
+        save_certificate(new_ca_cert, ca_cert_path)
 
-    if not ca_cert_path.exists() or not ca_key_path.exists():
-        console.print(
-            "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
-        )
-        return
+        console.print("✅ CA certificate renewed successfully")
+        console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
 
-    # Get password
-    password = get_password()
-    if not password:
-        return
-
-    # Decrypt the CA key
-    try:
-        ca_key = decrypt_key(ca_key_path, password)
-    except Exception as e:
-        console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
-        return
-
-    # Load config
-    config = load_config()
-
-    # Generate a new certificate with the same key
-    validity_days = calculate_validity_days(config["ca"]["validity"])
-    console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
-
-    # Create a new CA certificate
-    new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
-
-    # Save the new certificate
-    save_certificate(new_ca_cert, ca_cert_path)
-
-    console.print("✅ CA certificate renewed successfully")
-    console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
-
-    # Update inventory
-    inventory = load_inventory()
-    inventory["ca"] = {
-        "serial": format(new_ca_cert.serial_number, "x"),
-        "not_after": new_ca_cert.not_valid_after.isoformat(),
-        "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
-    }
-    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-    save_inventory(inventory)
-    console.print("📋 Inventory updated")
+        # Update inventory
+        inventory = load_inventory()
+        inventory["ca"] = {
+            "serial": format(new_ca_cert.serial_number, "x"),
+            "not_after": new_ca_cert.not_valid_after.isoformat(),
+            "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
+        }
+        inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
+        save_inventory(inventory)
+        console.print("📋 Inventory updated")
 
 
 def rekey_ca() -> None:

@@ -384,6 +384,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     # Get host paths from utility function
     host_dir, cert_path, key_path = get_host_paths(hostname)
 
+    # Get the configured key algorithm
+    key_algorithm = host_config.get("key_algorithm", "RSA2048")
+
     is_new = False
 
     if not cert_path.exists() or not key_path.exists():
@@ -392,13 +395,13 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         host_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate key
-        key_algorithm = host_config.get("key_algorithm", "RSA2048")
-
         console.print(f"Generating {key_algorithm} key for {hostname}...")
         private_key = generate_key(key_algorithm=key_algorithm)
 
-        # Get password for key encryption
-        password = get_password()
+        # Get password with confirmation for key encryption
+        from reactor_ca.ca_operations import get_confirmed_password
+
+        password = get_confirmed_password()
         if not password:
             return False
     else:
@@ -412,6 +415,16 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
             private_key = decrypt_key(key_path, password)
         except Exception as e:
             console.print(f"[bold red]Error decrypting private key:[/bold red] {str(e)}")
+            return False
+
+        # Verify that the existing key matches the algorithm in the config
+        from reactor_ca.ca_operations import verify_key_algorithm
+
+        if not verify_key_algorithm(private_key, key_algorithm):
+            console.print(
+                "[bold red]Error:[/bold red] The existing key algorithm does not match the configuration. "
+                "To generate a new key with the configured algorithm, use 'host rekey'."
+            )
             return False
 
     # Get validity period
