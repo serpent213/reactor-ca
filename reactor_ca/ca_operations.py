@@ -447,6 +447,35 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
         console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
         return False
 
+    # Extract certificate metadata
+    cert_metadata = {
+        "common_name": "",
+        "organization": "",
+        "organization_unit": "",
+        "country": "",
+        "state": "",
+        "locality": "",
+        "email": "",
+    }
+
+    # Helper function to safely extract attributes from the certificate
+    def get_attr_value(oid: x509.ObjectIdentifier) -> str:
+        attrs = cert.subject.get_attributes_for_oid(oid)
+        return str(attrs[0].value) if attrs else ""
+
+    cert_metadata["common_name"] = get_attr_value(NameOID.COMMON_NAME)
+    cert_metadata["organization"] = get_attr_value(NameOID.ORGANIZATION_NAME)
+    cert_metadata["organization_unit"] = get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME)
+    cert_metadata["country"] = get_attr_value(NameOID.COUNTRY_NAME)
+    cert_metadata["state"] = get_attr_value(NameOID.STATE_OR_PROVINCE_NAME)
+    cert_metadata["locality"] = get_attr_value(NameOID.LOCALITY_NAME)
+    cert_metadata["email"] = get_attr_value(NameOID.EMAIL_ADDRESS)
+
+    console.print("📄 Extracted metadata from certificate:")
+    console.print(f"   Common Name: [bold]{cert_metadata['common_name']}[/bold]")
+    console.print(f"   Organization: [bold]{cert_metadata['organization']}[/bold]")
+    console.print(f"   Country: [bold]{cert_metadata['country']}[/bold]")
+
     # Load the key
     try:
         with open(src_key_path, "rb") as f:
@@ -493,6 +522,117 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
             return False
 
     console.print("✅ Verified that certificate and key match")
+
+    # Determine key algorithm
+    key_algorithm = ""
+    if isinstance(private_key, rsa.RSAPrivateKey):
+        key_size = private_key.key_size
+        if key_size == 2048:
+            key_algorithm = "RSA2048"
+        elif key_size == 3072:
+            key_algorithm = "RSA3072"
+        elif key_size == 4096:
+            key_algorithm = "RSA4096"
+        else:
+            key_algorithm = "RSA4096"  # Default to RSA4096 for unknown sizes
+    elif isinstance(private_key, ec.EllipticCurvePrivateKey):
+        curve_name = private_key.curve.name
+        if "secp256r1" in curve_name.lower():
+            key_algorithm = "ECP256"
+        elif "secp384r1" in curve_name.lower():
+            key_algorithm = "ECP384"
+        elif "secp521r1" in curve_name.lower():
+            key_algorithm = "ECP521"
+        else:
+            key_algorithm = "ECP256"  # Default to ECP256 for unknown curves
+    elif isinstance(private_key, ed25519.Ed25519PrivateKey):
+        key_algorithm = "ED25519"
+    elif isinstance(private_key, ed448.Ed448PrivateKey):
+        key_algorithm = "ED448"
+    else:
+        key_algorithm = "RSA4096"  # Default to RSA4096 for unknown key types
+
+    # Check if configuration exists, create or update it
+    config_path = Path("config/ca_config.yaml")
+    config_exists = config_path.exists()
+
+    if not config_exists:
+        console.print("📝 No CA configuration found. Creating new configuration from certificate metadata...")
+
+        # Create default config with metadata from certificate
+        from reactor_ca.utils import create_default_config
+
+        create_default_config()
+
+        # Load and update the newly created config
+        import yaml
+
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+
+            # Update config with metadata from certificate
+            config["ca"]["common_name"] = cert_metadata["common_name"] or config["ca"]["common_name"]
+            config["ca"]["organization"] = cert_metadata["organization"] or config["ca"]["organization"]
+            config["ca"]["organization_unit"] = (
+                cert_metadata["organization_unit"] or config["ca"]["organization_unit"]
+            )
+            config["ca"]["country"] = cert_metadata["country"] or config["ca"]["country"]
+            config["ca"]["state"] = cert_metadata["state"] or config["ca"]["state"]
+            config["ca"]["locality"] = cert_metadata["locality"] or config["ca"]["locality"]
+            config["ca"]["email"] = cert_metadata["email"] or config["ca"]["email"]
+            config["ca"]["key_algorithm"] = key_algorithm
+
+            # Write updated config
+            with open(config_path, "w") as f:
+                f.write("# ReactorCA Configuration\n")
+                f.write("# This file contains settings for the Certificate Authority\n")
+                f.write("# It is safe to modify this file directly\n\n")
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            console.print("✅ Created and updated configuration with certificate metadata")
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
+    else:
+        # Config exists, ask if user wants to update it
+        console.print("📄 Existing CA configuration found.")
+        if click.confirm(
+            "Do you want to update configuration with metadata from the imported certificate?", default=True
+        ):
+            import yaml
+
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+
+                # Update only non-empty fields from certificate
+                if cert_metadata["common_name"]:
+                    config["ca"]["common_name"] = cert_metadata["common_name"]
+                if cert_metadata["organization"]:
+                    config["ca"]["organization"] = cert_metadata["organization"]
+                if cert_metadata["organization_unit"]:
+                    config["ca"]["organization_unit"] = cert_metadata["organization_unit"]
+                if cert_metadata["country"]:
+                    config["ca"]["country"] = cert_metadata["country"]
+                if cert_metadata["state"]:
+                    config["ca"]["state"] = cert_metadata["state"]
+                if cert_metadata["locality"]:
+                    config["ca"]["locality"] = cert_metadata["locality"]
+                if cert_metadata["email"]:
+                    config["ca"]["email"] = cert_metadata["email"]
+                if key_algorithm:
+                    config["ca"]["key_algorithm"] = key_algorithm
+
+                # Write updated config
+                with open(config_path, "w") as f:
+                    f.write("# ReactorCA Configuration\n")
+                    f.write("# This file contains settings for the Certificate Authority\n")
+                    f.write("# It is safe to modify this file directly\n\n")
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+                console.print("✅ Updated configuration with certificate metadata")
+            except Exception as e:
+                console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
 
     # Get password for encrypting the key
     dest_password = get_password()
