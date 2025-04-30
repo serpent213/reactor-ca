@@ -10,7 +10,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
 from cryptography.hazmat.primitives.asymmetric.types import (
-    PrivateKeyTypes,  # Updated from PRIVATE_KEY_TYPES
+    PrivateKeyTypes,
+    PublicKeyTypes,
 )
 from cryptography.hazmat.primitives.serialization import (
     BestAvailableEncryption,
@@ -19,16 +20,26 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     load_pem_private_key,
 )
-from cryptography.x509.oid import NameOID
 from rich.console import Console
 
 from reactor_ca.config_validator import validate_config_before_operation
 from reactor_ca.utils import (
+    SubjectIdentity,
+    add_standard_extensions,
     calculate_validity_days,
+    create_certificate_builder,
+    create_subject_name,
+    ensure_directory_exists,
+    get_certificate_metadata,
     get_password,
+    load_certificate,
     load_config,
     load_inventory,
+    save_certificate,
     save_inventory,
+    save_private_key,
+    sign_certificate,
+    update_inventory_for_cert,
 )
 
 console = Console()
@@ -141,90 +152,37 @@ def generate_ca_cert(
     private_key: PrivateKeyTypes, config: dict[str, Any], validity_days: int = 3650
 ) -> x509.Certificate:
     """Generate a self-signed CA certificate."""
-    subject = issuer = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COMMON_NAME, config["ca"]["common_name"]),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, config["ca"]["organization"]),
-            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, config["ca"]["organization_unit"]),
-            x509.NameAttribute(NameOID.COUNTRY_NAME, config["ca"]["country"]),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config["ca"]["state"]),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, config["ca"]["locality"]),
-            x509.NameAttribute(NameOID.EMAIL_ADDRESS, config["ca"]["email"]),
-        ]
+    # Create subject identity using the CA config
+    subject_identity = SubjectIdentity(
+        common_name=config["ca"]["common_name"],
+        organization=config["ca"]["organization"],
+        organization_unit=config["ca"]["organization_unit"],
+        country=config["ca"]["country"],
+        state=config["ca"]["state"],
+        locality=config["ca"]["locality"],
+        email=config["ca"]["email"],
     )
+
+    # Convert to x509.Name using the create_subject_name function
+    subject = issuer = create_subject_name(subject_identity)
 
     # Get the hash algorithm from the config or use default
     hash_algorithm_name = config["ca"].get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
     hash_algorithm = get_hash_algorithm(hash_algorithm_name)
 
-    now = datetime.datetime.now(datetime.UTC)
-    # We can help type checking by explicitly typing the builder
-    cert_builder = x509.CertificateBuilder()
-
-    # Type checkers can't infer that PrivateKeyTypes has a public_key method
-    # but all such types do, so we access it directly
+    # Get public key
     public_key = private_key.public_key()
 
-    # For typechecking, we need to ensure we're using the correct type
-    # The CertificateBuilder.public_key method accepts specific public key types
-    from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicKey
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
-    from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PublicKey
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
-    from cryptography.hazmat.primitives.asymmetric.x448 import X448PublicKey
-    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
-
-    # Using an assertion to help mypy understand the type
-    assert isinstance(
-        public_key,
-        (
-            RSAPublicKey
-            | DSAPublicKey
-            | EllipticCurvePublicKey
-            | Ed25519PublicKey
-            | Ed448PublicKey
-            | X25519PublicKey
-            | X448PublicKey
-        ),
+    # Create certificate builder with standard fields
+    cert_builder = create_certificate_builder(
+        subject=subject, issuer=issuer, public_key=public_key, validity_days=validity_days
     )
 
-    cert = (
-        cert_builder.subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(public_key)
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=validity_days))
-        .add_extension(
-            x509.BasicConstraints(ca=True, path_length=None),
-            critical=True,
-        )
-        .add_extension(
-            x509.KeyUsage(
-                digital_signature=True,
-                content_commitment=False,
-                key_encipherment=False,
-                data_encipherment=False,
-                key_agreement=False,
-                key_cert_sign=True,
-                crl_sign=True,
-                encipher_only=False,
-                decipher_only=False,
-            ),
-            critical=True,
-        )
-        # For type checking, we need to ensure we're using supported key types
-        # Import the exact expected types
-        .sign(
-            # We'll use a runtime assertion to validate that private_key is a supported type
-            # Then we'll let the type checker assume it's correct
-            private_key,  # type: ignore
-            hash_algorithm,
-        )
-    )
+    # Add standard extensions for CA certificate
+    cert_builder = add_standard_extensions(cert_builder, is_ca=True)
 
-    return cert
+    # Sign the certificate
+    return sign_certificate(cert_builder, private_key, hash_algorithm)
 
 
 def create_ca() -> None:
@@ -246,7 +204,7 @@ def create_ca() -> None:
             return
 
     # Create certificate directories
-    Path("certs/ca").mkdir(parents=True, exist_ok=True)
+    ensure_directory_exists("certs/ca")
 
     # Load config
     config = load_config()
@@ -268,17 +226,15 @@ def create_ca() -> None:
     cert = generate_ca_cert(private_key, config, validity_days)
 
     # Save encrypted key and certificate
-    with open(ca_key_path, "wb") as f:
-        f.write(encrypt_key(private_key, password))
+    save_private_key(private_key, ca_key_path, password.encode() if password else None)
 
-    with open(ca_cert_path, "wb") as f:
-        f.write(cert.public_bytes(encoding=Encoding.PEM))
+    save_certificate(cert, ca_cert_path)
 
     console.print("✅ CA created successfully")
     console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
     console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
 
-    # Initialize inventory
+    # Initialize inventory with certificate metadata
     inventory = {
         "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
         "ca": {
@@ -305,8 +261,6 @@ def renew_ca_cert() -> None:
         )
         return
 
-    # CA certificate path exists, no need to load it for backup anymore
-
     # Get password
     password = get_password()
     if not password:
@@ -330,8 +284,7 @@ def renew_ca_cert() -> None:
     new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
 
     # Save the new certificate
-    with open(ca_cert_path, "wb") as f:
-        f.write(new_ca_cert.public_bytes(encoding=Encoding.PEM))
+    save_certificate(new_ca_cert, ca_cert_path)
 
     console.print("✅ CA certificate renewed successfully")
     console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
@@ -359,8 +312,6 @@ def rekey_ca() -> None:
             "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         return
-
-    # CA certificate path exists, no need to load it for backup anymore
 
     # Get password
     password = get_password()
@@ -391,11 +342,8 @@ def rekey_ca() -> None:
     new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
 
     # Save the new certificate and key
-    with open(ca_cert_path, "wb") as f:
-        f.write(new_ca_cert.public_bytes(encoding=Encoding.PEM))
-
-    with open(ca_key_path, "wb") as f:
-        f.write(encrypt_key(new_ca_key, password))
+    save_certificate(new_ca_cert, ca_cert_path)
+    save_private_key(new_ca_key, ca_key_path, password.encode() if password else None)
 
     console.print("✅ CA rekeyed successfully")
     console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
@@ -413,15 +361,20 @@ def rekey_ca() -> None:
     console.print("📋 Inventory updated")
 
 
-def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
-    """Import an existing CA certificate and key."""
-    # Check if CA already exists
+def _validate_ca_import_paths(cert_path: str | Path, key_path: str | Path) -> tuple[bool, Path, Path, Path, Path]:
+    """Validate paths for CA import and check if CA exists.
+
+    Returns
+    -------
+        A tuple containing (success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest)
+
+    """
     ca_cert_dest = Path("certs/ca/ca.crt")
     ca_key_dest = Path("certs/ca/ca.key.enc")
 
     if ca_cert_dest.exists() or ca_key_dest.exists():
         if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
-            return False
+            return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Check if source files exist
     src_cert_path = Path(cert_path)
@@ -429,54 +382,53 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
 
     if not src_cert_path.exists():
         console.print(f"[bold red]Error:[/bold red] Certificate file not found: {cert_path}")
-        return False
+        return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     if not src_key_path.exists():
         console.print(f"[bold red]Error:[/bold red] Key file not found: {key_path}")
-        return False
+        return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Create certificate directories
-    Path("certs/ca").mkdir(parents=True, exist_ok=True)
+    ensure_directory_exists("certs/ca")
 
-    # Load the certificate to extract information
+    return True, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest
+
+
+def _load_and_validate_cert(src_cert_path: Path) -> tuple[bool, x509.Certificate | None, SubjectIdentity]:
+    """Load and validate a certificate.
+
+    Returns
+    -------
+        A tuple containing (success, certificate, certificate_metadata)
+
+    """
     try:
-        with open(src_cert_path, "rb") as f:
-            cert_data = f.read()
-        cert = x509.load_pem_x509_certificate(cert_data)
+        cert = load_certificate(src_cert_path)
     except Exception as e:
         console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
-        return False
+        return False, None, SubjectIdentity(common_name="")
 
-    # Extract certificate metadata
-    cert_metadata = {
-        "common_name": "",
-        "organization": "",
-        "organization_unit": "",
-        "country": "",
-        "state": "",
-        "locality": "",
-        "email": "",
-    }
-
-    # Helper function to safely extract attributes from the certificate
-    def get_attr_value(oid: x509.ObjectIdentifier) -> str:
-        attrs = cert.subject.get_attributes_for_oid(oid)
-        return str(attrs[0].value) if attrs else ""
-
-    cert_metadata["common_name"] = get_attr_value(NameOID.COMMON_NAME)
-    cert_metadata["organization"] = get_attr_value(NameOID.ORGANIZATION_NAME)
-    cert_metadata["organization_unit"] = get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME)
-    cert_metadata["country"] = get_attr_value(NameOID.COUNTRY_NAME)
-    cert_metadata["state"] = get_attr_value(NameOID.STATE_OR_PROVINCE_NAME)
-    cert_metadata["locality"] = get_attr_value(NameOID.LOCALITY_NAME)
-    cert_metadata["email"] = get_attr_value(NameOID.EMAIL_ADDRESS)
+    # Extract certificate metadata using utility function (returns SubjectIdentity)
+    cert_metadata = get_certificate_metadata(cert)
 
     console.print("📄 Extracted metadata from certificate:")
-    console.print(f"   Common Name: [bold]{cert_metadata['common_name']}[/bold]")
-    console.print(f"   Organization: [bold]{cert_metadata['organization']}[/bold]")
-    console.print(f"   Country: [bold]{cert_metadata['country']}[/bold]")
+    console.print(f"   Common Name: [bold]{cert_metadata.common_name}[/bold]")
+    console.print(f"   Organization: [bold]{cert_metadata.organization}[/bold]")
+    console.print(f"   Country: [bold]{cert_metadata.country}[/bold]")
 
-    # Load the key
+    return True, cert, cert_metadata
+
+
+def _load_and_validate_key(
+    src_key_path: Path, cert: x509.Certificate
+) -> tuple[bool, PrivateKeyTypes | None, str | None]:
+    """Load and validate a private key, ensuring it matches the certificate.
+
+    Returns
+    -------
+        A tuple containing (success, private_key, source_password)
+
+    """
     try:
         with open(src_key_path, "rb") as f:
             key_data = f.read()
@@ -492,16 +444,24 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
                 private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
             except Exception as e:
                 console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
-                return False
+                return False, None, None
     except Exception as e:
         console.print(f"[bold red]Error loading key:[/bold red] {str(e)}")
-        return False
+        return False, None, None
 
     # Verify that the certificate and key match
     cert_public_key = cert.public_key()
     key_public_key = private_key.public_key()
 
-    # Verify that the public keys match
+    if not _verify_key_matches_cert(cert_public_key, key_public_key):
+        return False, None, None
+
+    console.print("✅ Verified that certificate and key match")
+    return True, private_key, src_password
+
+
+def _verify_key_matches_cert(cert_public_key: PublicKeyTypes, key_public_key: PublicKeyTypes) -> bool:
+    """Verify that a certificate and key match."""
     # Check key type and use appropriate comparison method
     if isinstance(cert_public_key, rsa.RSAPublicKey) and isinstance(key_public_key, rsa.RSAPublicKey):
         # For RSA keys, compare the public_numbers attributes
@@ -521,40 +481,49 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
             console.print("[bold red]Error:[/bold red] Certificate and key do not match")
             return False
 
-    console.print("✅ Verified that certificate and key match")
+    return True
 
-    # Determine key algorithm
-    key_algorithm = ""
+
+def _determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
+    """Determine the algorithm used by a private key."""
+    # Define key size constants
+    rsa_key_size_2048 = 2048
+    rsa_key_size_3072 = 3072
+    rsa_key_size_4096 = 4096
+
     if isinstance(private_key, rsa.RSAPrivateKey):
         key_size = private_key.key_size
-        if key_size == 2048:
-            key_algorithm = "RSA2048"
-        elif key_size == 3072:
-            key_algorithm = "RSA3072"
-        elif key_size == 4096:
-            key_algorithm = "RSA4096"
+        if key_size == rsa_key_size_2048:
+            return "RSA2048"
+        elif key_size == rsa_key_size_3072:
+            return "RSA3072"
+        elif key_size == rsa_key_size_4096:
+            return "RSA4096"
         else:
-            key_algorithm = "RSA4096"  # Default to RSA4096 for unknown sizes
+            return "RSA4096"  # Default to RSA4096 for unknown sizes
     elif isinstance(private_key, ec.EllipticCurvePrivateKey):
         curve_name = private_key.curve.name
         if "secp256r1" in curve_name.lower():
-            key_algorithm = "ECP256"
+            return "ECP256"
         elif "secp384r1" in curve_name.lower():
-            key_algorithm = "ECP384"
+            return "ECP384"
         elif "secp521r1" in curve_name.lower():
-            key_algorithm = "ECP521"
+            return "ECP521"
         else:
-            key_algorithm = "ECP256"  # Default to ECP256 for unknown curves
+            return "ECP256"  # Default to ECP256 for unknown curves
     elif isinstance(private_key, ed25519.Ed25519PrivateKey):
-        key_algorithm = "ED25519"
+        return "ED25519"
     elif isinstance(private_key, ed448.Ed448PrivateKey):
-        key_algorithm = "ED448"
+        return "ED448"
     else:
-        key_algorithm = "RSA4096"  # Default to RSA4096 for unknown key types
+        return "RSA4096"  # Default to RSA4096 for unknown key types
 
-    # Check if configuration exists, create or update it
+
+def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm: str) -> bool:
+    """Create or update configuration based on imported CA metadata."""
     config_path = Path("config/ca_config.yaml")
     config_exists = config_path.exists()
+    import yaml
 
     if not config_exists:
         console.print("📝 No CA configuration found. Creating new configuration from certificate metadata...")
@@ -564,86 +533,94 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
 
         create_default_config()
 
-        # Load and update the newly created config
-        import yaml
-
         try:
             with open(config_path) as f:
                 config = yaml.safe_load(f)
 
             # Update config with metadata from certificate
-            config["ca"]["common_name"] = cert_metadata["common_name"] or config["ca"]["common_name"]
-            config["ca"]["organization"] = cert_metadata["organization"] or config["ca"]["organization"]
-            config["ca"]["organization_unit"] = (
-                cert_metadata["organization_unit"] or config["ca"]["organization_unit"]
-            )
-            config["ca"]["country"] = cert_metadata["country"] or config["ca"]["country"]
-            config["ca"]["state"] = cert_metadata["state"] or config["ca"]["state"]
-            config["ca"]["locality"] = cert_metadata["locality"] or config["ca"]["locality"]
-            config["ca"]["email"] = cert_metadata["email"] or config["ca"]["email"]
-            config["ca"]["key_algorithm"] = key_algorithm
+            _update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default=True)
 
             # Write updated config
-            with open(config_path, "w") as f:
-                f.write("# ReactorCA Configuration\n")
-                f.write("# This file contains settings for the Certificate Authority\n")
-                f.write("# It is safe to modify this file directly\n\n")
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
+            _write_config_file(config_path, config)
             console.print("✅ Created and updated configuration with certificate metadata")
         except Exception as e:
             console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
+            return False
     else:
         # Config exists, ask if user wants to update it
         console.print("📄 Existing CA configuration found.")
         if click.confirm(
             "Do you want to update configuration with metadata from the imported certificate?", default=True
         ):
-            import yaml
-
             try:
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
 
                 # Update only non-empty fields from certificate
-                if cert_metadata["common_name"]:
-                    config["ca"]["common_name"] = cert_metadata["common_name"]
-                if cert_metadata["organization"]:
-                    config["ca"]["organization"] = cert_metadata["organization"]
-                if cert_metadata["organization_unit"]:
-                    config["ca"]["organization_unit"] = cert_metadata["organization_unit"]
-                if cert_metadata["country"]:
-                    config["ca"]["country"] = cert_metadata["country"]
-                if cert_metadata["state"]:
-                    config["ca"]["state"] = cert_metadata["state"]
-                if cert_metadata["locality"]:
-                    config["ca"]["locality"] = cert_metadata["locality"]
-                if cert_metadata["email"]:
-                    config["ca"]["email"] = cert_metadata["email"]
-                if key_algorithm:
-                    config["ca"]["key_algorithm"] = key_algorithm
+                _update_config_with_metadata(config, cert_metadata, key_algorithm)
 
                 # Write updated config
-                with open(config_path, "w") as f:
-                    f.write("# ReactorCA Configuration\n")
-                    f.write("# This file contains settings for the Certificate Authority\n")
-                    f.write("# It is safe to modify this file directly\n\n")
-                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
+                _write_config_file(config_path, config)
                 console.print("✅ Updated configuration with certificate metadata")
             except Exception as e:
                 console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
+                return False
 
+    return True
+
+
+def _update_config_with_metadata(
+    config: dict, cert_metadata: SubjectIdentity, key_algorithm: str, fallback_to_default: bool = False
+) -> None:
+    """Update configuration with certificate metadata."""
+
+    # Helper function to update a config field if the metadata exists
+    def update_field(config_field: str, metadata_field: str) -> None:
+        metadata_value = getattr(cert_metadata, metadata_field)
+        if fallback_to_default:
+            config["ca"][config_field] = metadata_value or config["ca"][config_field]
+        elif metadata_value:
+            config["ca"][config_field] = metadata_value
+
+    update_field("common_name", "common_name")
+    update_field("organization", "organization")
+    update_field("organization_unit", "organization_unit")
+    update_field("country", "country")
+    update_field("state", "state")
+    update_field("locality", "locality")
+    update_field("email", "email")
+
+    # Always update key algorithm
+    config["ca"]["key_algorithm"] = key_algorithm
+
+
+def _write_config_file(config_path: Path, config: dict) -> None:
+    """Write configuration to file with standard header."""
+    import yaml
+
+    with open(config_path, "w") as f:
+        f.write("# ReactorCA Configuration\n")
+        f.write("# This file contains settings for the Certificate Authority\n")
+        f.write("# It is safe to modify this file directly\n\n")
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+
+def _complete_ca_import(
+    cert: x509.Certificate, private_key: PrivateKeyTypes, src_cert_path: Path, ca_cert_dest: Path, ca_key_dest: Path
+) -> bool:
+    """Complete the CA import by saving files and updating inventory."""
     # Get password for encrypting the key
     dest_password = get_password()
     if not dest_password:
         return False
 
-    # Encrypt and save the key
-    with open(ca_key_dest, "wb") as f:
-        f.write(encrypt_key(private_key, dest_password))
+    # Encrypt and save the key using utility function
+    save_private_key(private_key, ca_key_dest, dest_password.encode() if dest_password else None)
 
-    # Save the certificate
+    # Read and save the certificate
+    with open(src_cert_path, "rb") as f:
+        cert_data = f.read()
+
     with open(ca_cert_dest, "wb") as f:
         f.write(cert_data)
 
@@ -653,16 +630,50 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
 
     # Update inventory
     inventory = load_inventory()
+    inventory = update_inventory_for_cert(
+        inventory=inventory, hostname="ca", cert=cert, rekeyed=True, renewal_count_increment=0
+    )
+
+    # Additional CA-specific inventory information
     inventory["ca"] = {
         "serial": format(cert.serial_number, "x"),
         "not_after": cert.not_valid_after.isoformat(),
         "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
     }
+
     inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
     save_inventory(inventory)
     console.print("📋 Inventory updated")
 
     return True
+
+
+def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
+    """Import an existing CA certificate and key."""
+    # Validate paths and check if CA exists
+    success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest = _validate_ca_import_paths(cert_path, key_path)
+    if not success:
+        return False
+
+    # Load and validate the certificate
+    success, cert, cert_metadata = _load_and_validate_cert(src_cert_path)
+    if not success or cert is None:
+        return False
+
+    # Load and validate the key
+    success, private_key, _ = _load_and_validate_key(src_key_path, cert)
+    if not success or private_key is None:
+        return False
+
+    # Determine key algorithm
+    key_algorithm = _determine_key_algorithm(private_key)
+
+    # Handle configuration
+    if not _handle_config_for_imported_ca(cert_metadata, key_algorithm):
+        return False
+
+    # Complete the import process
+    return _complete_ca_import(cert, private_key, src_cert_path, ca_cert_dest, ca_key_dest)
 
 
 def show_ca_info(json_output: bool = False) -> None:
@@ -676,41 +687,25 @@ def show_ca_info(json_output: bool = False) -> None:
 
     # Load the certificate
     try:
-        with open(ca_cert_path, "rb") as f:
-            cert_data = f.read()
-        cert = x509.load_pem_x509_certificate(cert_data)
+        cert = load_certificate(ca_cert_path)
     except Exception as e:
         console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
         return
 
-    # Extract information with safe attribute retrieval
-    subject_info = {
-        "common_name": "",
-        "organization": "",
-        "organizational_unit": "",
-        "country": "",
-        "state": "",
-        "locality": "",
-        "email": "",
-    }
+    # Extract information using utility function
+    subject_identity = get_certificate_metadata(cert)
 
-    # Safely get attributes that might not be present
-    def get_attr_value(oid: x509.ObjectIdentifier) -> str:
-        attrs = cert.subject.get_attributes_for_oid(oid)
-        value = attrs[0].value if attrs else "Not specified"
-        # Ensure we always return a string
-        return str(value)
-
-    subject_info["common_name"] = get_attr_value(NameOID.COMMON_NAME)
-    subject_info["organization"] = get_attr_value(NameOID.ORGANIZATION_NAME)
-    subject_info["organizational_unit"] = get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME)
-    subject_info["country"] = get_attr_value(NameOID.COUNTRY_NAME)
-    subject_info["state"] = get_attr_value(NameOID.STATE_OR_PROVINCE_NAME)
-    subject_info["locality"] = get_attr_value(NameOID.LOCALITY_NAME)
-    subject_info["email"] = get_attr_value(NameOID.EMAIL_ADDRESS)
-
+    # Build CA info dictionary
     ca_info: dict[str, Any] = {
-        "subject": subject_info,
+        "subject": {
+            "common_name": subject_identity.common_name,
+            "organization": subject_identity.organization,
+            "organization_unit": subject_identity.organization_unit,
+            "country": subject_identity.country,
+            "state": subject_identity.state,
+            "locality": subject_identity.locality,
+            "email": subject_identity.email,
+        },
         "serial": format(cert.serial_number, "x"),
         "not_before": cert.not_valid_before.isoformat(),
         "not_after": cert.not_valid_after.isoformat(),
@@ -734,13 +729,13 @@ def show_ca_info(json_output: bool = False) -> None:
         console.print(json.dumps(ca_info, indent=2))
     else:
         console.print("[bold]CA Certificate Information[/bold]")
-        console.print(f"Subject: {ca_info['subject']['common_name']}")
-        console.print(f"Organization: {ca_info['subject']['organization']}")
-        console.print(f"Organizational Unit: {ca_info['subject']['organizational_unit']}")
-        console.print(f"Country: {ca_info['subject']['country']}")
-        console.print(f"State/Province: {ca_info['subject']['state']}")
-        console.print(f"Locality: {ca_info['subject']['locality']}")
-        console.print(f"Email: {ca_info['subject']['email']}")
+        console.print(f"Subject: {subject_identity.common_name}")
+        console.print(f"Organization: {subject_identity.organization}")
+        console.print(f"Organizational Unit: {subject_identity.organization_unit}")
+        console.print(f"Country: {subject_identity.country}")
+        console.print(f"State/Province: {subject_identity.state}")
+        console.print(f"Locality: {subject_identity.locality}")
+        console.print(f"Email: {subject_identity.email}")
         console.print(f"Serial: {ca_info['serial']}")
         console.print(f"Valid From: {ca_info['not_before']}")
         console.print(f"Valid Until: {ca_info['not_after']}")

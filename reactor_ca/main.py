@@ -2,7 +2,6 @@
 """Main CLI entry point for the ReactorCA tool."""
 
 import click
-from rich.console import Console
 
 from reactor_ca import __version__
 from reactor_ca.ca_operations import (
@@ -25,9 +24,13 @@ from reactor_ca.cert_operations import (
     rekey_host,
 )
 from reactor_ca.config_validator import validate_configs
-from reactor_ca.utils import change_password, create_default_config, ensure_dirs
-
-console = Console()
+from reactor_ca.utils import (
+    calculate_validity_days,
+    change_password,
+    console,
+    create_default_config,
+    ensure_dirs,
+)
 
 
 @click.group()
@@ -205,17 +208,18 @@ def host_sign_csr(csr: str, out: str, validity_days: int | None, validity_years:
     """Sign a CSR and output the certificate."""
     from reactor_ca.cert_operations import load_ca_key_cert
 
-    # Calculate validity period
+    # Calculate validity period using utility function
     if validity_days is not None and validity_years is not None:
         console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
         return
 
-    if validity_years is not None:
-        validity = validity_years * 365
-    elif validity_days is not None:
-        validity = validity_days
-    else:
-        validity = 365  # Default to 1 year
+    validity_config = {}
+    if validity_days is not None:
+        validity_config["days"] = validity_days
+    elif validity_years is not None:
+        validity_config["years"] = validity_years
+
+    validity = calculate_validity_days(validity_config)
 
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:

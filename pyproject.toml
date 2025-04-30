@@ -75,7 +75,7 @@ ignore = ["D203", "D213"]
 max-complexity = 15 # Default is 10
 
 [tool.ruff.pylint]
-max-returns = 10    # Default is 6
+max-returns = 12    # Default is 6
 max-branches = 18   # Default is 12
 max-statements = 60 # Default is 50
 

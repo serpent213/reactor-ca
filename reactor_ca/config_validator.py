@@ -3,9 +3,8 @@
 from pathlib import Path
 
 import yamale  # type: ignore
-from rich.console import Console
 
-console = Console()
+from reactor_ca.utils import console, path_exists
 
 
 def validate_ca_config(config_path: str) -> tuple[bool, list[str]]:
@@ -29,7 +28,7 @@ def validate_ca_config(config_path: str) -> tuple[bool, list[str]]:
         # Load the schema
         schema = yamale.make_schema(str(schema_path))
 
-        # Load the data
+        # Use yamale's data loading since we're not just loading the YAML but preparing it for validation
         data = yamale.make_data(config_path)
 
         # Validate
@@ -67,7 +66,7 @@ def validate_hosts_config(hosts_path: str) -> tuple[bool, list[str]]:
         # Load the schema
         schema = yamale.make_schema(str(schema_path))
 
-        # Load the data
+        # Use yamale's data loading since we're not just loading the YAML but preparing it for validation
         data = yamale.make_data(hosts_path)
 
         # Validate
@@ -98,16 +97,14 @@ def validate_configs() -> bool:
 
     all_valid = True
 
-    # Check if files exist
-    if not ca_config_path.exists():
+    # Check if files exist using utility function
+    if not path_exists(ca_config_path):
         console.print(f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}")
         console.print("Run 'ca config init' to create a default configuration.")
         return False
 
-    if not hosts_config_path.exists():
-        console.print(
-            "[bold yellow]Warning:[/bold yellow] " + "Hosts configuration file not found: {hosts_config_path}"
-        )
+    if not path_exists(hosts_config_path):
+        console.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_config_path}")
         console.print("You may want to create a hosts configuration to issue certificates.")
 
     # Validate CA config
@@ -121,7 +118,7 @@ def validate_configs() -> bool:
         console.print("✅ CA configuration is valid")
 
     # Validate hosts config if it exists
-    if hosts_config_path.exists():
+    if path_exists(hosts_config_path):
         hosts_valid, hosts_errors = validate_hosts_config(str(hosts_config_path))
         if not hosts_valid:
             console.print("[bold red]Hosts configuration validation failed:[/bold red]")
