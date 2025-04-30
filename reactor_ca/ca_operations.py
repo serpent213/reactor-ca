@@ -543,17 +543,34 @@ def show_ca_info(json_output: bool = False) -> None:
         console.print(f"[bold red]Error loading certificate:[/bold red] {str(e)}")
         return
 
-    # Extract information
+    # Extract information with safe attribute retrieval
+    subject_info = {
+        "common_name": "",
+        "organization": "",
+        "organizational_unit": "",
+        "country": "",
+        "state": "",
+        "locality": "",
+        "email": "",
+    }
+
+    # Safely get attributes that might not be present
+    def get_attr_value(oid: x509.ObjectIdentifier) -> str:
+        attrs = cert.subject.get_attributes_for_oid(oid)
+        value = attrs[0].value if attrs else "Not specified"
+        # Ensure we always return a string
+        return str(value)
+
+    subject_info["common_name"] = get_attr_value(NameOID.COMMON_NAME)
+    subject_info["organization"] = get_attr_value(NameOID.ORGANIZATION_NAME)
+    subject_info["organizational_unit"] = get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME)
+    subject_info["country"] = get_attr_value(NameOID.COUNTRY_NAME)
+    subject_info["state"] = get_attr_value(NameOID.STATE_OR_PROVINCE_NAME)
+    subject_info["locality"] = get_attr_value(NameOID.LOCALITY_NAME)
+    subject_info["email"] = get_attr_value(NameOID.EMAIL_ADDRESS)
+
     ca_info: dict[str, Any] = {
-        "subject": {
-            "common_name": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
-            "organization": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value,
-            "organizational_unit": cert.subject.get_attributes_for_oid(NameOID.ORGANIZATIONAL_UNIT_NAME)[0].value,
-            "country": cert.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value,
-            "state": cert.subject.get_attributes_for_oid(NameOID.STATE_OR_PROVINCE_NAME)[0].value,
-            "locality": cert.subject.get_attributes_for_oid(NameOID.LOCALITY_NAME)[0].value,
-            "email": cert.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)[0].value,
-        },
+        "subject": subject_info,
         "serial": format(cert.serial_number, "x"),
         "not_before": cert.not_valid_before.isoformat(),
         "not_after": cert.not_valid_after.isoformat(),
