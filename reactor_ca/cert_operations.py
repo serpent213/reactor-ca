@@ -524,6 +524,14 @@ def issue_all_certificates(no_export: bool = False, do_deploy: bool = False) -> 
 
 def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Generate a new key and certificate for a host."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before rekeying certificates."
+        )
+        return False
+        
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
         return False
@@ -607,6 +615,14 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
 
 def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
     """Rekey all hosts in configuration."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before rekeying certificates."
+        )
+        return False
+        
     hosts_config = load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue

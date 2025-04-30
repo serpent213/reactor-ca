@@ -360,6 +360,14 @@ def issue_ca() -> None:
 
 def rekey_ca() -> None:
     """Generate a new key and renew the CA certificate."""
+    # Validate configuration first
+    if not validate_config_before_operation():
+        console.print(
+            "[bold red]Error:[/bold red] "
+            + "Configuration validation failed. Please correct the configuration before rekeying the CA."
+        )
+        return
+
     # Check if CA exists
     ca_cert_path = Path("certs/ca/ca.crt")
     ca_key_path = Path("certs/ca/ca.key.enc")
