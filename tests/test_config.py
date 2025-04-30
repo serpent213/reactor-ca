@@ -1,10 +1,12 @@
-"""Tests for the configuration validator."""
+"""Tests for the configuration and validator."""
 
 import tempfile
+from pathlib import Path
 
 import yaml
 
 from reactor_ca.config_validator import validate_ca_config, validate_hosts_config
+from reactor_ca.utils import create_default_config
 
 
 def test_validate_ca_config_valid() -> None:
@@ -202,3 +204,75 @@ def test_validate_hosts_config_invalid2() -> None:
         valid, errors = validate_hosts_config(tmp_file.name)
         assert not valid
         assert errors
+
+
+def test_default_config_ca_validates() -> None:
+    """Test that the default CA config created by utils.create_default_config passes validation."""
+    # Create a temporary directory for the test
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Change to temp directory to avoid affecting real config
+        original_cwd = Path.cwd()
+        temp_path = Path(temp_dir)
+
+        try:
+            # Create config directory in the temp directory
+            (temp_path / "config").mkdir(exist_ok=True)
+
+            # Temporarily change working directory
+            import os
+
+            os.chdir(temp_path)
+
+            # Create default configuration
+            create_default_config()
+
+            # Check the CA config file exists
+            ca_config_path = temp_path / "config" / "ca_config.yaml"
+            assert ca_config_path.exists(), "Default CA config was not created"
+
+            # Validate the CA config
+            valid, errors = validate_ca_config(str(ca_config_path))
+            if not valid:
+                print(f"Validation errors: {errors}")
+            assert valid, f"Default CA config does not validate against schema: {errors}"
+            assert not errors
+
+        finally:
+            # Change back to original directory
+            os.chdir(original_cwd)
+
+
+def test_default_config_hosts_validates() -> None:
+    """Test that the default hosts config created by utils.create_default_config passes validation."""
+    # Create a temporary directory for the test
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Change to temp directory to avoid affecting real config
+        original_cwd = Path.cwd()
+        temp_path = Path(temp_dir)
+
+        try:
+            # Create config directory in the temp directory
+            (temp_path / "config").mkdir(exist_ok=True)
+
+            # Temporarily change working directory
+            import os
+
+            os.chdir(temp_path)
+
+            # Create default configuration
+            create_default_config()
+
+            # Check the hosts config file exists
+            hosts_config_path = temp_path / "config" / "hosts.yaml"
+            assert hosts_config_path.exists(), "Default hosts config was not created"
+
+            # Validate the hosts config
+            valid, errors = validate_hosts_config(str(hosts_config_path))
+            if not valid:
+                print(f"Validation errors: {errors}")
+            assert valid, f"Default hosts config does not validate against schema: {errors}"
+            assert not errors
+
+        finally:
+            # Change back to original directory
+            os.chdir(original_cwd)
