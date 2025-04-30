@@ -46,10 +46,7 @@ def create_default_config() -> None:
             "state": "Berlin",
             "locality": "Berlin",
             "email": "admin@example.com",
-            "key": {
-                "algorithm": "RSA",
-                "size": 4096,
-            },
+            "key_algorithm": "RSA4096",  # Use appropriate format matching the schema
             "validity": {
                 "years": 10,
             },
@@ -95,10 +92,7 @@ def create_default_config() -> None:
                 "validity": {
                     "years": 1,
                 },
-                "key": {
-                    "algorithm": "RSA",
-                    "size": 2048,
-                },
+                "key_algorithm": "RSA2048",  # Use appropriate format matching the schema
             },
         ]
     }

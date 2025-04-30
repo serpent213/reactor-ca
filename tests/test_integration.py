@@ -75,10 +75,7 @@ def create_test_configs(temp_dir):
             "state": "Test State",
             "locality": "Test City",
             "email": "test@example.com",
-            "key": {
-                "algorithm": "RSA",
-                "size": 2048,  # Use smaller key size for faster tests
-            },
+            "key_algorithm": "RSA2048",  # Use smaller key size for faster tests
             "validity": {
                 "days": 30,  # Short validity period for testing
             },
@@ -113,10 +110,7 @@ def create_test_configs(temp_dir):
                 "validity": {
                     "days": 30,  # Short validity period for testing
                 },
-                "key": {
-                    "algorithm": "RSA",
-                    "size": 2048,
-                },
+                "key_algorithm": "RSA2048",
             }
         ]
     }

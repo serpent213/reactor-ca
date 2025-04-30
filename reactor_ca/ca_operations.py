@@ -63,34 +63,53 @@ def get_hash_algorithm(algorithm_name: str | None = None) -> hashes.SHA256 | has
     return HASH_ALGORITHMS[algorithm_name]()
 
 
-def generate_key(algorithm: str = "RSA", size: int | str = 4096) -> PrivateKeyTypes:
-    """Generate a new private key with the specified algorithm and size."""
-    algorithm = algorithm.upper()
+def generate_key(key_algorithm: str = "RSA4096") -> PrivateKeyTypes:
+    """Generate a new private key with the specified algorithm.
 
-    if algorithm == "RSA":
+    Args:
+    ----
+        key_algorithm: Combined algorithm and size string (e.g., "RSA2048", "ECP256", "ED25519")
+
+    Returns:
+    -------
+        A new private key of the specified type.
+
+    """
+    key_algorithm = key_algorithm.upper()
+
+    # RSA key algorithms
+    if key_algorithm == "RSA2048":
         return rsa.generate_private_key(
             public_exponent=65537,
-            key_size=int(size),
+            key_size=2048,
         )
-    elif algorithm == "EC":
-        # For EC, size should be a curve name like "secp256r1"
-        curve_name = str(size)
-        if curve_name.lower() == "p256":
-            curve: ec.EllipticCurve = ec.SECP256R1()
-        elif curve_name.lower() == "p384":
-            curve = ec.SECP384R1()
-        elif curve_name.lower() == "p521":
-            curve = ec.SECP521R1()
-        else:
-            curve = ec.SECP256R1()  # Default
-
+    elif key_algorithm == "RSA3072":
+        return rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=3072,
+        )
+    elif key_algorithm == "RSA4096":
+        return rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=4096,
+        )
+    # EC key algorithms
+    elif key_algorithm == "ECP256":
+        curve: ec.EllipticCurve = ec.SECP256R1()
         return ec.generate_private_key(curve=curve)
-    elif algorithm == "ED25519":
+    elif key_algorithm == "ECP384":
+        curve = ec.SECP384R1()
+        return ec.generate_private_key(curve=curve)
+    elif key_algorithm == "ECP521":
+        curve = ec.SECP521R1()
+        return ec.generate_private_key(curve=curve)
+    # Edwards curve algorithms
+    elif key_algorithm == "ED25519":
         return ed25519.Ed25519PrivateKey.generate()
-    elif algorithm == "ED448":
+    elif key_algorithm == "ED448":
         return ed448.Ed448PrivateKey.generate()
     else:
-        raise ValueError(f"Unsupported key algorithm: {algorithm}")
+        raise ValueError(f"Unsupported key algorithm: {key_algorithm}")
 
 
 def encrypt_key(private_key: PrivateKeyTypes, password: str | None) -> bytes:
@@ -238,11 +257,10 @@ def create_ca() -> None:
         return
 
     # Generate key
-    key_algo = config["ca"]["key"]["algorithm"]
-    key_size = config["ca"]["key"]["size"]
+    key_algorithm = config["ca"]["key_algorithm"]
 
-    console.print(f"Generating {key_algo} key...")
-    private_key = generate_key(algorithm=key_algo, size=key_size)
+    console.print(f"Generating {key_algorithm} key...")
+    private_key = generate_key(key_algorithm=key_algorithm)
 
     # Generate self-signed certificate
     validity_days = calculate_validity_days(config["ca"]["validity"])
@@ -360,11 +378,10 @@ def rekey_ca() -> None:
     config = load_config()
 
     # Generate a new key
-    key_algo = config["ca"]["key"]["algorithm"]
-    key_size = config["ca"]["key"]["size"]
+    key_algorithm = config["ca"]["key_algorithm"]
 
-    console.print(f"Generating new {key_algo} key...")
-    new_ca_key = generate_key(algorithm=key_algo, size=key_size)
+    console.print(f"Generating new {key_algorithm} key...")
+    new_ca_key = generate_key(key_algorithm=key_algorithm)
 
     # Generate a new certificate with the new key
     validity_days = calculate_validity_days(config["ca"]["validity"])

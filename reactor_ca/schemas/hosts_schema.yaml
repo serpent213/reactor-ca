@@ -14,9 +14,5 @@ host:
   export: map(required=False)
   deploy: map(required=False)
   validity: map(required=False)
-  key: include('key', required=False)
+  key_algorithm: enum('RSA2048', 'RSA3072', 'RSA4096', 'ECP256', 'ECP384', 'ECP521', 'ED25519', 'ED448', required=False)
   hash_algorithm: enum('SHA256', 'SHA384', 'SHA512', required=False)
-
-key:
-  algorithm: enum('RSA', 'EC', 'ED25519', 'ED448')
-  size: any(required=False)

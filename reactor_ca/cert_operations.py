@@ -743,11 +743,10 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         host_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate key
-        key_algo = host_config.get("key", {}).get("algorithm", "RSA")
-        key_size = host_config.get("key", {}).get("size", 2048)
+        key_algorithm = host_config.get("key_algorithm", "RSA2048")
 
-        console.print(f"Generating {key_algo} key for {hostname}...")
-        private_key = generate_key(algorithm=key_algo, size=key_size)
+        console.print(f"Generating {key_algorithm} key for {hostname}...")
+        private_key = generate_key(key_algorithm=key_algorithm)
 
         # Get password for key encryption
         password = get_password()
@@ -908,11 +907,10 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     host_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate new key
-    key_algo = host_config.get("key", {}).get("algorithm", "RSA")
-    key_size = host_config.get("key", {}).get("size", 2048)
+    key_algorithm = host_config.get("key_algorithm", "RSA2048")
 
-    console.print(f"Generating new {key_algo} key for {hostname}...")
-    private_key = generate_key(algorithm=key_algo, size=key_size)
+    console.print(f"Generating new {key_algorithm} key for {hostname}...")
+    private_key = generate_key(key_algorithm=key_algorithm)
 
     # Get password for key encryption
     password = get_password()

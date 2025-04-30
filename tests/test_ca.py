@@ -51,9 +51,7 @@ def test_init_ca() -> None:
               state: "Test State"
               locality: "Test City"
               email: "test@example.com"
-              key:
-                algorithm: "RSA"
-                size: 2048
+              key_algorithm: "RSA2048"
               validity:
                 days: 365
               password:

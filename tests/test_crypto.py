@@ -6,41 +6,38 @@ from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 
 from reactor_ca.ca_operations import generate_key, get_hash_algorithm
 
-# Constants for tests
-RSA_KEY_SIZE = 2048
-
 
 def test_generate_key_rsa() -> None:
     """Test RSA key generation."""
-    key = generate_key(algorithm="RSA", size=RSA_KEY_SIZE)
+    key = generate_key(key_algorithm="RSA2048")
     assert isinstance(key, rsa.RSAPrivateKey)
-    assert key.key_size == RSA_KEY_SIZE
+    assert key.key_size == 2048
 
 
 def test_generate_key_ec() -> None:
     """Test EC key generation."""
-    key = generate_key(algorithm="EC", size="P256")
+    key = generate_key(key_algorithm="ECP256")
     assert isinstance(key, ec.EllipticCurvePrivateKey)
     assert isinstance(key.curve, ec.SECP256R1)
 
-    key = generate_key(algorithm="EC", size="P384")
+    key = generate_key(key_algorithm="ECP384")
     assert isinstance(key, ec.EllipticCurvePrivateKey)
     assert isinstance(key.curve, ec.SECP384R1)
 
-    key = generate_key(algorithm="EC", size="P521")
+    key = generate_key(key_algorithm="ECP521")
     assert isinstance(key, ec.EllipticCurvePrivateKey)
     assert isinstance(key.curve, ec.SECP521R1)
 
 
 def test_generate_key_ed25519() -> None:
     """Test Ed25519 key generation."""
-    key = generate_key(algorithm="ED25519")
+    key = generate_key(key_algorithm="ED25519")
     assert isinstance(key, ed25519.Ed25519PrivateKey)
 
 
 def test_generate_key_ed448() -> None:
     """Test Ed448 key generation."""
-    key = generate_key(algorithm="ED448")
+    key = generate_key(key_algorithm="ED448")
     assert isinstance(key, ed448.Ed448PrivateKey)
 
 
@@ -89,9 +86,7 @@ def test_integration_with_various_algorithms(tmp_path) -> None:
       state: "Test State"
       locality: "Test City"
       email: "test@example.com"
-      key:
-        algorithm: "{key_algorithm}"
-        size: "{key_size}"
+      key_algorithm: "{key_algorithm}"
       hash_algorithm: "{hash_algorithm}"
       validity:
         days: 365
@@ -101,21 +96,21 @@ def test_integration_with_various_algorithms(tmp_path) -> None:
 
     # Test combinations to verify
     test_cases = [
-        ("RSA", "2048", "SHA256"),
-        ("RSA", "4096", "SHA384"),
-        ("EC", "P256", "SHA256"),
-        ("EC", "P384", "SHA384"),
-        ("EC", "P521", "SHA512"),
-        ("ED25519", "", "SHA256"),
-        ("ED25519", "", "SHA512"),
-        ("ED448", "", "SHA384"),
+        ("RSA2048", "SHA256"),
+        ("RSA4096", "SHA384"),
+        ("ECP256", "SHA256"),
+        ("ECP384", "SHA384"),
+        ("ECP521", "SHA512"),
+        ("ED25519", "SHA256"),
+        ("ED25519", "SHA512"),
+        ("ED448", "SHA384"),
     ]
 
-    for key_algorithm, key_size, hash_algorithm in test_cases:
+    for key_algorithm, hash_algorithm in test_cases:
         # Create config with current test case
         curr_config = config_content.format(
             key_algorithm=key_algorithm,
-            key_size=key_size,
+            key_size="",  # Unused in new format
             hash_algorithm=hash_algorithm,
         )
 
@@ -125,19 +120,23 @@ def test_integration_with_various_algorithms(tmp_path) -> None:
         # No need to import here - already imported at the module level
 
         # Test key generation
-        key = generate_key(algorithm=key_algorithm, size=key_size if key_size else 0)
+        key = generate_key(key_algorithm=key_algorithm)
 
-        if key_algorithm == "RSA":
+        if key_algorithm.startswith("RSA"):
             assert isinstance(key, rsa.RSAPrivateKey)
-            if key_size:
-                assert key.key_size == int(key_size)
-        elif key_algorithm == "EC":
+            if key_algorithm == "RSA2048":
+                assert key.key_size == 2048
+            elif key_algorithm == "RSA3072":
+                assert key.key_size == 3072
+            elif key_algorithm == "RSA4096":
+                assert key.key_size == 4096
+        elif key_algorithm.startswith("ECP"):
             assert isinstance(key, ec.EllipticCurvePrivateKey)
-            if key_size == "P256":
+            if key_algorithm == "ECP256":
                 assert isinstance(key.curve, ec.SECP256R1)
-            elif key_size == "P384":
+            elif key_algorithm == "ECP384":
                 assert isinstance(key.curve, ec.SECP384R1)
-            elif key_size == "P521":
+            elif key_algorithm == "ECP521":
                 assert isinstance(key.curve, ec.SECP521R1)
         elif key_algorithm == "ED25519":
             assert isinstance(key, ed25519.Ed25519PrivateKey)
