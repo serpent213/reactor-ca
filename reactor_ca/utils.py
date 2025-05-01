@@ -202,7 +202,7 @@ def create_default_config() -> None:
     CONFIG_DIR.mkdir(exist_ok=True)
 
     # Write CA config with header comment
-    ca_config_path = CONFIG_DIR / "ca_config.yaml"
+    ca_config_path = CONFIG_DIR / "ca.yaml"
     with open(ca_config_path, "w") as f:
         f.write("# ReactorCA Configuration\n")
         f.write("# This file contains settings for the Certificate Authority\n")
@@ -231,7 +231,7 @@ def load_yaml_config(config_file: str) -> dict[str, Any]:
 
 def load_config() -> dict[str, Any]:
     """Load CA configuration."""
-    config_path = CONFIG_DIR / "ca_config.yaml"
+    config_path = CONFIG_DIR / "ca.yaml"
 
     if not config_path.exists():
         console.print(f"[bold red]Error:[/bold red] Configuration file not found: {config_path}")

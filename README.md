@@ -96,7 +96,7 @@ ca util passwd
 ca config init
 
 # Edit configuration
-vim config/ca_config.yaml
+vim config/ca.yaml
 
 # Create the CA
 ca ca create
@@ -167,7 +167,7 @@ ca host issue server1.example.com --deploy
 
 ### CA Configuration
 
-The CA configuration is stored in `config/ca_config.yaml`:
+The CA configuration is stored in `config/ca.yaml`:
 
 ```yaml
 ca:
@@ -351,7 +351,7 @@ ReactorCA offers several ways to provide the master password:
 
 1. **Interactive Prompt** (default): The tool will ask for the password when needed
 2. **Environment Variable**: Set the `REACTOR_CA_PASSWORD` environment variable
-3. **Password File**: Specify a file path in the `ca_config.yaml` file's `password.file` setting
+3. **Password File**: Specify a file path in the `ca.yaml` file's `password.file` setting
 
 The tool tries these methods in order: file, environment variable, interactive prompt.
 

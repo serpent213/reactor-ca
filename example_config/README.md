@@ -14,7 +14,7 @@ This will create the necessary configuration files in the `config` directory wit
 
 ## Files
 
-- **ca_config.yaml**: Configuration for your Certificate Authority including identity information, key settings, and password requirements
+- **ca.yaml**: Configuration for your Certificate Authority including identity information, key settings, and password requirements
 - **hosts.yaml**: Configuration for host certificates including common names, alternative names, and key settings
 
 ## Customization

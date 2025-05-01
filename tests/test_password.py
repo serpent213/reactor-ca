@@ -87,7 +87,7 @@ def test_import_host_key_with_different_password(monkeypatch):
                 ]
             }
 
-            with open(config_dir / "ca_config.yaml", "w") as f:
+            with open(config_dir / "ca.yaml", "w") as f:
                 yaml.dump(ca_config, f)
 
             with open(config_dir / "hosts.yaml", "w") as f:

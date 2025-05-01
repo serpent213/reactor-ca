@@ -695,14 +695,16 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
             src_password = None
         except (TypeError, ValueError):
             # If that fails, prompt for the source key password
-            src_password = click.prompt("Enter source key password", hide_input=True, default="", show_default=False)
+            src_password = click.prompt(
+                "Enter password of key to import", hide_input=True, default="", show_default=False
+            )
             try:
                 private_key = load_pem_private_key(key_data, password=src_password.encode() if src_password else None)
             except Exception as e:
-                console.print(f"[bold red]Error decrypting source key:[/bold red] {str(e)}")
+                console.print(f"[bold red]Error decrypting key to import:[/bold red] {str(e)}")
                 return False
     except Exception as e:
-        console.print(f"[bold red]Error loading key:[/bold red] {str(e)}")
+        console.print(f"[bold red]Error loading key to import:[/bold red] {str(e)}")
         return False
 
     # Get password for encrypting the key

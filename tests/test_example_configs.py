@@ -11,7 +11,7 @@ from reactor_ca.config_validator import (
 def test_example_ca_config_is_valid() -> None:
     """Test that the example CA config is valid against the schema."""
     # Get the path to the example CA config
-    example_ca_config_path = Path("example_config/ca_config.yaml")
+    example_ca_config_path = Path("example_config/ca.yaml")
 
     # Ensure the file exists
     assert example_ca_config_path.exists(), "Example CA config file does not exist"

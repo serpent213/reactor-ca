@@ -92,7 +92,7 @@ def validate_configs() -> bool:
         True if all validations pass, False otherwise.
 
     """
-    ca_config_path = CONFIG_DIR / "ca_config.yaml"
+    ca_config_path = CONFIG_DIR / "ca.yaml"
     hosts_config_path = CONFIG_DIR / "hosts.yaml"
 
     all_valid = True

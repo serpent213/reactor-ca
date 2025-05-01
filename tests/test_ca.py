@@ -20,13 +20,13 @@ def test_cli_version() -> None:
 def test_cli_help() -> None:
     """Test CLI help command."""
     runner = CliRunner()
-    result = runner.invoke(cli, ["--help"])
-    assert result.exit_code == 0
+    help_result = runner.invoke(cli, ["--help"])
+    assert help_result.exit_code == 0
 
     # Verify command groups are included in help
     command_groups = ["config", "ca", "host", "util"]
     for cmd in command_groups:
-        assert cmd in result.output
+        assert cmd in help_result.output
 
 
 def test_ca_info() -> None:
@@ -59,7 +59,7 @@ def test_ca_info() -> None:
                 env_var: "TEST_CA_PASSWORD"
             """
 
-            with open("config/ca_config.yaml", "w") as f:
+            with open("config/ca.yaml", "w") as f:
                 f.write(config_content)
 
             # Set environment variable for password with at least 8 characters
@@ -135,7 +135,7 @@ def test_ca_issue_new() -> None:
                 env_var: "TEST_CA_PASSWORD"
             """
 
-            with open("config/ca_config.yaml", "w") as f:
+            with open("config/ca.yaml", "w") as f:
                 f.write(config_content)
 
             # Set environment variable for password with at least 8 characters
@@ -194,7 +194,7 @@ def test_ca_issue_renew() -> None:
                 env_var: "TEST_CA_PASSWORD"
             """
 
-            with open("config/ca_config.yaml", "w") as f:
+            with open("config/ca.yaml", "w") as f:
                 f.write(config_content)
 
             # Set environment variable for password with at least 8 characters
@@ -256,7 +256,7 @@ def test_ca_rekey() -> None:
                 env_var: "TEST_CA_PASSWORD"
             """
 
-            with open("config/ca_config.yaml", "w") as f:
+            with open("config/ca.yaml", "w") as f:
                 f.write(config_content)
 
             # Set environment variable for password with at least 8 characters
@@ -290,18 +290,6 @@ def test_ca_rekey() -> None:
 
             # Change back to original directory
             os.chdir(original_dir)
-
-
-def test_ca_help() -> None:
-    """Test 'ca help' command."""
-    runner = CliRunner()
-    help_result = runner.invoke(cli, ["ca", "help"])
-    direct_help_result = runner.invoke(cli, ["ca", "--help"])
-
-    assert help_result.exit_code == 0
-    assert direct_help_result.exit_code == 0
-    # Verify that the outputs are the same
-    assert help_result.output == direct_help_result.output
 
 
 def test_host_issue_with_key_check() -> None:
@@ -344,7 +332,7 @@ def test_host_issue_with_key_check() -> None:
                   days: 365
             """
 
-            with open("config/ca_config.yaml", "w") as f:
+            with open("config/ca.yaml", "w") as f:
                 f.write(ca_config_content)
 
             with open("config/hosts.yaml", "w") as f:

@@ -227,7 +227,7 @@ def test_default_config_ca_validates() -> None:
             create_default_config()
 
             # Check the CA config file exists
-            ca_config_path = temp_path / "config" / "ca_config.yaml"
+            ca_config_path = temp_path / "config" / "ca.yaml"
             assert ca_config_path.exists(), "Default CA config was not created"
 
             # Validate the CA config

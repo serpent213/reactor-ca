@@ -119,7 +119,7 @@ def create_test_configs(temp_dir):
     os.makedirs(f"{temp_dir}/exported", exist_ok=True)
 
     # Write CA config
-    ca_config_path = os.path.join("config", "ca_config.yaml")
+    ca_config_path = os.path.join("config", "ca.yaml")
     with open(ca_config_path, "w") as f:
         yaml.dump(ca_config, f)
 
@@ -143,7 +143,7 @@ class TestReactorCAIntegration:
         result = runner.invoke(cli, ["config", "init"])
 
         assert result.exit_code == 0
-        assert os.path.exists(os.path.join("config", "ca_config.yaml"))
+        assert os.path.exists(os.path.join("config", "ca.yaml"))
         assert os.path.exists(os.path.join("config", "hosts.yaml"))
 
     def test_ca_create(self, temp_dir, create_test_configs) -> None:

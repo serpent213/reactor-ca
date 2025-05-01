@@ -438,8 +438,6 @@ def _validate_ca_import_paths(cert_path: Path, key_path: Path) -> tuple[bool, Pa
         A tuple containing (success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest)
 
     """
-    from reactor_ca.paths import CA_DIR
-
     ca_cert_dest = CA_DIR / "ca.crt"
     ca_key_dest = CA_DIR / "ca.key.enc"
 
@@ -589,7 +587,7 @@ def _determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
 
 def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm: str) -> bool:
     """Create or update configuration based on imported CA metadata."""
-    config_path = CONFIG_DIR / "ca_config.yaml"
+    config_path = CONFIG_DIR / "ca.yaml"
     config_exists = config_path.exists()
 
     if not config_exists:

@@ -75,17 +75,6 @@ def ca_issue() -> None:
     issue_ca()
 
 
-@ca.command(name="help")
-@click.pass_context
-def ca_help(ctx: click.Context) -> None:
-    """Show help information for CA commands."""
-    # Display the same help as 'ca --help' would show
-    if ctx.parent is not None:
-        click.echo(ctx.parent.get_help())
-    else:
-        click.echo(ca.get_help(ctx))
-
-
 @ca.command(name="import")
 @click.option("--cert", required=True, help="Path to CA certificate file")
 @click.option("--key", required=True, help="Path to CA private key file")
