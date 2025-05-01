@@ -118,7 +118,7 @@ _password_cache_container: list[str | None] = [None]
 
 def ensure_dirs() -> None:
     """Ensure all required directories exist."""
-    dirs = ["config", "certs/ca", "certs/hosts"]
+    dirs = ["config", "store/ca", "store/hosts"]
     for dir_path in dirs:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
@@ -332,9 +332,11 @@ def get_password() -> str | None:
 
 def save_inventory(inventory: dict[str, Any]) -> None:
     """Save certificate inventory."""
-    inventory_path = Path("inventory.yaml")
+    inventory_path = Path("store/inventory.yaml")
 
     try:
+        # Ensure the store directory exists
+        Path("store").mkdir(exist_ok=True)
         with open(inventory_path, "w") as f:
             yaml.dump(inventory, f, default_flow_style=False, sort_keys=False)
     except Exception as e:
@@ -343,7 +345,7 @@ def save_inventory(inventory: dict[str, Any]) -> None:
 
 def load_inventory() -> dict[str, Any]:
     """Load certificate inventory."""
-    inventory_path = Path("inventory.yaml")
+    inventory_path = Path("store/inventory.yaml")
 
     if not inventory_path.exists():
         # Create empty inventory
@@ -373,8 +375,8 @@ def load_inventory() -> dict[str, Any]:
 def scan_cert_files() -> dict[str, Any]:
     """Scan certificate files and update inventory."""
     inventory = load_inventory()
-    ca_dir = Path("certs/ca")
-    hosts_dir = Path("certs/hosts")
+    ca_dir = Path("store/ca")
+    hosts_dir = Path("store/hosts")
 
     # Check CA certificate
     ca_cert_path = ca_dir / "ca.crt"
@@ -469,12 +471,12 @@ def change_password() -> None:
     key_files = []
 
     # CA key
-    ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_key_path = Path("store/ca/ca.key.enc")
     if ca_key_path.exists():
         key_files.append(ca_key_path)
 
     # Host keys
-    hosts_dir = Path("certs/hosts")
+    hosts_dir = Path("store/hosts")
     if hosts_dir.exists():
         for host_dir in [d for d in hosts_dir.iterdir() if d.is_dir()]:
             key_path = host_dir / "cert.key.enc"
@@ -741,7 +743,7 @@ def get_host_paths(hostname: str) -> tuple[Path, Path, Path]:
         Tuple containing (host_dir, cert_path, key_path)
 
     """
-    host_dir = Path(f"certs/hosts/{hostname}")
+    host_dir = Path(f"store/hosts/{hostname}")
     cert_path = host_dir / "cert.crt"
     key_path = host_dir / "cert.key.enc"
     return host_dir, cert_path, key_path

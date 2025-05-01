@@ -53,7 +53,7 @@ def temp_dir():
 
     # Create necessary directories
     os.makedirs("config", exist_ok=True)
-    os.makedirs("certs", exist_ok=True)
+    os.makedirs("store", exist_ok=True)
 
     yield temp_dir
 
@@ -153,8 +153,8 @@ class TestReactorCAIntegration:
         result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
 
         assert result.exit_code == 0
-        assert os.path.exists(os.path.join("certs", "ca", "ca.crt"))
-        assert os.path.exists(os.path.join("certs", "ca", "ca.key.enc"))
+        assert os.path.exists(os.path.join("store", "ca", "ca.crt"))
+        assert os.path.exists(os.path.join("store", "ca", "ca.key.enc"))
 
         # Check CA information
         info_result = runner.invoke(cli, ["ca", "info", "--json"])
@@ -179,8 +179,8 @@ class TestReactorCAIntegration:
         assert cert_result.exit_code == 0
 
         # Verify certificate was created
-        assert os.path.exists(os.path.join("certs", "hosts", "testserver.local", "cert.crt"))
-        assert os.path.exists(os.path.join("certs", "hosts", "testserver.local", "cert.key.enc"))
+        assert os.path.exists(os.path.join("store", "hosts", "testserver.local", "cert.crt"))
+        assert os.path.exists(os.path.join("store", "hosts", "testserver.local", "cert.key.enc"))
 
         # Verify export was successful
         assert os.path.exists(os.path.join(temp_dir, "exported", "testserver.crt"))
@@ -210,7 +210,7 @@ class TestReactorCAIntegration:
         assert cert_result.exit_code == 0
 
         # Get file paths
-        ca_cert_path = os.path.join("certs", "ca", "ca.crt")
+        ca_cert_path = os.path.join("store", "ca", "ca.crt")
         host_cert_path = os.path.join(temp_dir, "exported", "testserver.crt")
 
         # Verify certificate with OpenSSL
@@ -262,8 +262,8 @@ class TestReactorCAIntegration:
         runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
 
         # Get initial certificate data
-        ca_cert_path = os.path.join("certs", "ca", "ca.crt")
-        host_cert_path = os.path.join("certs", "hosts", "testserver.local", "cert.crt")
+        ca_cert_path = os.path.join("store", "ca", "ca.crt")
+        host_cert_path = os.path.join("store", "hosts", "testserver.local", "cert.crt")
 
         with open(ca_cert_path, "rb") as f:
             initial_ca_cert = x509.load_pem_x509_certificate(f.read())

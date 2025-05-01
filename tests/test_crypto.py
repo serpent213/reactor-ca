@@ -72,7 +72,7 @@ def test_integration_with_various_algorithms(tmp_path) -> None:
     """Test integration of different key and hash algorithms."""
     # Create a basic test environment
     config_dir = tmp_path / "config"
-    certs_dir = tmp_path / "certs" / "ca"
+    certs_dir = tmp_path / "store" / "ca"
     config_dir.mkdir(parents=True)
     certs_dir.mkdir(parents=True)
 

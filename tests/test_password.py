@@ -18,7 +18,7 @@ def test_import_host_key_with_different_password(monkeypatch):
     # Create temporary directory and override the certs directory path
     with tempfile.TemporaryDirectory() as temp_dir:
         # Mock paths for CA and certs
-        ca_dir = Path(temp_dir) / "certs" / "ca"
+        ca_dir = Path(temp_dir) / "store" / "ca"
         ca_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a config directory
@@ -56,7 +56,7 @@ def test_import_host_key_with_different_password(monkeypatch):
                 )
 
             # Create a hosts directory
-            hosts_dir = Path(temp_dir) / "certs" / "hosts"
+            hosts_dir = Path(temp_dir) / "store" / "hosts"
             hosts_dir.mkdir(parents=True, exist_ok=True)
 
             # Create minimal config files

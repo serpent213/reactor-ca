@@ -78,7 +78,10 @@ def ca_issue() -> None:
 def ca_help(ctx: click.Context) -> None:
     """Show help information for CA commands."""
     # Display the same help as 'ca --help' would show
-    click.echo(ctx.parent.get_help())
+    if ctx.parent is not None:
+        click.echo(ctx.parent.get_help())
+    else:
+        click.echo(ca.get_help(ctx))
 
 
 @ca.command(name="import")

@@ -51,8 +51,8 @@ console = Console()
 def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     """Load the CA key and certificate."""
     # Check if CA exists
-    ca_cert_path = Path("certs/ca/ca.crt")
-    ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_cert_path = Path("store/ca/ca.crt")
+    ca_key_path = Path("store/ca/ca.key.enc")
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
@@ -175,7 +175,7 @@ def export_certificate(
         chain_export_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Load CA certificate
-        ca_cert_path = Path("certs/ca/ca.crt")
+        ca_cert_path = Path("store/ca/ca.crt")
         try:
             with open(ca_cert_path, "rb") as f:
                 ca_cert_data = f.read()
@@ -531,7 +531,7 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
             + "Configuration validation failed. Please correct the configuration before rekeying certificates."
         )
         return False
-        
+
     ca_key, ca_cert = load_ca_key_cert()
     if not ca_key or not ca_cert:
         return False
@@ -622,7 +622,7 @@ def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
             + "Configuration validation failed. Please correct the configuration before rekeying certificates."
         )
         return False
-        
+
     hosts_config = load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
@@ -712,7 +712,7 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
         return False
 
     # Validate against CA key password to ensure consistent encryption
-    ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_key_path = Path("store/ca/ca.key.enc")
     if ca_key_path.exists():
         try:
             decrypt_key(ca_key_path, dest_password)

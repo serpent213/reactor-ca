@@ -39,7 +39,7 @@ def test_ca_info() -> None:
         try:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
-            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/ca").mkdir(parents=True, exist_ok=True)
 
             # Create sample config file with env var for password
             config_content = """
@@ -69,8 +69,8 @@ def test_ca_info() -> None:
             runner = CliRunner()
             result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
             assert result.exit_code == 0
-            assert Path("certs/ca/ca.crt").exists()
-            assert Path("certs/ca/ca.key.enc").exists()
+            assert Path("store/ca/ca.crt").exists()
+            assert Path("store/ca/ca.key.enc").exists()
 
             # Now test the ca info command
             result = runner.invoke(cli, ["ca", "info"])
@@ -115,7 +115,7 @@ def test_ca_issue_new() -> None:
         try:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
-            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/ca").mkdir(parents=True, exist_ok=True)
 
             # Create sample config file with env var for password
             config_content = """
@@ -150,9 +150,9 @@ def test_ca_issue_new() -> None:
             print(f"Exception: {result.exception}")
 
             assert result.exit_code == 0
-            assert Path("certs/ca/ca.crt").exists()
-            assert Path("certs/ca/ca.key.enc").exists()
-            assert Path("inventory.yaml").exists()
+            assert Path("store/ca/ca.crt").exists()
+            assert Path("store/ca/ca.key.enc").exists()
+            assert Path("store/inventory.yaml").exists()
             assert "CA created successfully" in result.output
 
         finally:
@@ -174,7 +174,7 @@ def test_ca_issue_renew() -> None:
         try:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
-            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/ca").mkdir(parents=True, exist_ok=True)
 
             # Create sample config file with env var for password
             config_content = """
@@ -206,14 +206,14 @@ def test_ca_issue_renew() -> None:
             assert result.exit_code == 0
 
             # Get the creation date of the certificate
-            original_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+            original_mtime = Path("store/ca/ca.crt").stat().st_mtime
 
             # Now renew the CA
             result = runner.invoke(cli, ["ca", "issue"], input="testpassword\n")
             assert result.exit_code == 0
 
             # Verify the certificate was updated
-            new_mtime = Path("certs/ca/ca.crt").stat().st_mtime
+            new_mtime = Path("store/ca/ca.crt").stat().st_mtime
             assert new_mtime > original_mtime
             assert "CA certificate renewed successfully" in result.output
 
@@ -236,7 +236,7 @@ def test_ca_rekey() -> None:
         try:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
-            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/ca").mkdir(parents=True, exist_ok=True)
 
             # Create sample config file with env var for password
             config_content = """
@@ -268,16 +268,16 @@ def test_ca_rekey() -> None:
             assert result.exit_code == 0
 
             # Get the original certificate and key modification times
-            original_cert_mtime = Path("certs/ca/ca.crt").stat().st_mtime
-            original_key_mtime = Path("certs/ca/ca.key.enc").stat().st_mtime
+            original_cert_mtime = Path("store/ca/ca.crt").stat().st_mtime
+            original_key_mtime = Path("store/ca/ca.key.enc").stat().st_mtime
 
             # Now rekey the CA using the dedicated 'rekey' command
             result = runner.invoke(cli, ["ca", "rekey"], input="testpassword\n")
             assert result.exit_code == 0
 
             # Verify both the certificate and key were updated
-            new_cert_mtime = Path("certs/ca/ca.crt").stat().st_mtime
-            new_key_mtime = Path("certs/ca/ca.key.enc").stat().st_mtime
+            new_cert_mtime = Path("store/ca/ca.crt").stat().st_mtime
+            new_key_mtime = Path("store/ca/ca.key.enc").stat().st_mtime
 
             assert new_cert_mtime > original_cert_mtime
             assert new_key_mtime > original_key_mtime
@@ -314,7 +314,7 @@ def test_host_issue_with_key_check() -> None:
         try:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
-            Path("certs/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/ca").mkdir(parents=True, exist_ok=True)
 
             # Create sample CA config
             ca_config_content = """
@@ -361,18 +361,18 @@ def test_host_issue_with_key_check() -> None:
             # Issue host certificate
             result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\ntestpassword\n")
             assert result.exit_code == 0
-            assert Path("certs/hosts/test.example.com/cert.crt").exists()
-            assert Path("certs/hosts/test.example.com/cert.key.enc").exists()
+            assert Path("store/hosts/test.example.com/cert.crt").exists()
+            assert Path("store/hosts/test.example.com/cert.key.enc").exists()
 
             # Get the original certificate modification time
-            original_cert_mtime = Path("certs/hosts/test.example.com/cert.crt").stat().st_mtime
+            original_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
 
             # Now renew the certificate
             result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
             assert result.exit_code == 0
 
             # Verify certificate was updated
-            new_cert_mtime = Path("certs/hosts/test.example.com/cert.crt").stat().st_mtime
+            new_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
             assert new_cert_mtime > original_cert_mtime
 
             # Change the key algorithm in the hosts config to test the validation

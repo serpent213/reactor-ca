@@ -258,8 +258,8 @@ def issue_ca() -> None:
         return
 
     # Check if CA already exists
-    ca_cert_path = Path("certs/ca/ca.crt")
-    ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_cert_path = Path("store/ca/ca.crt")
+    ca_key_path = Path("store/ca/ca.key.enc")
     ca_exists = ca_cert_path.exists() or ca_key_path.exists()
 
     # Load config
@@ -269,7 +269,7 @@ def issue_ca() -> None:
     key_algorithm = config["ca"]["key_algorithm"]
 
     # Create certificate directories
-    ensure_directory_exists("certs/ca")
+    ensure_directory_exists("store/ca")
 
     if not ca_exists:
         # Creating a new CA
@@ -369,8 +369,8 @@ def rekey_ca() -> None:
         return
 
     # Check if CA exists
-    ca_cert_path = Path("certs/ca/ca.crt")
-    ca_key_path = Path("certs/ca/ca.key.enc")
+    ca_cert_path = Path("store/ca/ca.crt")
+    ca_key_path = Path("store/ca/ca.key.enc")
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
@@ -434,8 +434,8 @@ def _validate_ca_import_paths(cert_path: str | Path, key_path: str | Path) -> tu
         A tuple containing (success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest)
 
     """
-    ca_cert_dest = Path("certs/ca/ca.crt")
-    ca_key_dest = Path("certs/ca/ca.key.enc")
+    ca_cert_dest = Path("store/ca/ca.crt")
+    ca_key_dest = Path("store/ca/ca.key.enc")
 
     if ca_cert_dest.exists() or ca_key_dest.exists():
         if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
@@ -454,7 +454,7 @@ def _validate_ca_import_paths(cert_path: str | Path, key_path: str | Path) -> tu
         return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Create certificate directories
-    ensure_directory_exists("certs/ca")
+    ensure_directory_exists("store/ca")
 
     return True, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest
 
@@ -744,7 +744,7 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
 def show_ca_info(json_output: bool = False) -> None:
     """Show information about the CA certificate."""
     # Check if CA exists
-    ca_cert_path = Path("certs/ca/ca.crt")
+    ca_cert_path = Path("store/ca/ca.crt")
 
     if not ca_cert_path.exists():
         console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")
