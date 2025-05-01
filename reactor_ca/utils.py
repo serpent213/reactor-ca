@@ -288,8 +288,17 @@ def read_password_from_file(password_file: str) -> str | None:
         return None
 
 
-def get_password() -> str | None:
-    """Get password for key encryption/decryption, with multiple sources."""
+def get_password(ca_init: bool = False) -> str | None:
+    """Get password for key encryption/decryption, with multiple sources.
+    
+    Args:
+    ----
+        ca_init: If True, ask for password confirmation. If False, validate against CA key.
+    
+    Returns:
+    -------
+        Password string if successful, None otherwise
+    """
     # Load config to check password settings
     config = load_config()
     min_length = config["ca"]["password"]["min_length"]
@@ -304,6 +313,9 @@ def get_password() -> str | None:
     if password_file:
         password = read_password_from_file(password_file)
         if password and len(password) >= min_length:
+            # Validate password against CA key if not in initialization mode
+            if not ca_init and not _validate_password_against_ca_key(password):
+                return None
             _password_cache_container[0] = password
             return password
 
@@ -311,6 +323,9 @@ def get_password() -> str | None:
     if env_var and env_var in os.environ:
         password = os.environ[env_var]
         if password and len(password) >= min_length:
+            # Validate password against CA key if not in initialization mode
+            if not ca_init and not _validate_password_against_ca_key(password):
+                return None
             _password_cache_container[0] = password
             return password
 
@@ -318,7 +333,7 @@ def get_password() -> str | None:
     password = click.prompt(
         "Enter CA master password",
         hide_input=True,
-        confirmation_prompt=False,
+        confirmation_prompt=ca_init,  # Ask for confirmation only in CA init mode
     )
 
     # Validate password length
@@ -326,10 +341,46 @@ def get_password() -> str | None:
         console.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
         return None
 
+    # Validate password against CA key if not in initialization mode
+    if not ca_init and not _validate_password_against_ca_key(password):
+        return None
+
     # Cache password for session
     _password_cache_container[0] = password
 
     return password
+
+
+def _validate_password_against_ca_key(password: str) -> bool:
+    """Validate a password against the CA key.
+    
+    Args:
+    ----
+        password: Password to validate
+        
+    Returns:
+    -------
+        True if password is valid for the CA key, False otherwise
+    """
+    ca_key_path = CA_DIR / "ca.key.enc"
+    
+    if not ca_key_path.exists():
+        # No CA key to validate against
+        return True
+        
+    try:
+        with open(ca_key_path, "rb") as f:
+            encrypted_key_data = f.read()
+        
+        # Try to decrypt the key with the password
+        load_pem_private_key(
+            encrypted_key_data,
+            password=password.encode(),
+        )
+        return True
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] Invalid password: {str(e)}")
+        return False
 
 
 def save_inventory(inventory: dict[str, Any]) -> None:

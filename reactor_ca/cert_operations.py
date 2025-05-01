@@ -23,7 +23,6 @@ from reactor_ca.ca_operations import (
     decrypt_key,
     encrypt_key,
     generate_key,
-    get_confirmed_password,
     get_hash_algorithm,
     verify_key_algorithm,
 )
@@ -67,15 +66,15 @@ def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     with open(ca_cert_path, "rb") as f:
         ca_cert = x509.load_pem_x509_certificate(f.read())
 
-    # Get password and decrypt CA key
+    # Get password and decrypt CA key (password validation is done inside get_password)
     password = get_password()
     if not password:
         return None, None
 
     try:
         ca_key = decrypt_key(ca_key_path, password)
-    except Exception as e:
-        console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+    except Exception:
+        # This should never happen as get_password already validated the password
         return None, None
 
     return ca_key, ca_cert
@@ -401,9 +400,8 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         console.print(f"Generating {key_algorithm} key for {hostname}...")
         private_key = generate_key(key_algorithm=key_algorithm)
 
-        # Get password with confirmation for key encryption
-
-        password = get_confirmed_password()
+        # Get password with validation against CA key
+        password = get_password()
         if not password:
             return False
     else:
@@ -653,7 +651,7 @@ def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
     return success_count > 0 and error_count == 0
 
 
-def import_host_key(hostname: str, key_path: str, password: str | None = None) -> bool:
+def import_host_key(hostname: str, key_path: str) -> bool:
     """Import an existing private key for a host."""
     # Check if hostname exists in hosts config
     hosts_config = load_hosts_config()
@@ -707,19 +705,10 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
         console.print(f"[bold red]Error loading key to import:[/bold red] {str(e)}")
         return False
 
-    # Get password for encrypting the key
-    dest_password = password if password is not None else get_password()
+    # Get password for encrypting the key - validation is handled by get_password()
+    dest_password = get_password()
     if not dest_password:
         return False
-
-    # Validate against CA key password to ensure consistent encryption
-    ca_key_path = CA_DIR / "ca.key.enc"
-    if ca_key_path.exists():
-        try:
-            decrypt_key(ca_key_path, dest_password)
-        except Exception:
-            console.print("[bold red]Error:[/bold red] The provided password does not match the CA key password")
-            return False
 
     # Encrypt and save the key
     with open(key_dest_path, "wb") as f:

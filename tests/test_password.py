@@ -69,8 +69,11 @@ def test_import_host_key_with_different_password(monkeypatch):
                     "state": "CA",
                     "locality": "Test",
                     "email": "test@example.com",
-                    "key": {"algorithm": "RSA", "size": 2048},
-                    "password": {"min_length": 8},
+                    "key_algorithm": "RSA2048",  # Updated to match main code
+                    "password": {
+                        "min_length": 8,
+                        "env_var": "TEST_CA_PASSWORD"  # Add environment variable for password
+                    },
                     "validity": {"days": 365},
                 }
             }
@@ -82,7 +85,7 @@ def test_import_host_key_with_different_password(monkeypatch):
                         "common_name": "test_host",
                         "alternative_names": {"dns": ["test_host"]},
                         "validity": {"days": 365},
-                        "key": {"algorithm": "RSA", "size": 2048},
+                        "key_algorithm": "RSA2048",  # Updated to match main code
                     }
                 ]
             }
@@ -99,16 +102,29 @@ def test_import_host_key_with_different_password(monkeypatch):
 
             monkeypatch.setattr("click.confirm", mock_confirm)
 
-            # Try to import the key with a different password (should fail)
-            different_password = "password2"
+            # Mock the password prompt to avoid interactive input
+            def mock_prompt(*args, **kwargs):
+                return "password2"  # Different password than CA password
 
-            # Directly pass the password to avoid prompting
-            result = import_host_key("test_host", str(key_file), different_password)
+            monkeypatch.setattr("click.prompt", mock_prompt)
+
+            # Run the import_host_key function - should fail because passwords don't match
+            result = import_host_key("test_host", str(key_file))
 
             # The function should return False on failure, not raise an exception
             assert result is False
 
+            # Now try with the correct password set in env var
+            os.environ["TEST_CA_PASSWORD"] = ca_password
+            _password_cache_container[0] = None  # Clear cached password
+            
+            # This should succeed
+            result = import_host_key("test_host", str(key_file))
+            assert result is True
+
         finally:
-            # Restore working directory and clear password cache
+            # Restore working directory, clear password cache, and environment
             os.chdir(original_dir)
             _password_cache_container[0] = None
+            if "TEST_CA_PASSWORD" in os.environ:
+                del os.environ["TEST_CA_PASSWORD"]

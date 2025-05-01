@@ -217,37 +217,6 @@ def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
     return True
 
 
-def get_confirmed_password() -> str | None:
-    """Get password with confirmation for key encryption."""
-    # Load config to check password settings
-    config = load_config()
-    min_length = config["ca"]["password"]["min_length"]
-
-    # Get password
-    password = click.prompt(
-        "Enter CA master password",
-        hide_input=True,
-        confirmation_prompt=False,
-    )
-
-    # Validate password length
-    if password and len(password) < min_length:
-        console.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
-        return None
-
-    # Confirm password
-    password_confirm = click.prompt(
-        "Confirm CA master password",
-        hide_input=True,
-        confirmation_prompt=False,
-    )
-
-    # Check if passwords match
-    if password != password_confirm:
-        console.print("[bold red]Error:[/bold red] Passwords do not match")
-        return None
-
-    return password
 
 
 def issue_ca() -> None:
@@ -282,7 +251,7 @@ def issue_ca() -> None:
                 return
 
         # Get password with confirmation for new key
-        password = get_confirmed_password()
+        password = get_password(ca_init=True)
         if not password and config["ca"]["password"]["min_length"] > 0:
             return
 
