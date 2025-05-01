@@ -1,6 +1,7 @@
 """Certificate operations for ReactorCA."""
 
 import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -121,51 +122,45 @@ def create_certificate_with_params(params: CertificateParams) -> x509.Certificat
     return cert
 
 
-class CertificateCreateParams:
-    """Parameters for creating a certificate."""
 
-    private_key: PrivateKeyTypes
-    hostname: str
-    ca_key: PrivateKeyTypes
-    ca_cert: x509.Certificate
-    validity_days: int
-    alt_names: AlternativeNames | None
-    hash_algorithm: str | None
-    host_config: HostConfig | None
-
-
-def create_certificate(
-    private_key: PrivateKeyTypes,
+def create_certificate(  # noqa: PLR0913
     hostname: str,
+    private_key: PrivateKeyTypes,
     ca_key: PrivateKeyTypes,
     ca_cert: x509.Certificate,
-    **kwargs: Any,  # noqa: ANN401
+    validity_days: int = 365,
+    alt_names: AlternativeNames | None = None,
+    hash_algorithm: str | None = None,
+    host_config: HostConfig | None = None,
 ) -> x509.Certificate:
     """Create a certificate signed by the CA.
 
     Args:
     ----
-        private_key: Private key for the certificate
         hostname: Hostname for the certificate
+        private_key: Private key for the certificate
         ca_key: CA private key
         ca_cert: CA certificate
-        **kwargs: Additional parameters (validity_days, alt_names, hash_algorithm, host_config)
+        validity_days: Number of days the certificate is valid for
+        alt_names: Alternative names for the certificate
+        hash_algorithm: Hash algorithm to use for signing
+        host_config: Host configuration parameters
 
     Returns:
     -------
         Generated certificate
 
     """
-    # Create a properly typed params object
+    # Use CertificateParams to package all parameters
     params = CertificateParams(
-        private_key=private_key,
         hostname=hostname,
+        private_key=private_key,
         ca_key=ca_key,
         ca_cert=ca_cert,
-        validity_days=kwargs.get("validity_days", 365),
-        alt_names=kwargs.get("alt_names"),
-        hash_algorithm=kwargs.get("hash_algorithm"),
-        host_config=kwargs.get("host_config"),
+        validity_days=validity_days,
+        alt_names=alt_names,
+        hash_algorithm=hash_algorithm,
+        host_config=host_config,
     )
 
     return create_certificate_with_params(params)
@@ -521,6 +516,7 @@ def _prepare_alternative_names(alt_names_dict: dict[str, list[str]]) -> Alternat
     return alt_names
 
 
+@dataclass
 class CertificateSaveParams:
     """Parameters for saving certificates and keys."""
 
@@ -531,38 +527,6 @@ class CertificateSaveParams:
     password: str
     is_new: bool
     hostname: str
-
-    def __init__(  # noqa: PLR0913
-        self: "CertificateSaveParams",
-        *,  # Force keyword-only arguments
-        cert_path: Path,
-        key_path: Path,
-        cert: x509.Certificate,
-        private_key: PrivateKeyTypes,
-        password: str,
-        is_new: bool,
-        hostname: str,
-    ) -> None:
-        """Initialize save parameters.
-
-        Args:
-        ----
-            cert_path: Path to save certificate
-            key_path: Path to save private key
-            cert: Certificate to save
-            private_key: Private key to save
-            password: Password for key encryption
-            is_new: Whether this is a new certificate
-            hostname: Hostname for logging
-
-        """
-        self.cert_path = cert_path
-        self.key_path = key_path
-        self.cert = cert
-        self.private_key = private_key
-        self.password = password
-        self.is_new = is_new
-        self.hostname = hostname
 
 
 def _save_certificate_and_key(params: CertificateSaveParams) -> None:
@@ -703,14 +667,20 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
 
     # Get hash algorithm and prepare host config object
     hash_algorithm = host_config.get("hash_algorithm")
-    host_config_obj = _prepare_host_config_object(hostname, host_config, alt_names, key_algorithm, hash_algorithm)
+    host_config_obj = _prepare_host_config_object(
+        hostname=hostname,
+        host_config=host_config,
+        alt_names=alt_names,
+        key_algorithm=key_algorithm,
+        hash_algorithm=hash_algorithm,
+    )
 
     # Create certificate
     cert = create_certificate(
-        private_key,
-        hostname,
-        ca_key,
-        ca_cert,
+        hostname=hostname,
+        private_key=private_key,
+        ca_key=ca_key,
+        ca_cert=ca_cert,
         validity_days=validity_days,
         alt_names=alt_names if not alt_names.is_empty() else None,
         hash_algorithm=hash_algorithm,
@@ -834,14 +804,20 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
 
     # Get hash algorithm and prepare host config object
     hash_algorithm = host_config.get("hash_algorithm")
-    host_config_obj = _prepare_host_config_object(hostname, host_config, alt_names, key_algorithm, hash_algorithm)
+    host_config_obj = _prepare_host_config_object(
+        hostname=hostname,
+        host_config=host_config,
+        alt_names=alt_names,
+        key_algorithm=key_algorithm,
+        hash_algorithm=hash_algorithm,
+    )
 
     # Create certificate
     cert = create_certificate(
-        private_key,
-        hostname,
-        ca_key,
-        ca_cert,
+        hostname=hostname,
+        private_key=private_key,
+        ca_key=ca_key,
+        ca_cert=ca_cert,
         validity_days=validity_days,
         alt_names=alt_names if not alt_names.is_empty() else None,
         hash_algorithm=hash_algorithm,
@@ -849,15 +825,19 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     )
 
     # Save certificate and key (always save both for rekey)
-    with open(key_path, "wb") as f:
-        f.write(encrypt_key(private_key, password))
+    save_params = CertificateSaveParams(
+        cert_path=cert_path,
+        key_path=key_path,
+        cert=cert,
+        private_key=private_key,
+        password=password,
+        is_new=True,  # Always save key for rekey
+        hostname=hostname,
+    )
+    _save_certificate_and_key(save_params)
 
-    with open(cert_path, "wb") as f:
-        f.write(cert.public_bytes(encoding=Encoding.PEM))
-
+    # Additional message specific to rekeying
     console.print(f"✅ Certificate and key rekeyed successfully for [bold]{hostname}[/bold]")
-    console.print(f"   Certificate: [bold]{cert_path}[/bold]")
-    console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
 
     # Export certificate
     export_certificate(hostname, cert, no_export=no_export)
