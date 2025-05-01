@@ -1,7 +1,6 @@
 """Certificate operations for ReactorCA."""
 
 import datetime
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,11 @@ from reactor_ca.ca_operations import (
     verify_key_algorithm,
 )
 from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.models import (
+    AlternativeNames,
+    CertificateParams,
+    HostConfig,
+)
 from reactor_ca.paths import CA_DIR
 from reactor_ca.utils import (
     add_standard_extensions,
@@ -51,7 +55,7 @@ from reactor_ca.utils import (
 console = Console()
 
 
-def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
+def load_ca_key_cert() -> tuple[PrivateKeyTypes, x509.Certificate]:
     """Load the CA key and certificate."""
     # Check if CA exists
     ca_cert_path = CA_DIR / "ca.crt"
@@ -61,7 +65,7 @@ def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
         console.print(
             "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
-        return None, None
+        raise FileNotFoundError("CA certificate or key not found")
 
     # Load CA certificate
     with open(ca_cert_path, "rb") as f:
@@ -70,29 +74,15 @@ def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     # Get password and decrypt CA key (password validation is done inside get_password)
     password = get_password()
     if not password:
-        return None, None
+        raise ValueError("No password provided for CA key")
 
     try:
         ca_key = decrypt_key(ca_key_path, password)
-    except Exception:
+    except Exception as e:
         # This should never happen as get_password already validated the password
-        return None, None
+        raise ValueError(f"Failed to decrypt CA key: {e}") from e
 
     return ca_key, ca_cert
-
-
-@dataclass
-class CertificateParams:
-    """Parameters for certificate creation."""
-
-    private_key: PrivateKeyTypes
-    hostname: str
-    ca_key: PrivateKeyTypes
-    ca_cert: x509.Certificate
-    validity_days: int = 365
-    alt_names: dict[str, list[str]] | None = None
-    hash_algorithm: str | None = None
-    host_config: dict[str, Any] | None = None
 
 
 def create_certificate_with_params(params: CertificateParams) -> x509.Certificate:
@@ -137,9 +127,9 @@ def create_certificate(
     ca_key: PrivateKeyTypes,
     ca_cert: x509.Certificate,
     validity_days: int = 365,
-    alt_names: dict[str, list[str]] | None = None,
+    alt_names: AlternativeNames | None = None,
     hash_algorithm: str | None = None,
-    host_config: dict[str, Any] | None = None,
+    host_config: HostConfig | None = None,
 ) -> x509.Certificate:
     """Create a certificate signed by the CA."""
     params = CertificateParams(
@@ -279,7 +269,7 @@ def extract_hostname_from_csr(csr: x509.CertificateSigningRequest) -> str | None
     return None
 
 
-def extract_sans_from_csr(csr: x509.CertificateSigningRequest) -> dict[str, list[str]]:
+def extract_sans_from_csr(csr: x509.CertificateSigningRequest) -> AlternativeNames:
     """Extract Subject Alternative Names from a CSR.
 
     Args:
@@ -288,36 +278,28 @@ def extract_sans_from_csr(csr: x509.CertificateSigningRequest) -> dict[str, list
 
     Returns:
     -------
-        Dictionary of SAN types and values
+        AlternativeNames object containing the SAN values
 
     """
-    alt_names: dict[str, list[str]] = {
-        "dns": [],
-        "ip": [],
-        "email": [],
-        "uri": [],
-        "directory_name": [],
-        "registered_id": [],
-        "other_name": [],
-    }
+    alt_names = AlternativeNames()
 
     for ext in csr.extensions:
         if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
             for san in ext.value:
                 if isinstance(san, x509.DNSName):
-                    alt_names["dns"].append(san.value)
+                    alt_names.dns.append(san.value)
                 elif isinstance(san, x509.IPAddress):
-                    alt_names["ip"].append(str(san.value))
+                    alt_names.ip.append(str(san.value))
                 elif isinstance(san, x509.RFC822Name):
-                    alt_names["email"].append(san.value)
+                    alt_names.email.append(san.value)
                 elif isinstance(san, UniformResourceIdentifier):
-                    alt_names["uri"].append(san.value)
+                    alt_names.uri.append(san.value)
                 elif isinstance(san, DirectoryName):
-                    alt_names["directory_name"].append(format_directory_name(san.value))
+                    alt_names.directory_name.append(format_directory_name(san.value))
                 elif isinstance(san, RegisteredID):
-                    alt_names["registered_id"].append(san.value.dotted_string)
+                    alt_names.registered_id.append(san.value.dotted_string)
                 elif isinstance(san, OtherName):
-                    alt_names["other_name"].append(format_other_name(san))
+                    alt_names.other_name.append(format_other_name(san))
 
     return alt_names
 
@@ -465,8 +447,10 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         )
         return False
 
-    ca_key, ca_cert = load_ca_key_cert()
-    if not ca_key or not ca_cert:
+    try:
+        ca_key, ca_cert = load_ca_key_cert()
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return False
 
     # Check if hostname exists in hosts config
@@ -529,13 +513,37 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
 
     # Get alternative names
-    alt_names = host_config.get("alternative_names", {})
+    alt_names_dict = host_config.get("alternative_names", {})
+    alt_names = AlternativeNames()
+
+    # Convert dictionary to AlternativeNames if needed
+    if alt_names_dict:
+        for name_type, names in alt_names_dict.items():
+            if hasattr(alt_names, name_type) and names:
+                setattr(alt_names, name_type, names)
 
     action = "Generating" if is_new else "Renewing"
     console.print(f"{action} certificate for {hostname} valid for {validity_days} days...")
 
     # Get hash algorithm if specified in host config
     hash_algorithm = host_config.get("hash_algorithm")
+
+    # Convert dict host_config to HostConfig
+    host_config_obj = None
+    if host_config:
+        host_config_obj = HostConfig(
+            name=hostname,
+            common_name=host_config.get("common_name", hostname),
+            organization=host_config.get("organization"),
+            organization_unit=host_config.get("organization_unit"),
+            country=host_config.get("country"),
+            state=host_config.get("state"),
+            locality=host_config.get("locality"),
+            email=host_config.get("email"),
+            alternative_names=alt_names if not alt_names.is_empty() else None,
+            key_algorithm=key_algorithm,
+            hash_algorithm=hash_algorithm,
+        )
 
     # Create certificate
     cert = create_certificate(
@@ -544,9 +552,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         ca_key,
         ca_cert,
         validity_days,
-        alt_names,
+        alt_names if not alt_names.is_empty() else None,
         hash_algorithm,
-        host_config,
+        host_config_obj,
     )
 
     # Save key if new or certificate
@@ -630,8 +638,10 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
         )
         return False
 
-    ca_key, ca_cert = load_ca_key_cert()
-    if not ca_key or not ca_cert:
+    try:
+        ca_key, ca_cert = load_ca_key_cert()
+    except (FileNotFoundError, ValueError) as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
         return False
 
     # Check if hostname exists in hosts config
@@ -668,18 +678,44 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
 
     # Get alternative names
-    alt_names = host_config.get("alternative_names", {})
+    alt_names_dict = host_config.get("alternative_names", {})
+    alt_names = AlternativeNames()
+
+    # Convert dictionary to AlternativeNames if needed
+    if alt_names_dict:
+        for name_type, names in alt_names_dict.items():
+            if hasattr(alt_names, name_type) and names:
+                setattr(alt_names, name_type, names)
 
     # Create certificate
     console.print(f"Generating certificate for {hostname} valid for {validity_days} days...")
+
+    # Convert dict host_config to HostConfig
+    host_config_obj = None
+    if host_config:
+        host_config_obj = HostConfig(
+            name=hostname,
+            common_name=host_config.get("common_name", hostname),
+            organization=host_config.get("organization"),
+            organization_unit=host_config.get("organization_unit"),
+            country=host_config.get("country"),
+            state=host_config.get("state"),
+            locality=host_config.get("locality"),
+            email=host_config.get("email"),
+            alternative_names=alt_names if not alt_names.is_empty() else None,
+            key_algorithm=key_algorithm,
+            hash_algorithm=host_config.get("hash_algorithm"),
+        )
+
     cert = create_certificate(
         private_key,
         hostname,
         ca_key,
         ca_cert,
         validity_days,
-        alt_names,
-        host_config=host_config,
+        alt_names if not alt_names.is_empty() else None,
+        host_config.get("hash_algorithm"),
+        host_config_obj,
     )
 
     # Save key and certificate

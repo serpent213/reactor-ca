@@ -7,7 +7,6 @@ import re
 import stat
 import sys
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
@@ -33,6 +32,12 @@ from cryptography.x509.general_name import (
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 
+from reactor_ca.models import (
+    AlternativeNames,
+    HostConfig,
+    SubjectIdentity,
+    ValidityConfig,
+)
 from reactor_ca.paths import CA_DIR, CONFIG_DIR, HOSTS_DIR, STORE_DIR
 
 # Constants for expiration warnings
@@ -40,77 +45,6 @@ EXPIRY_CRITICAL = 30  # days
 EXPIRY_WARNING = 90  # days
 
 console = Console()
-
-
-@dataclass
-class SubjectIdentity:
-    """Container for certificate subject identity information."""
-
-    common_name: str
-    organization: str = ""
-    organization_unit: str = ""
-    country: str = ""
-    state: str = ""
-    locality: str = ""
-    email: str = ""
-
-    def to_x509_name(self: "SubjectIdentity") -> x509.Name:
-        """Convert subject identity to x509.Name object.
-
-        Returns
-        -------
-            x509.Name object with the subject attributes
-
-        """
-        subject_attributes = []
-
-        # Common Name is required
-        subject_attributes.append(x509.NameAttribute(NameOID.COMMON_NAME, self.common_name))
-
-        # Add other attributes if provided
-        if self.organization:
-            subject_attributes.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, self.organization))
-        if self.organization_unit:
-            subject_attributes.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, self.organization_unit))
-        if self.country:
-            subject_attributes.append(x509.NameAttribute(NameOID.COUNTRY_NAME, self.country))
-        if self.state:
-            subject_attributes.append(x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, self.state))
-        if self.locality:
-            subject_attributes.append(x509.NameAttribute(NameOID.LOCALITY_NAME, self.locality))
-        if self.email:
-            subject_attributes.append(x509.NameAttribute(NameOID.EMAIL_ADDRESS, self.email))
-
-        return x509.Name(subject_attributes)
-
-    @classmethod
-    def from_x509_name(cls: type["SubjectIdentity"], name: x509.Name) -> "SubjectIdentity":
-        """Create a SubjectIdentity from an x509.Name object.
-
-        Args:
-        ----
-            name: The x509.Name object to convert
-
-        Returns:
-        -------
-            A new SubjectIdentity object
-
-        """
-
-        # Helper function to safely extract attributes from the name
-        def get_attr_value(oid: x509.ObjectIdentifier) -> str:
-            attrs = name.get_attributes_for_oid(oid)
-            return str(attrs[0].value) if attrs else ""
-
-        return cls(
-            common_name=get_attr_value(NameOID.COMMON_NAME),
-            organization=get_attr_value(NameOID.ORGANIZATION_NAME),
-            organization_unit=get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME),
-            country=get_attr_value(NameOID.COUNTRY_NAME),
-            state=get_attr_value(NameOID.STATE_OR_PROVINCE_NAME),
-            locality=get_attr_value(NameOID.LOCALITY_NAME),
-            email=get_attr_value(NameOID.EMAIL_ADDRESS),
-        )
 
 
 # Module-level cache for password
@@ -125,15 +59,30 @@ def ensure_dirs() -> None:
         dir_path.mkdir(parents=True, exist_ok=True)
 
 
-def calculate_validity_days(validity_config: dict[str, int]) -> int:
-    """Calculate validity period in days based on the configuration."""
-    if "days" in validity_config:
-        return validity_config["days"]
-    elif "years" in validity_config:
-        return validity_config["years"] * 365
+def calculate_validity_days(validity_config: ValidityConfig | dict) -> int:
+    """Calculate validity period in days based on the configuration.
+
+    Args:
+    ----
+        validity_config: ValidityConfig object or dictionary with days or years
+
+    Returns:
+    -------
+        Validity period in days
+
+    """
+    if isinstance(validity_config, dict):
+        # Handle dictionary input
+        if "days" in validity_config and validity_config["days"] is not None:
+            return validity_config["days"]
+        elif "years" in validity_config and validity_config["years"] is not None:
+            return validity_config["years"] * 365
+        else:
+            # Default to 1 year if neither is specified
+            return 365
     else:
-        # Default to 1 year if neither is specified
-        return 365
+        # Handle ValidityConfig object
+        return validity_config.to_days()
 
 
 def create_default_config() -> None:
@@ -810,7 +759,7 @@ def create_subject_name(subject_identity: SubjectIdentity) -> x509.Name:
 
 
 def create_subject_from_config(
-    hostname: str, config: dict[str, Any], host_config: dict[str, Any] | None = None
+    hostname: str, config: dict[str, Any], host_config: HostConfig | None = None
 ) -> x509.Name:
     """Create a certificate subject from CA config and optional host config.
 
@@ -828,16 +777,16 @@ def create_subject_from_config(
     # Create a SubjectIdentity with fields from host_config (if available) or from CA config
     subject = SubjectIdentity(
         common_name=hostname,
-        organization=host_config.get("organization", config["ca"]["organization"])
+        organization=host_config.organization or config["ca"]["organization"]
         if host_config
         else config["ca"]["organization"],
-        organization_unit=host_config.get("organization_unit", config["ca"]["organization_unit"])
+        organization_unit=host_config.organization_unit or config["ca"]["organization_unit"]
         if host_config
         else config["ca"]["organization_unit"],
-        country=host_config.get("country", config["ca"]["country"]) if host_config else config["ca"]["country"],
-        state=host_config.get("state", config["ca"]["state"]) if host_config else config["ca"]["state"],
-        locality=host_config.get("locality", config["ca"]["locality"]) if host_config else config["ca"]["locality"],
-        email=host_config.get("email", config["ca"]["email"]) if host_config else config["ca"]["email"],
+        country=host_config.country or config["ca"]["country"] if host_config else config["ca"]["country"],
+        state=host_config.state or config["ca"]["state"] if host_config else config["ca"]["state"],
+        locality=host_config.locality or config["ca"]["locality"] if host_config else config["ca"]["locality"],
+        email=host_config.email or config["ca"]["email"] if host_config else config["ca"]["email"],
     )
 
     return subject.to_x509_name()
@@ -1211,13 +1160,12 @@ def process_other_names(other_names: list[str]) -> list[x509.OtherName]:
     return result
 
 
-def process_all_sans(alt_names: dict[str, list[str]]) -> list[Any]:
-    """Process all Subject Alternative Name types from a dictionary.
+def process_all_sans(alt_names: AlternativeNames) -> list[Any]:
+    """Process all Subject Alternative Name types.
 
     Args:
     ----
-        alt_names: Dictionary with keys for different SAN types
-                  (dns, ip, email, uri, directory_name, registered_id, other_name)
+        alt_names: AlternativeNames object containing SAN values
 
     Returns:
     -------
@@ -1230,39 +1178,39 @@ def process_all_sans(alt_names: dict[str, list[str]]) -> list[Any]:
     result: list[GeneralName] = []
 
     # Add DNS names
-    if "dns" in alt_names and alt_names["dns"]:
-        dns_names = process_dns_names(alt_names["dns"])
+    if alt_names.dns:
+        dns_names = process_dns_names(alt_names.dns)
         # All items in dns_names are GeneralName subtypes which can be safely added
         result.extend(cast(list[GeneralName], dns_names))
 
     # Add IP addresses
-    if "ip" in alt_names and alt_names["ip"]:
-        ip_addresses = process_ip_addresses(alt_names["ip"])
+    if alt_names.ip:
+        ip_addresses = process_ip_addresses(alt_names.ip)
         result.extend(cast(list[GeneralName], ip_addresses))
 
     # Add email addresses
-    if "email" in alt_names and alt_names["email"]:
-        email_addresses = process_email_addresses(alt_names["email"])
+    if alt_names.email:
+        email_addresses = process_email_addresses(alt_names.email)
         result.extend(cast(list[GeneralName], email_addresses))
 
     # Add URIs
-    if "uri" in alt_names and alt_names["uri"]:
-        uris = process_uri_addresses(alt_names["uri"])
+    if alt_names.uri:
+        uris = process_uri_addresses(alt_names.uri)
         result.extend(cast(list[GeneralName], uris))
 
     # Add directory names
-    if "directory_name" in alt_names and alt_names["directory_name"]:
-        directory_names = process_directory_names(alt_names["directory_name"])
+    if alt_names.directory_name:
+        directory_names = process_directory_names(alt_names.directory_name)
         result.extend(cast(list[GeneralName], directory_names))
 
     # Add registered IDs (OIDs)
-    if "registered_id" in alt_names and alt_names["registered_id"]:
-        registered_ids = process_registered_ids(alt_names["registered_id"])
+    if alt_names.registered_id:
+        registered_ids = process_registered_ids(alt_names.registered_id)
         result.extend(cast(list[GeneralName], registered_ids))
 
     # Add other names
-    if "other_name" in alt_names and alt_names["other_name"]:
-        other_names = process_other_names(alt_names["other_name"])
+    if alt_names.other_name:
+        other_names = process_other_names(alt_names.other_name)
         result.extend(cast(list[GeneralName], other_names))
 
     return result

@@ -24,9 +24,11 @@ from cryptography.hazmat.primitives.serialization import (
 from rich.console import Console
 
 from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.models import (
+    SubjectIdentity,
+)
 from reactor_ca.paths import CA_DIR, CONFIG_DIR
 from reactor_ca.utils import (
-    SubjectIdentity,
     add_standard_extensions,
     calculate_validity_days,
     create_certificate_builder,

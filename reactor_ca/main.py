@@ -26,6 +26,7 @@ from reactor_ca.host_operations import (
     rekey_all_hosts,
     rekey_host,
 )
+from reactor_ca.models import ValidityConfig
 from reactor_ca.utils import (
     calculate_validity_days,
     change_password,
@@ -255,12 +256,7 @@ def host_sign_csr(csr: str, out: str, validity_days: int | None, validity_years:
         console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
         return
 
-    validity_config = {}
-    if validity_days is not None:
-        validity_config["days"] = validity_days
-    elif validity_years is not None:
-        validity_config["years"] = validity_years
-
+    validity_config = ValidityConfig(days=validity_days, years=validity_years)
     validity = calculate_validity_days(validity_config)
 
     ca_key, ca_cert = load_ca_key_cert()
