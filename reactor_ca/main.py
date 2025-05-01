@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Main CLI entry point for the ReactorCA tool."""
 
+import os
+import shutil
 from pathlib import Path
 
 import click
@@ -12,7 +14,7 @@ from reactor_ca.ca_operations import (
     rekey_ca,
     show_ca_info,
 )
-from reactor_ca.config_validator import validate_configs
+from reactor_ca.config import init_config_files, validate_config_files
 from reactor_ca.host_operations import (
     deploy_all_hosts,
     deploy_host,
@@ -37,11 +39,39 @@ from reactor_ca.utils import (
 
 @click.group()
 @click.version_option(version=__version__)
-def cli() -> None:
+@click.option("--config", type=click.Path(exists=False), help="Path to the configuration directory")
+@click.option("--store", type=click.Path(exists=False), help="Path to the certificate store directory")
+@click.option(
+    "--root", type=click.Path(exists=False), help="Root directory (both config and store will be subdirectories)"
+)
+@click.pass_context
+def cli(ctx: click.Context, config: str | None = None, store: str | None = None, root: str | None = None) -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
-    # Create necessary directories if they don't exist
-    store = get_store()
-    store.init()
+    # Create Config and Store instances
+    from reactor_ca.config import Config
+
+    # Set environment variables for tests that change directories
+    if root:
+        os.environ["REACTOR_CA_ROOT"] = root
+    if config:
+        os.environ["REACTOR_CA_CONFIG_DIR"] = config
+    if store:
+        os.environ["REACTOR_CA_STORE_DIR"] = store
+
+    # Create a configuration with specified paths or defaults
+    # Note that we're passing absolute paths here to ensure they work correctly
+    # even if the current directory changes
+    app_config = Config.create(
+        config_dir=os.path.abspath(config) if config else None,
+        store_dir=os.path.abspath(store) if store else None,
+        root_dir=os.path.abspath(root) if root else None,
+    )
+
+    # Store the config and store in the context for subcommands
+    ctx.obj = {"config": app_config, "store": get_store(app_config)}
+
+    # Ensure directories exist
+    ctx.obj["store"].init()
 
 
 # Configuration commands
@@ -52,16 +82,28 @@ def config() -> None:
 
 
 @config.command(name="init")
-def config_init() -> None:
+@click.option("--force", is_flag=True, help="Force overwrite of existing config files")
+@click.pass_context
+def config_init(ctx: click.Context, force: bool) -> None:
     """Initialize configuration files."""
-    store = get_store()
-    store.create_default_config()
+    app_config = ctx.obj["config"]
+
+    # Make sure the directory exists
+    app_config.config_dir.mkdir(parents=True, exist_ok=True)
+
+    init_config_files(app_config.ca_config_path, app_config.hosts_config_path, force)
 
 
 @config.command(name="validate")
-def config_validate() -> None:
+@click.pass_context
+def config_validate(ctx: click.Context) -> None:
     """Validate configuration files against schemas."""
-    validate_configs()
+    app_config = ctx.obj["config"]
+
+    # Using validate_configs with our Config paths
+    valid = validate_config_files(app_config.ca_config_path, app_config.hosts_config_path)
+    if not valid:
+        ctx.exit(1)
 
 
 # CA management commands
@@ -72,30 +114,38 @@ def ca() -> None:
 
 
 @ca.command(name="issue")
-def ca_issue() -> None:
+@click.pass_context
+def ca_issue(ctx: click.Context) -> None:
     """Create or renew a CA certificate."""
-    issue_ca()
+    store = ctx.obj["store"]
+    issue_ca(store=store)
 
 
 @ca.command(name="import")
 @click.option("--cert", required=True, help="Path to CA certificate file")
 @click.option("--key", required=True, help="Path to CA private key file")
-def ca_import(cert: str, key: str) -> None:
+@click.pass_context
+def ca_import(ctx: click.Context, cert: str, key: str) -> None:
     """Import an existing CA."""
-    import_ca(Path(cert), Path(key))
+    store = ctx.obj["store"]
+    import_ca(Path(cert), Path(key), store=store)
 
 
 @ca.command(name="rekey")
-def ca_rekey() -> None:
+@click.pass_context
+def ca_rekey(ctx: click.Context) -> None:
     """Generate a new key and renew the CA certificate."""
-    rekey_ca()
+    store = ctx.obj["store"]
+    rekey_ca(store=store)
 
 
 @ca.command(name="info")
 @click.option("--json", is_flag=True, help="Output in JSON format")
-def ca_info(json: bool) -> None:
+@click.pass_context
+def ca_info(ctx: click.Context, json: bool) -> None:
     """Show information about the CA."""
-    show_ca_info(json_output=json)
+    store = ctx.obj["store"]
+    show_ca_info(json_output=json, store=store)
 
 
 # Host certificate operations
@@ -189,33 +239,32 @@ def host_deploy(hostname: str | None, all_hosts: bool) -> None:
         console.print("[bold red]Error:[/bold red] Must specify either hostname or --all")
         return
 
+    store = get_store()
     if all_hosts:
         deploy_all_hosts()
     else:
         # hostname is not None here because we checked earlier
         assert hostname is not None
-        deploy_host(hostname)
+        deploy_host(store, hostname)
 
 
 @host.command(name="clean")
 def host_clean() -> None:
     """Remove host folders that are no longer in the configuration."""
-    import shutil
-
-    from reactor_ca.paths import HOSTS_DIR
-
     # Load the hosts configuration
     store = get_store()
     hosts_config = store.load_hosts_config()
     configured_hosts = [host["name"] for host in hosts_config.get("hosts", [])]
 
-    # Check if HOSTS_DIR exists
-    if not HOSTS_DIR.exists():
+    hosts_dir = store.config.hosts_dir
+
+    # Check if hosts_dir exists
+    if not hosts_dir.exists():
         console.print("[bold yellow]Warning:[/bold yellow] No hosts directory found.")
         return
 
     # Get all host directories
-    existing_host_dirs = [d for d in HOSTS_DIR.iterdir() if d.is_dir()]
+    existing_host_dirs = [d for d in hosts_dir.iterdir() if d.is_dir()]
 
     # Find hosts that are no longer in the configuration
     hosts_to_remove = []
@@ -231,7 +280,7 @@ def host_clean() -> None:
     # Ask for confirmation for each host
     for hostname in hosts_to_remove:
         if click.confirm(f"Remove host folder for {hostname}?", default=True):
-            host_dir = HOSTS_DIR / hostname
+            host_dir = hosts_dir / hostname
             try:
                 shutil.rmtree(host_dir)
                 console.print(f"✅ Removed host folder for [bold]{hostname}[/bold]")
@@ -278,7 +327,8 @@ def util() -> None:
 @util.command(name="passwd")
 def util_passwd() -> None:
     """Change password for all encrypted keys."""
-    change_password()
+    store = get_store()
+    change_password(store)
 
 
 if __name__ == "__main__":

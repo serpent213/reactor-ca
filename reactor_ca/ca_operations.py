@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import click
-import yaml
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
@@ -20,27 +19,21 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from rich.console import Console
 
-from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.config import load_ca_config, validate_config
 from reactor_ca.models import (
+    CAConfig,
     SubjectIdentity,
 )
-from reactor_ca.paths import CA_DIR, CONFIG_DIR
-from reactor_ca.store import get_store
+from reactor_ca.store import Store
 from reactor_ca.utils import (
     add_standard_extensions,
-    calculate_validity_days,
     create_certificate_builder,
-    create_default_config,
     create_subject_name,
-    ensure_directory_exists,
     get_certificate_metadata,
     get_password,
     load_certificate,
-    load_inventory,
-    save_inventory,
     save_private_key,
     sign_certificate,
-    update_inventory_for_cert,
 )
 
 console = Console()
@@ -125,25 +118,25 @@ def generate_key(key_algorithm: str = "RSA4096") -> PrivateKeyTypes:
 
 
 def generate_ca_cert(
-    private_key: PrivateKeyTypes, config: dict[str, Any], validity_days: int = 3650
+    private_key: PrivateKeyTypes, ca_config: CAConfig, validity_days: int = 3650
 ) -> x509.Certificate:
     """Generate a self-signed CA certificate."""
     # Create subject identity using the CA config
     subject_identity = SubjectIdentity(
-        common_name=config["ca"]["common_name"],
-        organization=config["ca"]["organization"],
-        organization_unit=config["ca"]["organization_unit"],
-        country=config["ca"]["country"],
-        state=config["ca"]["state"],
-        locality=config["ca"]["locality"],
-        email=config["ca"]["email"],
+        common_name=ca_config.common_name,
+        organization=ca_config.organization,
+        organization_unit=ca_config.organization_unit,
+        country=ca_config.country,
+        state=ca_config.state,
+        locality=ca_config.locality,
+        email=ca_config.email,
     )
 
     # Convert to x509.Name using the create_subject_name function
     subject = issuer = create_subject_name(subject_identity)
 
     # Get the hash algorithm from the config or use default
-    hash_algorithm_name = config["ca"].get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+    hash_algorithm_name = ca_config.hash_algorithm
     hash_algorithm = get_hash_algorithm(hash_algorithm_name)
 
     # Get public key
@@ -190,28 +183,47 @@ def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
     return True
 
 
-def issue_ca() -> None:
-    """Issue a CA certificate. Creates one if it doesn't exist, renews if it does."""
+def issue_ca(store: Store | None = None) -> None:
+    """Issue a CA certificate. Creates one if it doesn't exist, renews if it does.
+
+    Args:
+    ----
+        store: Optional Store instance. If None, a default Store is created.
+
+    """
+    from reactor_ca.store import get_store
+
+    # If store is not provided, create a default one
+    if store is None:
+        store = get_store()
+
     # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before issuing the CA certificate."
-        )
+    ca_config_path = store.config.ca_config_path
+
+    valid, errors = validate_config(ca_config_path, "ca_config_schema.yaml")
+    if not valid:
+        console.print("[bold red]Error:[/bold red] Configuration validation failed:")
+        for error in errors:
+            console.print(f"  - {error}")
         return
 
     # Initialize store
-    store = get_store()
     store.init()
 
     # Check if CA already exists
+    ca_cert_path = store.get_ca_cert_path()
+    ca_key_path = store.get_ca_key_path()
     ca_exists = store.ca_cert_exists() or store.ca_key_exists()
 
     # Load config
-    config = store.load_config()
+    try:
+        ca_config = load_ca_config(ca_config_path)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to load CA configuration: {e}")
+        return
 
     # Get expected key algorithm from config
-    key_algorithm = config["ca"]["key_algorithm"]
+    key_algorithm = ca_config.key_algorithm
 
     if not ca_exists:
         # Creating a new CA
@@ -220,7 +232,9 @@ def issue_ca() -> None:
                 return
 
         # Unlock the store with confirmation for new key
-        if not store.unlock(ca_init=True) and config["ca"]["password"]["min_length"] > 0:
+        unlock_success = store.unlock(ca_init=True)
+
+        if not unlock_success and ca_config.password.min_length > 0:
             return
 
         # Generate key
@@ -228,12 +242,13 @@ def issue_ca() -> None:
         private_key = generate_key(key_algorithm=key_algorithm)
 
         # Generate self-signed certificate
-        validity_days = calculate_validity_days(config["ca"]["validity"])
+        validity_days = ca_config.validity.to_days()
         console.print(f"Generating self-signed CA certificate valid for {validity_days} days...")
-        cert = generate_ca_cert(private_key, config, validity_days)
+        cert = generate_ca_cert(private_key, ca_config, validity_days)
 
         # Save encrypted key and certificate
         ca_key_path = store.save_ca_key(private_key)
+
         ca_cert_path = store.save_ca_cert(cert)
 
         console.print("✅ CA created successfully")
@@ -244,6 +259,7 @@ def issue_ca() -> None:
         console.print("📋 Inventory initialized")
     else:
         # Renewing existing CA certificate
+
         # Unlock the store
         if not store.unlock():
             return
@@ -260,18 +276,12 @@ def issue_ca() -> None:
 
         # Verify that the existing key matches the algorithm in the config
         if not verify_key_algorithm(ca_key, key_algorithm):
-            console.print(
-                "[bold red]Error:[/bold red] The existing key algorithm does not match the configuration. "
-                "Use 'ca rekey' to generate a new key with the configured algorithm."
-            )
             return
 
-        # Generate a new certificate with the same key
-        validity_days = calculate_validity_days(config["ca"]["validity"])
-        console.print(f"Renewing CA certificate with the existing key (valid for {validity_days} days)...")
-
-        # Create a new CA certificate
-        new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
+        # Generate new certificate with existing key
+        validity_days = ca_config.validity.to_days()
+        console.print(f"Generating new CA certificate valid for {validity_days} days...")
+        new_ca_cert = generate_ca_cert(ca_key, ca_config, validity_days)
 
         # Save the new certificate
         ca_cert_path = store.save_ca_cert(new_ca_cert)
@@ -283,18 +293,30 @@ def issue_ca() -> None:
         console.print("📋 Inventory updated")
 
 
-def rekey_ca() -> None:
-    """Generate a new key and renew the CA certificate."""
+def rekey_ca(store: Store | None = None) -> None:
+    """Generate a new key and renew the CA certificate.
+
+    Args:
+    ----
+        store: Optional Store instance. If None, a default Store is created.
+
+    """
+    from reactor_ca.store import get_store
+
+    # If store is not provided, create a default one
+    if store is None:
+        store = get_store()
     # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before rekeying the CA."
-        )
+    ca_config_path = store.config.ca_config_path
+    valid, errors = validate_config(ca_config_path, "ca_config_schema.yaml")
+    if not valid:
+        console.print("[bold red]Error:[/bold red] Configuration validation failed:")
+        for error in errors:
+            console.print(f"  - {error}")
         return
 
     # Initialize store
-    store = get_store()
+    store.init()
 
     # Check if CA exists
     if not store.ca_cert_exists() or not store.ca_key_exists():
@@ -308,20 +330,28 @@ def rekey_ca() -> None:
         return
 
     # Load config
-    config = store.load_config()
+    try:
+        ca_config = load_ca_config(ca_config_path)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to load CA configuration: {e}")
+        console.print(
+            f"Config path: {ca_config_path}, Content: "
+            + f"{open(ca_config_path).read() if ca_config_path.exists() else 'file not found'}"
+        )
+        return
 
     # Generate a new key
-    key_algorithm = config["ca"]["key_algorithm"]
+    key_algorithm = ca_config.key_algorithm
 
     console.print(f"Generating new {key_algorithm} key...")
     new_ca_key = generate_key(key_algorithm=key_algorithm)
 
     # Generate a new certificate with the new key
-    validity_days = calculate_validity_days(config["ca"]["validity"])
+    validity_days = ca_config.validity.to_days()
     console.print(f"Generating new CA certificate with new key (valid for {validity_days} days)...")
 
     # Create a new CA certificate
-    new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
+    new_ca_cert = generate_ca_cert(new_ca_key, ca_config, validity_days)
 
     # Save the new certificate and key
     ca_cert_path = store.save_ca_cert(new_ca_cert)
@@ -335,16 +365,22 @@ def rekey_ca() -> None:
     console.print("📋 Inventory updated")
 
 
-def _validate_ca_import_paths(cert_path: Path, key_path: Path) -> tuple[bool, Path, Path, Path, Path]:
+def _validate_ca_import_paths(cert_path: Path, key_path: Path, store: Store) -> tuple[bool, Path, Path, Path, Path]:
     """Validate paths for CA import and check if CA exists.
 
-    Returns
+    Args:
+    ----
+        cert_path: Path to the certificate file
+        key_path: Path to the key file
+        store: Store instance for path resolution
+
+    Returns:
     -------
         A tuple containing (success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest)
 
     """
-    ca_cert_dest = CA_DIR / "ca.crt"
-    ca_key_dest = CA_DIR / "ca.key.enc"
+    ca_cert_dest = store.get_ca_cert_path()
+    ca_key_dest = store.get_ca_key_path()
 
     if ca_cert_dest.exists() or ca_key_dest.exists():
         if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
@@ -360,7 +396,7 @@ def _validate_ca_import_paths(cert_path: Path, key_path: Path) -> tuple[bool, Pa
         return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Create certificate directories
-    ensure_directory_exists(CA_DIR)
+    store.ensure_directory_exists(ca_cert_dest.parent)
 
     return True, cert_path, key_path, ca_cert_dest, ca_key_dest
 
@@ -490,27 +526,40 @@ def _determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
         return "RSA4096"  # Default to RSA4096 for unknown key types
 
 
-def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm: str) -> bool:
-    """Create or update configuration based on imported CA metadata."""
-    config_path = CONFIG_DIR / "ca.yaml"
-    config_exists = config_path.exists()
+def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm: str, store: Store) -> bool:
+    """Create or update configuration based on imported CA metadata.
+
+    Args:
+    ----
+        cert_metadata: Certificate metadata to use for config
+        key_algorithm: Key algorithm to set in config
+        store: Store instance for path resolution
+
+    Returns:
+    -------
+        True if configuration was successfully handled, False otherwise
+
+    """
+    from reactor_ca.config import create_default_config, load_yaml, update_config_with_metadata, write_config_file
+
+    ca_config_path = store.config.ca_config_path
+    config_exists = ca_config_path.exists()
 
     if not config_exists:
         console.print("📝 No CA configuration found. Creating new configuration from certificate metadata...")
 
         # Create default config with metadata from certificate
-
-        create_default_config()
+        create_default_config(store.config)
 
         try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
+            # Load the created config
+            config = load_yaml(ca_config_path)
 
             # Update config with metadata from certificate
-            _update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default=True)
+            update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default=True)
 
             # Write updated config
-            _write_config_file(config_path, config)
+            write_config_file(config, ca_config_path, "ca")
             console.print("✅ Created and updated configuration with certificate metadata")
         except Exception as e:
             console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
@@ -522,14 +571,14 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
             "Do you want to update configuration with metadata from the imported certificate?", default=True
         ):
             try:
-                with open(config_path) as f:
-                    config = yaml.safe_load(f)
+                # Load existing config
+                config = load_yaml(ca_config_path)
 
                 # Update only non-empty fields from certificate
-                _update_config_with_metadata(config, cert_metadata, key_algorithm)
+                update_config_with_metadata(config, cert_metadata, key_algorithm)
 
                 # Write updated config
-                _write_config_file(config_path, config)
+                write_config_file(config, ca_config_path, "ca")
                 console.print("✅ Updated configuration with certificate metadata")
             except Exception as e:
                 console.print(f"[bold yellow]Warning:[/bold yellow] Failed to update config with metadata: {str(e)}")
@@ -538,46 +587,56 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
     return True
 
 
+# These functions are now moved to config.py
+# This is just a stub for reference in case of any lingering dependencies
 def _update_config_with_metadata(
-    config: dict, cert_metadata: SubjectIdentity, key_algorithm: str, fallback_to_default: bool = False
+    config: dict, cert_metadata: "SubjectIdentity", key_algorithm: str, fallback_to_default: bool = False
 ) -> None:
-    """Update configuration with certificate metadata."""
+    """Use update_config_with_metadata from config.py instead."""
+    from reactor_ca.config import update_config_with_metadata
 
-    # Helper function to update a config field if the metadata exists
-    def update_field(config_field: str, metadata_field: str) -> None:
-        metadata_value = getattr(cert_metadata, metadata_field)
-        if fallback_to_default:
-            config["ca"][config_field] = metadata_value or config["ca"][config_field]
-        elif metadata_value:
-            config["ca"][config_field] = metadata_value
-
-    update_field("common_name", "common_name")
-    update_field("organization", "organization")
-    update_field("organization_unit", "organization_unit")
-    update_field("country", "country")
-    update_field("state", "state")
-    update_field("locality", "locality")
-    update_field("email", "email")
-
-    # Always update key algorithm
-    config["ca"]["key_algorithm"] = key_algorithm
+    return update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default)
 
 
-def _write_config_file(config_path: Path, config: dict) -> None:
-    """Write configuration to file with standard header."""
-    with open(config_path, "w") as f:
-        f.write("# ReactorCA Configuration\n")
-        f.write("# This file contains settings for the Certificate Authority\n")
-        f.write("# It is safe to modify this file directly\n\n")
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+def _write_config_file(config: dict, config_path: Path, config_type: str = "ca") -> None:
+    """Use write_config_file from config.py instead."""
+    from reactor_ca.config import write_config_file
+
+    return write_config_file(config, config_path, config_type)
 
 
 def _complete_ca_import(
-    cert: x509.Certificate, private_key: PrivateKeyTypes, src_cert_path: Path, ca_cert_dest: Path, ca_key_dest: Path
+    cert: x509.Certificate,
+    private_key: PrivateKeyTypes,
+    src_cert_path: Path,
+    ca_cert_dest: Path,
+    ca_key_dest: Path,
+    store: Store | None = None,
 ) -> bool:
-    """Complete the CA import by saving files and updating inventory."""
+    """Complete the CA import by saving files and updating inventory.
+
+    Args:
+    ----
+        cert: Certificate object
+        private_key: Private key object
+        src_cert_path: Source certificate path
+        ca_cert_dest: Destination path for CA certificate
+        ca_key_dest: Destination path for CA key
+        store: Optional Store instance. If None, a default Store is created.
+
+    Returns:
+    -------
+        True if import was successful, False otherwise
+
+    """
+    from reactor_ca.store import get_store
+
+    # If store is not provided, create a default one
+    if store is None:
+        store = get_store()
+
     # Get password for encrypting the key
-    dest_password = get_password()
+    dest_password = get_password(store)
     if not dest_password:
         return False
 
@@ -596,29 +655,32 @@ def _complete_ca_import(
     console.print(f"   Private key (encrypted): [bold]{ca_key_dest}[/bold]")
 
     # Update inventory
-    inventory = load_inventory()
-    inventory = update_inventory_for_cert(
-        inventory=inventory, hostname="ca", cert=cert, rekeyed=True, renewal_count_increment=0
-    )
-
-    # Additional CA-specific inventory information
-    inventory["ca"] = {
-        "serial": format(cert.serial_number, "x"),
-        "not_after": cert.not_valid_after.isoformat(),
-        "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-    }
-
-    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-    save_inventory(inventory)
+    store.update_inventory_for_cert(hostname="ca", cert=cert, rekeyed=True, renewal_count_increment=0)
     console.print("📋 Inventory updated")
 
     return True
 
 
-def import_ca(cert_path: Path, key_path: Path) -> bool:
-    """Import an existing CA certificate and key."""
+def import_ca(cert_path: Path, key_path: Path, store: Store | None = None) -> bool:
+    """Import an existing CA certificate and key.
+
+    Args:
+    ----
+        cert_path: Path to the certificate file
+        key_path: Path to the key file
+        store: Optional Store instance. If None, a default Store is created.
+
+    """
+    from reactor_ca.store import get_store
+
+    # If store is not provided, create a default one
+    if store is None:
+        store = get_store()
+
     # Validate paths and check if CA exists
-    success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest = _validate_ca_import_paths(cert_path, key_path)
+    success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest = _validate_ca_import_paths(
+        cert_path, key_path, store
+    )
     if not success:
         return False
 
@@ -636,20 +698,29 @@ def import_ca(cert_path: Path, key_path: Path) -> bool:
     key_algorithm = _determine_key_algorithm(private_key)
 
     # Handle configuration
-    if not _handle_config_for_imported_ca(cert_metadata, key_algorithm):
+    if not _handle_config_for_imported_ca(cert_metadata, key_algorithm, store):
         return False
 
     # Complete the import process
-    return _complete_ca_import(cert, private_key, src_cert_path, ca_cert_dest, ca_key_dest)
+    return _complete_ca_import(cert, private_key, src_cert_path, ca_cert_dest, ca_key_dest, store)
 
 
-def show_ca_info(json_output: bool = False) -> None:
-    """Show information about the CA certificate."""
+def show_ca_info(json_output: bool = False, store: Store | None = None) -> None:
+    """Show information about the CA certificate.
+
+    Args:
+    ----
+        json_output: Whether to output in JSON format
+        store: Optional Store instance. If None, a default Store is created.
+
+    """
+    from reactor_ca.store import get_store
+
+    # If store is not provided, create a default one
+    if store is None:
+        store = get_store()
     # Check if CA exists
-    from reactor_ca.paths import CA_DIR
-
-    ca_cert_path = CA_DIR / "ca.crt"
-
+    ca_cert_path = store.get_ca_cert_path()
     if not ca_cert_path.exists():
         console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")
         return

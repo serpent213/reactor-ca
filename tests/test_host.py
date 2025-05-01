@@ -20,6 +20,13 @@ def test_host_issue_with_key_check() -> None:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
             Path("store/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/hosts").mkdir(parents=True, exist_ok=True)
+
+            # Initialize store with this temp dir
+            from reactor_ca.store import get_store
+
+            store = get_store()
+            store.init()
 
             # Create sample CA config
             ca_config_content = """
@@ -66,18 +73,18 @@ def test_host_issue_with_key_check() -> None:
             # Issue host certificate
             result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\ntestpassword\n")
             assert result.exit_code == 0
-            assert Path("store/hosts/test.example.com/cert.crt").exists()
-            assert Path("store/hosts/test.example.com/cert.key.enc").exists()
+            assert Path(tmpdir, "store/hosts/test.example.com/cert.crt").exists()
+            assert Path(tmpdir, "store/hosts/test.example.com/cert.key.enc").exists()
 
             # Get the original certificate modification time
-            original_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
+            original_cert_mtime = Path(tmpdir, "store/hosts/test.example.com/cert.crt").stat().st_mtime
 
             # Now renew the certificate
             result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
             assert result.exit_code == 0
 
             # Verify certificate was updated
-            new_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
+            new_cert_mtime = Path(tmpdir, "store/hosts/test.example.com/cert.crt").stat().st_mtime
             assert new_cert_mtime > original_cert_mtime
 
             # Change the key algorithm in the hosts config to test the validation
@@ -122,6 +129,13 @@ def test_host_clean() -> None:
             # Create necessary directories
             Path("config").mkdir(exist_ok=True)
             Path("store/ca").mkdir(parents=True, exist_ok=True)
+            Path("store/hosts").mkdir(parents=True, exist_ok=True)
+
+            # Initialize store with this temp dir
+            from reactor_ca.store import get_store
+
+            store = get_store()
+            store.init()
             Path("store/hosts").mkdir(parents=True, exist_ok=True)
 
             # Create host directories - some that will remain in config and some that will be removed

@@ -23,6 +23,8 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
+from reactor_ca.config import Config
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -34,23 +36,16 @@ class Store:
     for ReactorCA.
     """
 
-    def __init__(self: "Store", root_dir: str | None = None) -> None:
-        """Initialize the store with root directory.
+    def __init__(self: "Store", config: Config) -> None:
+        """Initialize the store with the provided Config instance.
 
         Args:
         ----
-            root_dir: Optional root directory override (defaults to current directory)
+            config: Config instance with paths for this store
 
         """
-        # Set up root directory
-        self.root_dir = Path(root_dir if root_dir else ".")
-
-        # Define important paths
-        self.store_dir = self.root_dir / "store"
-        self.config_dir = self.root_dir / "config"
-        self.ca_dir = self.store_dir / "ca"
-        self.hosts_dir = self.store_dir / "hosts"
-        self.inventory_path = self.store_dir / "inventory.yaml"
+        # Store the config instance
+        self.config = config
 
         # Password for private key operations
         self._password: str | None = None
@@ -61,14 +56,11 @@ class Store:
 
         Creates necessary folders if they don't exist.
         """
-        # Create the main directories
-        self.store_dir.mkdir(exist_ok=True, parents=True)
-        self.config_dir.mkdir(exist_ok=True, parents=True)
-        self.ca_dir.mkdir(exist_ok=True, parents=True)
-        self.hosts_dir.mkdir(exist_ok=True, parents=True)
+        # Create all necessary directories
+        self.config.ensure_dirs()
 
         # Initialize inventory if it doesn't exist
-        if not self.inventory_path.exists():
+        if not self.config.inventory_path.exists():
             self._save_inventory(
                 {
                     "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -77,7 +69,7 @@ class Store:
                 }
             )
 
-        logger.info(f"Initialized certificate store at {self.root_dir}")
+        logger.info(f"Initialized certificate store at {self.config.root_dir}")
 
     def unlock(self: "Store", password: str | None = None, ca_init: bool = False) -> bool:
         """Unlock the store with the provided password.
@@ -134,7 +126,7 @@ class Store:
             return True
 
         # Validate against CA key if it exists and not in init mode
-        ca_key_path = self.ca_dir / "ca.key.enc"
+        ca_key_path = self.get_ca_key_path()
         if ca_key_path.exists():
             try:
                 # Try to load it to verify the password
@@ -220,7 +212,7 @@ class Store:
             Dictionary containing CA configuration
 
         """
-        config_path = self.config_dir / "ca.yaml"
+        config_path = self.config.ca_config_path
 
         if not config_path.exists():
             logger.warning(f"Configuration file not found at {config_path}")
@@ -241,7 +233,7 @@ class Store:
             Dictionary containing hosts configuration
 
         """
-        hosts_path = self.config_dir / "hosts.yaml"
+        hosts_path = self.config.hosts_config_path
 
         if not hosts_path.exists():
             logger.warning(f"Hosts configuration file not found at {hosts_path}")
@@ -265,79 +257,45 @@ class Store:
             Dictionary containing default CA configuration
 
         """
-        return {
-            "ca": {
-                "common_name": "Reactor CA",
-                "country": "US",
-                "state": "CA",
-                "locality": "San Francisco",
-                "organization": "Reactor",
-                "organizational_unit": "IT",
-                "validity": 3650,  # 10 years
-                "key_size": 4096,
-                "password": {
-                    "min_length": 12,
-                    "file": "",
-                    "env_var": "",
-                },
-            }
-        }
+        from reactor_ca.config import get_default_ca_config
+
+        return get_default_ca_config()
 
     def create_default_config(self: "Store") -> None:
         """Create default configuration files if they don't exist.
 
         This creates both ca.yaml and hosts.yaml with reasonable defaults.
         """
-        # CA config
-        ca_config_path = self.config_dir / "ca.yaml"
-        if not ca_config_path.exists():
-            self.config_dir.mkdir(exist_ok=True, parents=True)
-            ca_config = self._get_default_config()
+        from reactor_ca.config import create_default_config as create_default_config_files
 
-            with open(ca_config_path, "w") as f:
-                f.write("# ReactorCA Configuration\n")
-                f.write("# This file contains settings for the Certificate Authority\n")
-                f.write("# It is safe to modify this file directly\n\n")
-                yaml.dump(ca_config, f, default_flow_style=False, sort_keys=False)
+        # Use the config module's function for creating default config files
+        create_default_config_files()
 
-            logger.info(f"Created default CA configuration at {ca_config_path}")
-
-        # Hosts config
-        hosts_config_path = self.config_dir / "hosts.yaml"
-        if not hosts_config_path.exists():
-            hosts_config: dict[str, list] = {"hosts": []}
-
-            with open(hosts_config_path, "w") as f:
-                f.write("# ReactorCA Hosts Configuration\n")
-                f.write("# This file contains settings for host certificates\n")
-                f.write("# It is safe to modify this file directly\n\n")
-                yaml.dump(hosts_config, f, default_flow_style=False, sort_keys=False)
-
-            logger.info(f"Created default hosts configuration at {hosts_config_path}")
+        logger.info("Created default configuration files")
 
     def get_ca_cert_path(self: "Store") -> Path:
         """Get the path to the CA certificate."""
-        return self.ca_dir / "ca.crt"
+        return self.config.ca_cert_path()
 
     def get_ca_key_path(self: "Store") -> Path:
         """Get the path to the CA private key."""
-        return self.ca_dir / "ca.key.enc"
+        return self.config.ca_key_path()
 
     def get_host_dir(self: "Store", hostname: str) -> Path:
         """Get the directory for a host's certificates and keys."""
-        return self.hosts_dir / hostname
+        return self.config.host_dir(hostname)
 
     def get_host_cert_path(self: "Store", hostname: str) -> Path:
         """Get the path to a host certificate."""
-        return self.get_host_dir(hostname) / "cert.crt"
+        return self.config.host_cert_path(hostname)
 
     def get_host_key_path(self: "Store", hostname: str) -> Path:
         """Get the path to a host private key."""
-        return self.get_host_dir(hostname) / "cert.key.enc"
+        return self.config.host_key_path(hostname)
 
     def get_crl_path(self: "Store") -> Path:
         """Get the path to the certificate revocation list."""
-        return self.ca_dir / "ca.crl"
+        return self.config.ca_crl_path()
 
     def ensure_directory_exists(self: "Store", path: Path) -> Path:
         """Ensure a directory exists, creating it if necessary."""
@@ -625,7 +583,7 @@ class Store:
 
     def _load_inventory(self: "Store") -> dict[str, Any]:
         """Load the certificate inventory."""
-        if not self.inventory_path.exists():
+        if not self.config.inventory_path.exists():
             # Create empty inventory
             inventory = {
                 "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -635,11 +593,11 @@ class Store:
             self._save_inventory(inventory)
             return inventory
 
-        with open(self.inventory_path) as f:
+        with open(self.config.inventory_path) as f:
             try:
                 return yaml.safe_load(f)
             except Exception as e:
-                logger.error(f"Failed to parse inventory file at {self.inventory_path}: {e}")
+                logger.error(f"Failed to parse inventory file at {self.config.inventory_path}: {e}")
                 # Return empty inventory as fallback
                 return {
                     "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -649,12 +607,12 @@ class Store:
 
     def _save_inventory(self: "Store", inventory: dict[str, Any]) -> None:
         """Save the certificate inventory."""
-        self.ensure_directory_exists(self.inventory_path.parent)
+        self.ensure_directory_exists(self.config.inventory_path.parent)
 
-        with open(self.inventory_path, "w") as f:
+        with open(self.config.inventory_path, "w") as f:
             yaml.dump(inventory, f, default_flow_style=False, sort_keys=False)
 
-        logger.debug(f"Saved inventory to {self.inventory_path}")
+        logger.debug(f"Saved inventory to {self.config.inventory_path}")
 
     def update_inventory(self: "Store") -> dict[str, Any]:
         """Update inventory based on certificate files.
@@ -681,8 +639,8 @@ class Store:
                 logger.error(f"Error loading CA certificate: {e}")
 
         # Check host certificates
-        if self.hosts_dir.exists():
-            host_dirs = [d for d in self.hosts_dir.iterdir() if d.is_dir()]
+        if self.config.hosts_dir.exists():
+            host_dirs = [d for d in self.config.hosts_dir.iterdir() if d.is_dir()]
 
             for host_dir in host_dirs:
                 hostname = host_dir.name
@@ -718,6 +676,63 @@ class Store:
         inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
 
         # Save updated inventory
+        self._save_inventory(inventory)
+
+        return inventory
+
+    def scan_cert_files(self: "Store") -> dict[str, Any]:
+        """Scan certificate files and update inventory."""
+        return self.update_inventory()
+
+    def update_inventory_for_cert(
+        self: "Store",
+        hostname: str,
+        cert: x509.Certificate,
+        rekeyed: bool = False,
+        renewal_count_increment: int = 1,
+    ) -> dict[str, Any]:
+        """Update certificate inventory with new certificate information.
+
+        Args:
+        ----
+            hostname: The hostname for this certificate
+            cert: The certificate to add to inventory
+            rekeyed: Whether this certificate was generated with a new key
+            renewal_count_increment: Amount to increment the renewal count
+
+        Returns:
+        -------
+            Updated inventory dictionary
+
+        """
+        inventory = self._load_inventory()
+
+        # Find existing host entry or create new one
+        for host in inventory.setdefault("hosts", []):
+            if host["name"] == hostname:
+                host["serial"] = format(cert.serial_number, "x")
+                host["not_after"] = cert.not_valid_after.isoformat()
+                host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
+                host["renewal_count"] = host.get("renewal_count", 0) + renewal_count_increment
+                if rekeyed:
+                    host["rekeyed"] = True
+                break
+        else:
+            # Add new entry if not found
+            inventory.setdefault("hosts", []).append(
+                {
+                    "name": hostname,
+                    "serial": format(cert.serial_number, "x"),
+                    "not_after": cert.not_valid_after.isoformat(),
+                    "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                    "renewal_count": 1,
+                    "rekeyed": rekeyed,
+                }
+            )
+
+        inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
+
+        # Save the updated inventory
         self._save_inventory(inventory)
 
         return inventory
@@ -952,16 +967,19 @@ class Store:
         return delta.days
 
 
-def get_store(root_dir: str | None = None) -> Store:
-    """Create a store instance.
+def get_store(config: Config | None = None) -> Store:
+    """Create a store instance with the given config or create a default one.
 
     Args:
     ----
-        root_dir: Optional root directory override
+        config: Optional Config instance. If None, a default Config is created.
 
     Returns:
     -------
-        Store: Initialized store instance
+        Store: Initialized store instance configured with the provided or default Config
 
     """
-    return Store(root_dir)
+    if config is None:
+        config = Config.create()
+
+    return Store(config)

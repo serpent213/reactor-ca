@@ -1,16 +1,16 @@
 """Tests for the configuration and validator."""
 
+import os
 import tempfile
 from pathlib import Path
 
 import yaml
 
-from reactor_ca.config_validator import validate_ca_config, validate_hosts_config
-from reactor_ca.utils import create_default_config
+from reactor_ca.config import create_default_config, validate_config
 
 
 def test_validate_ca_config_valid() -> None:
-    """Test validating a valid CA configuration."""
+    """Test validating a valid CA configuration using the config.validate_config function."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
         valid_config = {
             "ca": {
@@ -35,7 +35,7 @@ def test_validate_ca_config_valid() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_ca_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "ca_config_schema.yaml")
         if not valid:
             print(f"Validation errors: {errors}")
         assert valid
@@ -67,7 +67,7 @@ def test_validate_ca_config_invalid() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_ca_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "ca_config_schema.yaml")
         assert not valid
         assert errors
 
@@ -101,7 +101,7 @@ def test_validate_hosts_config_valid_rsa2048() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_hosts_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
         if not valid:
             print(f"Validation errors: {errors}")
         assert valid
@@ -137,7 +137,7 @@ def test_validate_hosts_config_valid_rsa4096() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_hosts_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
         if not valid:
             print(f"Validation errors: {errors}")
         assert valid
@@ -167,7 +167,7 @@ def test_validate_hosts_config_invalid1() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_hosts_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
         assert not valid
         assert errors
 
@@ -201,7 +201,7 @@ def test_validate_hosts_config_invalid2() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_hosts_config(tmp_file.name)
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
         assert not valid
         assert errors
 
@@ -216,30 +216,38 @@ def test_default_config_ca_validates() -> None:
 
         try:
             # Create config directory in the temp directory
-            (temp_path / "config").mkdir(exist_ok=True)
+            config_dir = temp_path / "config"
+            config_dir.mkdir(exist_ok=True)
 
             # Temporarily change working directory
-            import os
-
             os.chdir(temp_path)
 
-            # Create default configuration
-            create_default_config()
+            # Set environment variable for root directory
+            os.environ["REACTOR_CA_ROOT"] = str(temp_path)
 
-            # Check the CA config file exists
-            ca_config_path = temp_path / "config" / "ca.yaml"
-            assert ca_config_path.exists(), "Default CA config was not created"
+            # Create default configuration with explicit config
+            from reactor_ca.config import Config
+
+            config = Config.create(root_dir=str(temp_path))
+            create_default_config(config)
+
+            # Check the CA config file exists at the explicit path
+            ca_config_path = config.ca_config_path
+            print(f"Looking for CA config at: {ca_config_path}")
+            assert ca_config_path.exists(), f"Default CA config was not created at {ca_config_path}"
 
             # Validate the CA config
-            valid, errors = validate_ca_config(str(ca_config_path))
+            valid, errors = validate_config(ca_config_path, "ca_config_schema.yaml")
             if not valid:
                 print(f"Validation errors: {errors}")
             assert valid, f"Default CA config does not validate against schema: {errors}"
             assert not errors
 
         finally:
-            # Change back to original directory
+            # Clean up and restore original working directory
             os.chdir(original_cwd)
+            if "REACTOR_CA_ROOT" in os.environ:
+                del os.environ["REACTOR_CA_ROOT"]
 
 
 def test_default_config_hosts_validates() -> None:
@@ -252,27 +260,35 @@ def test_default_config_hosts_validates() -> None:
 
         try:
             # Create config directory in the temp directory
-            (temp_path / "config").mkdir(exist_ok=True)
+            config_dir = temp_path / "config"
+            config_dir.mkdir(exist_ok=True)
 
             # Temporarily change working directory
-            import os
-
             os.chdir(temp_path)
 
-            # Create default configuration
-            create_default_config()
+            # Set environment variable for root directory
+            os.environ["REACTOR_CA_ROOT"] = str(temp_path)
 
-            # Check the hosts config file exists
-            hosts_config_path = temp_path / "config" / "hosts.yaml"
-            assert hosts_config_path.exists(), "Default hosts config was not created"
+            # Create default configuration with explicit config
+            from reactor_ca.config import Config
+
+            config = Config.create(root_dir=str(temp_path))
+            create_default_config(config)
+
+            # Check the hosts config file exists at the explicit path
+            hosts_config_path = config.hosts_config_path
+            print(f"Looking for hosts config at: {hosts_config_path}")
+            assert hosts_config_path.exists(), f"Default hosts config was not created at {hosts_config_path}"
 
             # Validate the hosts config
-            valid, errors = validate_hosts_config(str(hosts_config_path))
+            valid, errors = validate_config(hosts_config_path, "hosts_schema.yaml")
             if not valid:
                 print(f"Validation errors: {errors}")
             assert valid, f"Default hosts config does not validate against schema: {errors}"
             assert not errors
 
         finally:
-            # Change back to original directory
+            # Clean up and restore original working directory
             os.chdir(original_cwd)
+            if "REACTOR_CA_ROOT" in os.environ:
+                del os.environ["REACTOR_CA_ROOT"]

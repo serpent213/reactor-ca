@@ -5,14 +5,12 @@ import ipaddress
 import os
 import re
 import stat
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
 import click
-import yaml
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
@@ -32,13 +30,15 @@ from cryptography.x509.general_name import (
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 
+from reactor_ca.config import Config
 from reactor_ca.models import (
     AlternativeNames,
+    CAConfig,
     HostConfig,
     SubjectIdentity,
     ValidityConfig,
 )
-from reactor_ca.paths import CA_DIR, CONFIG_DIR, HOSTS_DIR, STORE_DIR
+from reactor_ca.store import Store
 
 # Constants for expiration warnings
 EXPIRY_CRITICAL = 30  # days
@@ -52,179 +52,30 @@ console = Console()
 _password_cache_container: list[str | None] = [None]
 
 
-def ensure_dirs() -> None:
-    """Ensure all required directories exist."""
-    dirs = [CONFIG_DIR, CA_DIR, HOSTS_DIR]
-    for dir_path in dirs:
-        dir_path.mkdir(parents=True, exist_ok=True)
+def ensure_dirs(config: "Config") -> None:
+    """Ensure all required directories exist.
+
+    Args:
+    ----
+        config: Optional Config instance. If None, a default Config is created.
+
+    """
+    config.ensure_dirs()
 
 
-def calculate_validity_days(validity_config: ValidityConfig | dict) -> int:
+def calculate_validity_days(validity_config: ValidityConfig) -> int:
     """Calculate validity period in days based on the configuration.
 
     Args:
     ----
-        validity_config: ValidityConfig object or dictionary with days or years
+        validity_config: ValidityConfig object
 
     Returns:
     -------
         Validity period in days
 
     """
-    if isinstance(validity_config, dict):
-        # Handle dictionary input
-        if "days" in validity_config and validity_config["days"] is not None:
-            return validity_config["days"]
-        elif "years" in validity_config and validity_config["years"] is not None:
-            return validity_config["years"] * 365
-        else:
-            # Default to 1 year if neither is specified
-            return 365
-    else:
-        # Handle ValidityConfig object
-        return validity_config.to_days()
-
-
-def create_default_config() -> None:
-    """Create default configuration files."""
-    ca_config: dict[str, Any] = {
-        "ca": {
-            "common_name": "Reactor CA",
-            "organization": "Reactor Homelab",
-            "organization_unit": "IT",
-            "country": "DE",
-            "state": "Niedersachsen",
-            "locality": "Hannover",
-            "email": "admin@example.com",
-            "key_algorithm": "RSA4096",  # Use appropriate format matching the schema
-            "validity": {
-                "years": 10,
-            },
-            "password": {
-                "min_length": 12,
-                # Session caching is always enabled
-                "file": "",  # Path to password file
-                "env_var": "REACTOR_CA_PASSWORD",  # Environment variable for password
-            },
-        }
-    }
-
-    hosts_config: dict[str, Any] = {
-        "hosts": [
-            {
-                "name": "server1.example.com",
-                "common_name": "server1.example.com",
-                # Optional certificate metadata fields (will use CA defaults if not specified)
-                # "organization": "Custom Organization",
-                # "organization_unit": "Custom Department",
-                # "country": "US",
-                # "state": "California",
-                # "locality": "San Francisco",
-                # "email": "admin@custom.com",
-                "alternative_names": {
-                    "dns": [
-                        "www.example.com",
-                        "api.example.com",
-                    ],
-                    "ip": [
-                        "192.168.1.10",
-                    ],
-                },
-                "export": {
-                    "cert": "../path/to/export/cert/server1.pem",
-                    "chain": "../path/to/export/cert/server1-chain.pem",  # Optional full chain
-                },
-                "deploy": {
-                    # Optional deployment command with variable substitution
-                    "command": "cp ${cert} /etc/nginx/ssl/server1.pem "
-                    + "&& cp ${private_key} /etc/nginx/ssl/server1.key && systemctl reload nginx",
-                },
-                "validity": {
-                    "years": 1,
-                },
-                "key_algorithm": "RSA2048",  # Use appropriate format matching the schema
-            },
-        ]
-    }
-
-    # Create config directory if it doesn't exist
-    CONFIG_DIR.mkdir(exist_ok=True)
-
-    # Write CA config with header comment
-    ca_config_path = CONFIG_DIR / "ca.yaml"
-    with open(ca_config_path, "w") as f:
-        f.write("# ReactorCA Configuration\n")
-        f.write("# This file contains settings for the Certificate Authority\n")
-        f.write("# It is safe to modify this file directly\n\n")
-        yaml.dump(ca_config, f, default_flow_style=False, sort_keys=False)
-
-    # Write hosts config with header comment
-    hosts_config_path = CONFIG_DIR / "hosts.yaml"
-    with open(hosts_config_path, "w") as f:
-        f.write("# ReactorCA Hosts Configuration\n")
-        f.write("# This file contains settings for host certificates\n")
-        f.write("# It is safe to modify this file directly\n\n")
-        yaml.dump(hosts_config, f, default_flow_style=False, sort_keys=False)
-
-    console.print("✅ Created default configuration files:")
-    console.print(f"   CA config: [bold]{ca_config_path}[/bold]")
-    console.print(f"   Hosts config: [bold]{hosts_config_path}[/bold]")
-    console.print("Please review and customize these files before initializing the CA.")
-
-
-def load_yaml_config(config_file: str) -> dict[str, Any]:
-    """Load YAML configuration file."""
-    with open(config_file) as f:
-        return yaml.safe_load(f)
-
-
-def load_config() -> dict[str, Any]:
-    """Load CA configuration."""
-    config_path = CONFIG_DIR / "ca.yaml"
-
-    if not config_path.exists():
-        console.print(f"[bold red]Error:[/bold red] Configuration file not found: {config_path}")
-        console.print("Run 'ca config init' to create a default configuration.")
-        sys.exit(1)  # This exits the program
-
-    try:
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        if not isinstance(config, dict):
-            console.print("[bold red]Error:[/bold red] Invalid configuration format")
-            sys.exit(1)  # This exits the program
-
-        return config
-    except Exception as e:
-        console.print(f"[bold red]Error loading configuration:[/bold red] {str(e)}")
-        sys.exit(1)  # This exits the program
-
-    # For type checker only - this is never reached
-    # mypy doesn't understand that sys.exit prevents execution from continuing
-    raise AssertionError("Unreachable code")
-
-
-def load_hosts_config() -> dict[str, Any]:
-    """Load hosts configuration."""
-    hosts_path = CONFIG_DIR / "hosts.yaml"
-
-    if not hosts_path.exists():
-        console.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_path}")
-        return {"hosts": []}
-
-    try:
-        with open(hosts_path) as f:
-            hosts_config = yaml.safe_load(f)
-
-        if not isinstance(hosts_config, dict):
-            console.print("[bold red]Error:[/bold red] Invalid hosts configuration format")
-            return {"hosts": []}
-
-        return hosts_config
-    except Exception as e:
-        console.print(f"[bold red]Error loading hosts configuration:[/bold red] {str(e)}")
-        return {"hosts": []}  # Return empty hosts list as fallback
+    return validity_config.to_days()
 
 
 def read_password_from_file(password_file: str) -> str | None:
@@ -237,23 +88,28 @@ def read_password_from_file(password_file: str) -> str | None:
         return None
 
 
-def get_password(ca_init: bool = False) -> str | None:
+def get_password(store: "Store", ca_init: bool = False) -> str | None:
     """Get password for key encryption/decryption, with multiple sources.
 
     Args:
     ----
         ca_init: If True, ask for password confirmation. If False, validate against CA key.
+        store: Optional Store instance. If None, a default Store is created.
 
     Returns:
     -------
         Password string if successful, None otherwise
 
     """
+    # Load config
+    from reactor_ca.config import load_ca_config
+
     # Load config to check password settings
-    config = load_config()
-    min_length = config["ca"]["password"]["min_length"]
-    password_file = config["ca"]["password"].get("file", "")
-    env_var = config["ca"]["password"].get("env_var", "")
+    ca_config = load_ca_config(store.config.ca_config_path)
+    password_config = ca_config.password
+    min_length = password_config.min_length
+    password_file = password_config.file
+    env_var = password_config.env_var
 
     # If password is already cached, return it
     if _password_cache_container[0]:
@@ -264,7 +120,7 @@ def get_password(ca_init: bool = False) -> str | None:
         password = read_password_from_file(password_file)
         if password and len(password) >= min_length:
             # Validate password against CA key if not in initialization mode
-            if not ca_init and not _validate_password_against_ca_key(password):
+            if not ca_init and not _validate_password_against_ca_key(store, password):
                 return None
             _password_cache_container[0] = password
             return password
@@ -274,7 +130,7 @@ def get_password(ca_init: bool = False) -> str | None:
         password = os.environ[env_var]
         if password and len(password) >= min_length:
             # Validate password against CA key if not in initialization mode
-            if not ca_init and not _validate_password_against_ca_key(password):
+            if not ca_init and not _validate_password_against_ca_key(store, password):
                 return None
             _password_cache_container[0] = password
             return password
@@ -292,7 +148,7 @@ def get_password(ca_init: bool = False) -> str | None:
         return None
 
     # Validate password against CA key if not in initialization mode
-    if not ca_init and password is not None and not _validate_password_against_ca_key(password):
+    if not ca_init and password is not None and not _validate_password_against_ca_key(store, password):
         return None
 
     # Cache password for session
@@ -301,19 +157,25 @@ def get_password(ca_init: bool = False) -> str | None:
     return password
 
 
-def _validate_password_against_ca_key(password: str) -> bool:
+def _validate_password_against_ca_key(store: "Store", password: str) -> bool:
     """Validate a password against the CA key.
 
     Args:
     ----
         password: Password to validate
+        store: Optional Store instance. If None, a default Store is created.
 
     Returns:
     -------
         True if password is valid for the CA key, False otherwise
 
     """
-    ca_key_path = CA_DIR / "ca.key.enc"
+    from reactor_ca.store import get_store
+
+    if store is None:
+        store = get_store()
+
+    ca_key_path = store.get_ca_key_path()
 
     if not ca_key_path.exists():
         # No CA key to validate against
@@ -334,118 +196,16 @@ def _validate_password_against_ca_key(password: str) -> bool:
         return False
 
 
-def save_inventory(inventory: dict[str, Any]) -> None:
-    """Save certificate inventory."""
-    inventory_path = STORE_DIR / "inventory.yaml"
+def change_password(store: "Store") -> None:
+    """Change password for all encrypted keys.
 
-    try:
-        # Ensure the store directory exists
-        STORE_DIR.mkdir(exist_ok=True)
-        with open(inventory_path, "w") as f:
-            yaml.dump(inventory, f, default_flow_style=False, sort_keys=False)
-    except Exception as e:
-        console.print(f"[bold red]Error saving inventory:[/bold red] {str(e)}")
+    Args:
+    ----
+        store: Optional Store instance. If None, a default Store is created.
 
+    """
+    from reactor_ca.config import load_ca_config
 
-def load_inventory() -> dict[str, Any]:
-    """Load certificate inventory."""
-    inventory_path = STORE_DIR / "inventory.yaml"
-
-    if not inventory_path.exists():
-        # Create empty inventory
-        inventory = {
-            "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
-            "ca": {},
-            "hosts": [],
-        }
-        save_inventory(inventory)
-        return inventory
-
-    try:
-        with open(inventory_path) as f:
-            inventory = yaml.safe_load(f)
-
-        return inventory
-    except Exception as e:
-        console.print(f"[bold red]Error loading inventory:[/bold red] {str(e)}")
-        # Return empty inventory as fallback
-        return {
-            "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
-            "ca": {},
-            "hosts": [],
-        }
-
-
-def scan_cert_files() -> dict[str, Any]:
-    """Scan certificate files and update inventory."""
-    inventory = load_inventory()
-
-    # Check CA certificate
-    ca_cert_path = CA_DIR / "ca.crt"
-    if ca_cert_path.exists():
-        try:
-            with open(ca_cert_path, "rb") as f:
-                ca_cert = x509.load_pem_x509_certificate(f.read())
-
-            inventory["ca"] = {
-                "serial": format(ca_cert.serial_number, "x"),
-                "not_after": ca_cert.not_valid_after.isoformat(),
-                "fingerprint": "SHA256:" + ca_cert.fingerprint(hashes.SHA256()).hex(),
-            }
-        except Exception as e:
-            console.print(f"[bold red]Error loading CA certificate:[/bold red] {str(e)}")
-
-    # Check host certificates
-    if HOSTS_DIR.exists():
-        host_dirs = [d for d in HOSTS_DIR.iterdir() if d.is_dir()]
-
-        for host_dir in host_dirs:
-            hostname = host_dir.name
-            cert_path = host_dir / "cert.crt"
-
-            if cert_path.exists():
-                try:
-                    with open(cert_path, "rb") as f:
-                        cert = x509.load_pem_x509_certificate(f.read())
-
-                    # Find existing host entry or create new one
-                    for host in inventory.setdefault("hosts", []):
-                        if host["name"] == hostname:
-                            host["serial"] = format(cert.serial_number, "x")
-                            host["not_after"] = cert.not_valid_after.isoformat()
-                            host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
-                            # Keep renewal count if exists
-                            break
-                    else:
-                        # Add new entry if not found
-                        inventory.setdefault("hosts", []).append(
-                            {
-                                "name": hostname,
-                                "serial": format(cert.serial_number, "x"),
-                                "not_after": cert.not_valid_after.isoformat(),
-                                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                                "renewal_count": 0,
-                            }
-                        )
-                except Exception as e:
-                    console.print(f"[bold red]Error loading certificate for {hostname}:[/bold red] {str(e)}")
-
-    # Update last_update timestamp
-    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-
-    # Save updated inventory
-    save_inventory(inventory)
-
-    return inventory
-
-
-def update_inventory() -> dict[str, Any]:
-    """Update inventory based on certificate files."""
-    return scan_cert_files()
-
-
-def change_password() -> None:
-    """Change password for all encrypted keys."""
     # Get old password
     old_password = click.prompt(
         "Enter current password",
@@ -461,8 +221,8 @@ def change_password() -> None:
     )
 
     # Load config to check password requirements
-    config = load_config()
-    min_length = config["ca"]["password"]["min_length"]
+    ca_config = load_ca_config(store.config.ca_config_path)
+    min_length = ca_config.password.min_length
 
     # Validate new password length
     if len(new_password) < min_length:
@@ -473,13 +233,14 @@ def change_password() -> None:
     key_files = []
 
     # CA key
-    ca_key_path = CA_DIR / "ca.key.enc"
+    ca_key_path = store.get_ca_key_path()
     if ca_key_path.exists():
         key_files.append(ca_key_path)
 
     # Host keys
-    if HOSTS_DIR.exists():
-        for host_dir in [d for d in HOSTS_DIR.iterdir() if d.is_dir()]:
+    hosts_dir = store.config.hosts_dir
+    if hosts_dir.exists():
+        for host_dir in [d for d in hosts_dir.iterdir() if d.is_dir()]:
             key_path = host_dir / "cert.key.enc"
             if key_path.exists():
                 key_files.append(key_path)
@@ -725,11 +486,12 @@ def format_certificate_expiry(days_remaining: int) -> str:
         return f"{days_remaining}"
 
 
-def get_host_paths(hostname: str) -> tuple[Path, Path, Path]:
+def get_host_paths(store: "Store", hostname: str) -> tuple[Path, Path, Path]:
     """Get standard paths for a host's certificates and keys.
 
     Args:
     ----
+        store: Store instance
         hostname: The hostname to get paths for
 
     Returns:
@@ -737,9 +499,9 @@ def get_host_paths(hostname: str) -> tuple[Path, Path, Path]:
         Tuple containing (host_dir, cert_path, key_path)
 
     """
-    host_dir = HOSTS_DIR / hostname
-    cert_path = host_dir / "cert.crt"
-    key_path = host_dir / "cert.key.enc"
+    host_dir = store.get_host_dir(hostname)
+    cert_path = store.get_host_cert_path(hostname)
+    key_path = store.get_host_key_path(hostname)
     return host_dir, cert_path, key_path
 
 
@@ -759,14 +521,14 @@ def create_subject_name(subject_identity: SubjectIdentity) -> x509.Name:
 
 
 def create_subject_from_config(
-    hostname: str, config: dict[str, Any], host_config: HostConfig | None = None
+    hostname: str, ca_config: CAConfig, host_config: HostConfig | None = None
 ) -> x509.Name:
     """Create a certificate subject from CA config and optional host config.
 
     Args:
     ----
         hostname: The hostname to use as common name
-        config: The CA configuration containing default values
+        ca_config: The CA configuration containing default values
         host_config: Optional host configuration that can override CA defaults
 
     Returns:
@@ -777,16 +539,14 @@ def create_subject_from_config(
     # Create a SubjectIdentity with fields from host_config (if available) or from CA config
     subject = SubjectIdentity(
         common_name=hostname,
-        organization=host_config.organization or config["ca"]["organization"]
-        if host_config
-        else config["ca"]["organization"],
-        organization_unit=host_config.organization_unit or config["ca"]["organization_unit"]
-        if host_config
-        else config["ca"]["organization_unit"],
-        country=host_config.country or config["ca"]["country"] if host_config else config["ca"]["country"],
-        state=host_config.state or config["ca"]["state"] if host_config else config["ca"]["state"],
-        locality=host_config.locality or config["ca"]["locality"] if host_config else config["ca"]["locality"],
-        email=host_config.email or config["ca"]["email"] if host_config else config["ca"]["email"],
+        organization=host_config.organization if host_config and host_config.organization else ca_config.organization,
+        organization_unit=host_config.organization_unit
+        if host_config and host_config.organization_unit
+        else ca_config.organization_unit,
+        country=host_config.country if host_config and host_config.country else ca_config.country,
+        state=host_config.state if host_config and host_config.state else ca_config.state,
+        locality=host_config.locality if host_config and host_config.locality else ca_config.locality,
+        email=host_config.email if host_config and host_config.email else ca_config.email,
     )
 
     return subject.to_x509_name()
@@ -1271,6 +1031,7 @@ def is_cert_revoked(cert: x509.Certificate, crl: x509.CertificateRevocationList)
     return False
 
 
+# This function is now in store.py
 def update_inventory_for_cert(
     inventory: dict[str, Any],
     hostname: str,
@@ -1278,67 +1039,33 @@ def update_inventory_for_cert(
     rekeyed: bool = False,
     renewal_count_increment: int = 1,
 ) -> dict[str, Any]:
-    """Update certificate inventory with new certificate information.
+    """Update certificate inventory with new certificate information."""
+    from reactor_ca.store import get_store
 
-    Args:
-    ----
-        inventory: The current inventory dictionary
-        hostname: The hostname for this certificate
-        cert: The certificate to add to inventory
-        rekeyed: Whether this certificate was generated with a new key
-        renewal_count_increment: Amount to increment the renewal count
-
-    Returns:
-    -------
-        Updated inventory dictionary
-
-    """
-    # Find existing host entry or create new one
-    for host in inventory.setdefault("hosts", []):
-        if host["name"] == hostname:
-            host["serial"] = format(cert.serial_number, "x")
-            host["not_after"] = cert.not_valid_after.isoformat()
-            host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
-            host["renewal_count"] = host.get("renewal_count", 0) + renewal_count_increment
-            if rekeyed:
-                host["rekeyed"] = True
-            break
-    else:
-        # Add new entry if not found
-        inventory.setdefault("hosts", []).append(
-            {
-                "name": hostname,
-                "serial": format(cert.serial_number, "x"),
-                "not_after": cert.not_valid_after.isoformat(),
-                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                "renewal_count": 1,
-                "rekeyed": rekeyed,
-            }
-        )
-
-    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-    return inventory
+    store = get_store()
+    return store.update_inventory_for_cert(hostname, cert, rekeyed, renewal_count_increment)
 
 
-def get_host_config_by_name(hostname: str) -> dict[str, Any] | None:
+# This function is now in config.py
+def get_host_config_by_name(config: "Config", hostname: str) -> HostConfig | None:
     """Get host configuration for a specific hostname.
 
     Args:
     ----
-        hostname: The hostname to look for in configuration
+        config: Config instance
+        hostname: The hostname to get configuration for
 
     Returns:
     -------
-        Host configuration dictionary if found, None otherwise
+        HostConfig object for the specified host, or None if not found
 
     """
-    hosts_config = load_hosts_config()
+    from reactor_ca.config import get_host_config
 
-    for host in hosts_config.get("hosts", []):
-        if host["name"] == hostname:
-            return host
-
-    return None
+    try:
+        return get_host_config(hostname, config.hosts_config_path)
+    except ValueError:
+        return None
 
 
 def write_private_key_to_temp_file(private_key: PrivateKeyTypes, hostname: str) -> tuple[str, list[str]]:
@@ -1379,11 +1106,12 @@ def write_private_key_to_temp_file(private_key: PrivateKeyTypes, hostname: str) 
     return temp_key_path, temp_files
 
 
-def run_deploy_command(hostname: str, command: str) -> bool:
+def run_deploy_command(store: "Store", hostname: str, command: str) -> bool:
     """Run a deployment command for a host.
 
     Args:
     ----
+        store: Store instance
         hostname: The hostname for the certificate
         command: The command to run with variable substitution
 
@@ -1404,7 +1132,7 @@ def run_deploy_command(hostname: str, command: str) -> bool:
         modified_command = command
 
         # Get standard paths for this host
-        host_dir, cert_path, key_path = get_host_paths(hostname)
+        host_dir, cert_path, key_path = get_host_paths(store, hostname)
 
         # Replace ${cert} with certificate path if it exists
         if "${cert}" in command and cert_path.exists():
@@ -1413,7 +1141,7 @@ def run_deploy_command(hostname: str, command: str) -> bool:
         # Handle ${private_key} if it exists in the command
         if "${private_key}" in command and key_path.exists():
             # Get password and decrypt the key
-            password = get_password()
+            password = get_password(store)
             if not password:
                 console.print("[bold red]Error:[/bold red] Cannot decrypt private key - no password provided")
                 return False

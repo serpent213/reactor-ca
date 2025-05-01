@@ -2,10 +2,7 @@
 
 from pathlib import Path
 
-from reactor_ca.config_validator import (
-    validate_ca_config,
-    validate_hosts_config,
-)
+from reactor_ca.config import validate_config
 
 
 def test_example_ca_config_is_valid() -> None:
@@ -17,7 +14,7 @@ def test_example_ca_config_is_valid() -> None:
     assert example_ca_config_path.exists(), "Example CA config file does not exist"
 
     # Validate against schema
-    valid, errors = validate_ca_config(str(example_ca_config_path))
+    valid, errors = validate_config(example_ca_config_path, "ca_config_schema.yaml")
 
     # Check result
     assert valid is True, f"Example CA config does not validate against schema: {errors}"
@@ -32,7 +29,7 @@ def test_example_hosts_config_is_valid() -> None:
     assert example_hosts_config_path.exists(), "Example hosts config file does not exist"
 
     # Validate against schema
-    valid, errors = validate_hosts_config(str(example_hosts_config_path))
+    valid, errors = validate_config(example_hosts_config_path, "hosts_schema.yaml")
 
     # Check result
     assert valid is True, f"Example hosts config does not validate against schema: {errors}"

@@ -63,12 +63,17 @@ check = { sequence = [
     "typecheck",
     "test",
 ], help = "Run all checks and tests" }
+fix = { sequence = [
+    "format",
+    { cmd = "ruff check --fix --unsafe-fixes ca ." }
+], help = "Fix format and lint (unsafe)" }
 
 [tool.ruff]
 line-length = 118
 target-version = "py312"
-select = ["E", "F", "I", "N", "W", "B", "PL", "C", "D", "UP", "ANN"]
-# Explicitly select rules to avoid conflicts
+# E402 for imports on top, seems to be disabled by default
+select = ["E", "E402", "F", "I", "N", "W", "B", "PL", "C", "D", "UP", "ANN"]
+# Explicitly select line spacing rules to avoid conflicts
 ignore = ["D203", "D213"]
 
 [tool.ruff.mccabe]
@@ -78,6 +83,7 @@ max-complexity = 15 # Default is 10
 max-returns = 12    # Default is 6
 max-branches = 18   # Default is 12
 max-statements = 60 # Default is 50
+max-args = 7        # Default is 5
 
 [tool.ruff.per-file-ignores]
 # No typing for tests for now, allow constant values

@@ -3,7 +3,7 @@
 import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import click
 from cryptography import x509
@@ -25,23 +25,28 @@ from reactor_ca.ca_operations import (
     get_hash_algorithm,
     verify_key_algorithm,
 )
-from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.config import (
+    Config,
+    get_host_config,
+    load_ca_config,
+    load_config,
+    validate_config_before_operation,
+)
+from reactor_ca.config import (
+    load_hosts_config_dict as load_hosts_config,
+)
 from reactor_ca.models import (
     AlternativeNames,
     CertificateParams,
     HostConfig,
+    SubjectIdentity,
 )
-from reactor_ca.paths import CA_DIR
-from reactor_ca.store import get_store
+from reactor_ca.store import Store, get_store
 from reactor_ca.utils import (
     add_standard_extensions,
-    calculate_validity_days,
     create_certificate_builder,
-    create_subject_from_config,
     format_certificate_expiry,
     get_host_paths,
-    load_config,
-    load_hosts_config,
     process_all_sans,
     run_deploy_command,
     sign_certificate,
@@ -76,20 +81,50 @@ def load_ca_key_cert() -> tuple[PrivateKeyTypes, x509.Certificate]:
     return ca_key, ca_cert
 
 
-def create_certificate_with_params(params: CertificateParams) -> x509.Certificate:
+def create_certificate_with_params(
+    params: CertificateParams, config: Union["Config", None] = None
+) -> x509.Certificate:
     """Create a certificate using parameters object."""
-    store = get_store()
-    config = store.load_config()
+    from reactor_ca.config import Config
+
+    if config is None:
+        config = Config.create()
+
+    ca_config = load_ca_config(config.ca_config_path)
 
     # Get hash algorithm from config or parameter
     hash_algorithm = params.hash_algorithm
     if hash_algorithm is None:
-        hash_algorithm = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+        hash_algorithm = ca_config.hash_algorithm
 
     hash_algo = get_hash_algorithm(hash_algorithm)
 
-    # Create subject using utility function
-    subject = create_subject_from_config(params.hostname, config, params.host_config)
+    # Create subject using host params data, using host_config when available
+    host_config = params.host_config
+
+    # Use host_config fields when available, falling back to CA config
+    organization = host_config.organization if host_config and host_config.organization else ca_config.organization
+    organization_unit = (
+        host_config.organization_unit
+        if host_config and host_config.organization_unit
+        else ca_config.organization_unit
+    )
+    country = host_config.country if host_config and host_config.country else ca_config.country
+    state = host_config.state if host_config and host_config.state else ca_config.state
+    locality = host_config.locality if host_config and host_config.locality else ca_config.locality
+    email = host_config.email if host_config and host_config.email else ca_config.email
+
+    # Create subject identity
+    subject_identity = SubjectIdentity(
+        common_name=params.hostname,
+        organization=organization,
+        organization_unit=organization_unit,
+        country=country,
+        state=state,
+        locality=locality,
+        email=email,
+    )
+    subject = subject_identity.to_x509_name()
 
     # Create certificate builder
     cert_builder = create_certificate_builder(
@@ -157,6 +192,7 @@ def create_certificate(  # noqa: PLR0913
 
 
 def export_certificate(
+    store: "Store",
     hostname: str,
     certificate: x509.Certificate,
     key: PrivateKeyTypes | None = None,
@@ -164,11 +200,13 @@ def export_certificate(
     no_export: bool = False,
 ) -> bool:
     """Export a certificate and optionally its private key and chain to the configured location."""
+    # Store is now required and first parameter
+
     if no_export:
         console.print(f"Certificate export skipped for [bold]{hostname}[/bold] (--no-export flag)")
         return True  # Return True to allow deployment to proceed
 
-    hosts_config = load_hosts_config()
+    hosts_config = store.load_hosts_config()
     host_config = None
 
     for host in hosts_config.get("hosts", []):
@@ -216,10 +254,12 @@ def export_certificate(
         chain_export_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Load CA certificate
-        ca_cert_path = CA_DIR / "ca.crt"
         try:
-            with open(ca_cert_path, "rb") as f:
-                ca_cert_data = f.read()
+            ca_cert = store.load_ca_cert()
+            if ca_cert is None:
+                raise FileNotFoundError("CA certificate not found")
+
+            ca_cert_data = ca_cert.public_bytes(encoding=Encoding.PEM)
 
             # Write chain certificate (host cert + CA cert)
             with open(chain_export_path, "wb") as f:
@@ -237,9 +277,11 @@ def export_certificate(
     return export_success or not (cert_path or chain_path)
 
 
-def deploy_host(hostname: str) -> bool:
+def deploy_host(store: "Store", hostname: str) -> bool:
     """Run the deployment script for a host."""
-    hosts_config = load_hosts_config()
+    # Store is now required and first parameter
+
+    hosts_config = store.load_hosts_config()
     host_config = None
 
     for host in hosts_config.get("hosts", []):
@@ -257,7 +299,7 @@ def deploy_host(hostname: str) -> bool:
         return False
 
     deploy_command = host_config["deploy"]["command"]
-    return run_deploy_command(hostname, deploy_command)
+    return run_deploy_command(store, hostname, deploy_command)
 
 
 def extract_hostname_from_csr(csr: x509.CertificateSigningRequest) -> str | None:
@@ -449,17 +491,17 @@ def process_csr(
 
 def _prepare_host_config_object(
     hostname: str,
-    host_config: dict[str, Any],
+    host_config: dict[str, Any] | HostConfig,
     alt_names: AlternativeNames,
     key_algorithm: str,
     hash_algorithm: str | None,
 ) -> HostConfig:
-    """Prepare a HostConfig object from dictionary configuration.
+    """Prepare a HostConfig object from dictionary configuration or HostConfig object.
 
     Args:
     ----
         hostname: The hostname
-        host_config: Dictionary with host configuration
+        host_config: Dictionary with host configuration or HostConfig object
         alt_names: Alternative names object
         key_algorithm: Key algorithm to use
         hash_algorithm: Hash algorithm to use
@@ -469,6 +511,23 @@ def _prepare_host_config_object(
         HostConfig object
 
     """
+    # If already a HostConfig, just return it with updated fields
+    if isinstance(host_config, HostConfig):
+        return HostConfig(
+            name=hostname,
+            common_name=host_config.common_name,
+            organization=host_config.organization,
+            organization_unit=host_config.organization_unit,
+            country=host_config.country,
+            state=host_config.state,
+            locality=host_config.locality,
+            email=host_config.email,
+            alternative_names=alt_names if not alt_names.is_empty() else None,
+            key_algorithm=key_algorithm,
+            hash_algorithm=hash_algorithm,
+        )
+
+    # Otherwise, treat as dictionary
     return HostConfig(
         name=hostname,
         common_name=host_config.get("common_name", hostname),
@@ -625,16 +684,12 @@ def _create_new_key(hostname: str, key_algorithm: str) -> tuple[PrivateKeyTypes 
 
 def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Issue or renew a certificate for a host."""
-    # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before issuing certificates."
-        )
-        return False
-
     # Initialize the store
     store = get_store()
+
+    # Validate configuration first
+    if not validate_config_before_operation(store.config):
+        return False
 
     try:
         ca_key, ca_cert = load_ca_key_cert()
@@ -643,20 +698,14 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         return False
 
     # Check if hostname exists in hosts config
-    hosts_config = store.load_hosts_config()
-    host_config = None
-
-    for host in hosts_config.get("hosts", []):
-        if host["name"] == hostname:
-            host_config = host
-            break
-
-    if not host_config:
+    try:
+        host_config = get_host_config(hostname)
+    except ValueError:
         console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
     # Check if certificate and key exist
-    key_algorithm = host_config.get("key_algorithm", "RSA2048")
+    key_algorithm = host_config.key_algorithm if hasattr(host_config, "key_algorithm") else "RSA2048"
     is_new = not (store.host_cert_exists(hostname) and store.host_key_exists(hostname))
 
     # Handle key creation or loading
@@ -672,15 +721,22 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         return False
 
     # Get validity period and prepare alternative names
-    validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
-    alt_names = _prepare_alternative_names(host_config.get("alternative_names", {}))
+    # Convert to new validity config approach
+    if hasattr(host_config, "validity"):
+        validity_days = host_config.validity.to_days()
+    else:
+        validity_days = 365
+    if hasattr(host_config, "alternative_names") and host_config.alternative_names:
+        alt_names = host_config.alternative_names
+    else:
+        alt_names = AlternativeNames()
 
     # Log operation
     action = "Generating" if is_new else "Renewing"
     console.print(f"{action} certificate for {hostname} valid for {validity_days} days...")
 
     # Get hash algorithm and prepare host config object
-    hash_algorithm = host_config.get("hash_algorithm")
+    hash_algorithm = host_config.hash_algorithm if hasattr(host_config, "hash_algorithm") else None
     host_config_obj = _prepare_host_config_object(
         hostname=hostname,
         host_config=host_config,
@@ -702,7 +758,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     )
 
     # Get certificate and key paths
-    host_dir, cert_path, key_path = get_host_paths(hostname)
+    host_dir, cert_path, key_path = get_host_paths(store, hostname)
 
     # Save certificate and key
     save_params = CertificateSaveParams(
@@ -717,11 +773,12 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     _save_certificate_and_key(save_params)
 
     # Export certificate
-    export_certificate(hostname, cert, no_export=no_export)
+    store = get_store()
+    export_certificate(store, hostname, cert, no_export=no_export)
 
     # Deploy if requested
     if do_deploy:
-        deploy_host(hostname)
+        deploy_host(store, hostname)
 
     # Update inventory is done automatically by the store when saving certificates
     inventory_store = get_store()
@@ -733,16 +790,13 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
 
 def issue_all_certificates(no_export: bool = False, do_deploy: bool = False) -> bool:
     """Issue or renew certificates for all hosts in configuration."""
-    # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before issuing certificates."
-        )
-        return False
-
     # Initialize the store
     store = get_store()
+
+    # Validate configuration first
+    if not validate_config_before_operation(store.config):
+        return False
+
     hosts_config = store.load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
@@ -774,12 +828,11 @@ def issue_all_certificates(no_export: bool = False, do_deploy: bool = False) -> 
 
 def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Generate a new key and certificate for a host."""
+    # Initialize the store
+    store = get_store()
+
     # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before rekeying certificates."
-        )
+    if not validate_config_before_operation(store.config):
         return False
 
     try:
@@ -802,24 +855,31 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
         return False
 
     # Get host paths from utility function
-    host_dir, cert_path, key_path = get_host_paths(hostname)
+    host_dir, cert_path, key_path = get_host_paths(store, hostname)
     host_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate new key
-    key_algorithm = host_config.get("key_algorithm", "RSA2048")
+    key_algorithm = host_config.key_algorithm if hasattr(host_config, "key_algorithm") else "RSA2048"
     private_key, password = _create_new_key(hostname, key_algorithm)
     if not private_key or not password:
         return False
 
     # Get validity period and prepare alternative names
-    validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
-    alt_names = _prepare_alternative_names(host_config.get("alternative_names", {}))
+    # Convert to new validity config approach
+    if hasattr(host_config, "validity"):
+        validity_days = host_config.validity.to_days()
+    else:
+        validity_days = 365
+    if hasattr(host_config, "alternative_names") and host_config.alternative_names:
+        alt_names = host_config.alternative_names
+    else:
+        alt_names = AlternativeNames()
 
     # Log operation
     console.print(f"Generating certificate for {hostname} valid for {validity_days} days...")
 
     # Get hash algorithm and prepare host config object
-    hash_algorithm = host_config.get("hash_algorithm")
+    hash_algorithm = host_config.hash_algorithm if hasattr(host_config, "hash_algorithm") else None
     host_config_obj = _prepare_host_config_object(
         hostname=hostname,
         host_config=host_config,
@@ -856,11 +916,12 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     console.print(f"✅ Certificate and key rekeyed successfully for [bold]{hostname}[/bold]")
 
     # Export certificate
-    export_certificate(hostname, cert, no_export=no_export)
+    store = get_store()
+    export_certificate(store, hostname, cert, no_export=no_export)
 
     # Deploy if requested
     if do_deploy:
-        deploy_host(hostname)
+        deploy_host(store, hostname)
 
     # Update inventory is done automatically by the store when saving certificates
     inventory_store = get_store()
@@ -872,16 +933,13 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
 
 def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
     """Rekey all hosts in configuration."""
-    # Validate configuration first
-    if not validate_config_before_operation():
-        console.print(
-            "[bold red]Error:[/bold red] "
-            + "Configuration validation failed. Please correct the configuration before rekeying certificates."
-        )
-        return False
-
     # Initialize the store
     store = get_store()
+
+    # Validate configuration first
+    if not validate_config_before_operation(store.config):
+        return False
+
     hosts_config = store.load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
@@ -1247,7 +1305,10 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
 
 def deploy_all_hosts() -> bool:
     """Deploy all host certificates."""
-    hosts_config = load_hosts_config()
+    # Initialize the store
+    store = get_store()
+
+    hosts_config = store.load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
     hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
@@ -1261,7 +1322,7 @@ def deploy_all_hosts() -> bool:
     for hostname in hosts:
         console.print(f"\nDeploying certificate for [bold]{hostname}[/bold]...")
         try:
-            if deploy_host(hostname):
+            if deploy_host(store, hostname):
                 success_count += 1
             else:
                 error_count += 1

@@ -48,17 +48,34 @@ requires_openssl = pytest.mark.skipif(not check_openssl_available(), reason="Ope
 def temp_dir():
     """Create a temporary directory for testing."""
     temp_dir = tempfile.mkdtemp()
-    original_dir = os.getcwd()
-    os.chdir(temp_dir)
 
     # Create necessary directories
-    os.makedirs("config", exist_ok=True)
-    os.makedirs("store", exist_ok=True)
+    config_dir = os.path.join(temp_dir, "config")
+    store_dir = os.path.join(temp_dir, "store")
+    ca_dir = os.path.join(store_dir, "ca")
+    hosts_dir = os.path.join(store_dir, "hosts")
+
+    # Create all needed directories
+    os.makedirs(config_dir, exist_ok=True)
+    os.makedirs(ca_dir, exist_ok=True)
+    os.makedirs(hosts_dir, exist_ok=True)
+
+    # Set env vars to use this temp dir
+    os.environ["REACTOR_CA_ROOT"] = temp_dir
+
+    # Initialize store with this temp dir
+    from reactor_ca.config import Config
+    from reactor_ca.store import get_store
+
+    config = Config.create(root_dir=temp_dir)
+    store = get_store(config)
+    store.init()
 
     yield temp_dir
 
     # Clean up
-    os.chdir(original_dir)
+    if "REACTOR_CA_ROOT" in os.environ:
+        del os.environ["REACTOR_CA_ROOT"]
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -69,6 +86,14 @@ def create_test_configs(temp_dir):
     from reactor_ca.utils import _password_cache_container
 
     _password_cache_container[0] = None
+
+    # Create config and export directories
+    config_dir = os.path.join(temp_dir, "config")
+    export_dir = os.path.join(temp_dir, "exported")
+
+    # Create directories
+    os.makedirs(config_dir, exist_ok=True)
+    os.makedirs(export_dir, exist_ok=True)
 
     # CA config with minimal parameters for quick testing
     ca_config = {
@@ -106,8 +131,8 @@ def create_test_configs(temp_dir):
                     "ip": ["192.168.1.10"],
                 },
                 "export": {
-                    "cert": f"{temp_dir}/exported/testserver.crt",
-                    "chain": f"{temp_dir}/exported/testserver-chain.crt",
+                    "cert": f"{export_dir}/testserver.crt",
+                    "chain": f"{export_dir}/testserver-chain.crt",
                 },
                 "deploy": {
                     "command": "echo 'Certificate deployed'",
@@ -120,16 +145,13 @@ def create_test_configs(temp_dir):
         ]
     }
 
-    # Create export directory
-    os.makedirs(f"{temp_dir}/exported", exist_ok=True)
-
     # Write CA config
-    ca_config_path = os.path.join("config", "ca.yaml")
+    ca_config_path = os.path.join(config_dir, "ca.yaml")
     with open(ca_config_path, "w") as f:
         yaml.dump(ca_config, f)
 
     # Write hosts config
-    hosts_config_path = os.path.join("config", "hosts.yaml")
+    hosts_config_path = os.path.join(config_dir, "hosts.yaml")
     with open(hosts_config_path, "w") as f:
         yaml.dump(hosts_config, f)
 
@@ -152,24 +174,24 @@ class TestReactorCAIntegration:
     def test_config_init(self, temp_dir) -> None:
         """Test initializing configuration."""
         runner = CliRunner()
-        result = runner.invoke(cli, ["config", "init"])
+        result = runner.invoke(cli, ["--root", temp_dir, "config", "init"])
 
         assert result.exit_code == 0
-        assert os.path.exists(os.path.join("config", "ca.yaml"))
-        assert os.path.exists(os.path.join("config", "hosts.yaml"))
+        assert os.path.exists(os.path.join(temp_dir, "config", "ca.yaml"))
+        assert os.path.exists(os.path.join(temp_dir, "config", "hosts.yaml"))
 
     def test_ca_create(self, temp_dir, create_test_configs) -> None:
         """Test creating a new CA."""
         # Create CA (configs are already created by fixture)
         runner = CliRunner()
-        result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+        result = runner.invoke(cli, ["--root", temp_dir, "ca", "issue"], input="testpassword\ntestpassword\n")
 
         assert result.exit_code == 0
-        assert os.path.exists(os.path.join("store", "ca", "ca.crt"))
-        assert os.path.exists(os.path.join("store", "ca", "ca.key.enc"))
+        assert os.path.exists(os.path.join(temp_dir, "store", "ca", "ca.crt"))
+        assert os.path.exists(os.path.join(temp_dir, "store", "ca", "ca.key.enc"))
 
         # Check CA information
-        info_result = runner.invoke(cli, ["ca", "info", "--json"])
+        info_result = runner.invoke(cli, ["--root", temp_dir, "ca", "info", "--json"])
         assert info_result.exit_code == 0
 
         # Parse JSON output
@@ -182,24 +204,26 @@ class TestReactorCAIntegration:
         """Test a basic workflow with CA creation and certificate issuance."""
         runner = CliRunner()
 
-        # Create CA
-        ca_result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+        # Create CA with explicit path
+        ca_result = runner.invoke(cli, ["--root", temp_dir, "ca", "issue"], input="testpassword\ntestpassword\n")
         assert ca_result.exit_code == 0
 
-        # Issue certificate for the test host
-        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
+        # Issue certificate for the test host with explicit path
+        cert_result = runner.invoke(
+            cli, ["--root", temp_dir, "host", "issue", "testserver.local"], input="testpassword\ntestpassword\n"
+        )
         assert cert_result.exit_code == 0
 
         # Verify certificate was created
-        assert os.path.exists(os.path.join("store", "hosts", "testserver.local", "cert.crt"))
-        assert os.path.exists(os.path.join("store", "hosts", "testserver.local", "cert.key.enc"))
+        assert os.path.exists(os.path.join(temp_dir, "store", "hosts", "testserver.local", "cert.crt"))
+        assert os.path.exists(os.path.join(temp_dir, "store", "hosts", "testserver.local", "cert.key.enc"))
 
         # Verify export was successful
         assert os.path.exists(os.path.join(temp_dir, "exported", "testserver.crt"))
         assert os.path.exists(os.path.join(temp_dir, "exported", "testserver-chain.crt"))
 
-        # List certificates
-        list_result = runner.invoke(cli, ["host", "list", "--json"])
+        # List certificates with explicit path
+        list_result = runner.invoke(cli, ["--root", temp_dir, "host", "list", "--json"])
         assert list_result.exit_code == 0
 
         # Parse JSON output
@@ -213,16 +237,18 @@ class TestReactorCAIntegration:
         """Test certificate verification using OpenSSL."""
         runner = CliRunner()
 
-        # Create CA
-        ca_result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+        # Create CA with explicit path
+        ca_result = runner.invoke(cli, ["--root", temp_dir, "ca", "issue"], input="testpassword\ntestpassword\n")
         assert ca_result.exit_code == 0
 
-        # Issue certificate for the test host
-        cert_result = runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
+        # Issue certificate for the test host with explicit path
+        cert_result = runner.invoke(
+            cli, ["--root", temp_dir, "host", "issue", "testserver.local"], input="testpassword\ntestpassword\n"
+        )
         assert cert_result.exit_code == 0
 
-        # Get file paths
-        ca_cert_path = os.path.join("store", "ca", "ca.crt")
+        # Get file paths (use absolute paths with temp_dir)
+        ca_cert_path = os.path.join(temp_dir, "store", "ca", "ca.crt")
         host_cert_path = os.path.join(temp_dir, "exported", "testserver.crt")
 
         # Verify certificate with OpenSSL
@@ -252,9 +278,6 @@ class TestReactorCAIntegration:
         subject_verify_result = run_command(f"openssl x509 -in {host_cert_path} -noout -subject")
         assert subject_verify_result.returncode == 0
 
-        # Print the actual output for debugging
-        print(f"Subject output: {subject_verify_result.stdout}")
-
         # These fields should be inherited from CA
         assert "O=Test Org" in subject_verify_result.stdout
         assert "C=US" in subject_verify_result.stdout
@@ -269,13 +292,15 @@ class TestReactorCAIntegration:
         """Test renewing and rekeying certificates."""
         runner = CliRunner()
 
-        # Create CA and issue certificate
-        runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
-        runner.invoke(cli, ["host", "issue", "testserver.local"], input="testpassword\ntestpassword\n")
+        # Create CA and issue certificate with explicit paths
+        runner.invoke(cli, ["--root", temp_dir, "ca", "issue"], input="testpassword\ntestpassword\n")
+        runner.invoke(
+            cli, ["--root", temp_dir, "host", "issue", "testserver.local"], input="testpassword\ntestpassword\n"
+        )
 
-        # Get initial certificate data
-        ca_cert_path = os.path.join("store", "ca", "ca.crt")
-        host_cert_path = os.path.join("store", "hosts", "testserver.local", "cert.crt")
+        # Get initial certificate data using absolute paths
+        ca_cert_path = os.path.join(temp_dir, "store", "ca", "ca.crt")
+        host_cert_path = os.path.join(temp_dir, "store", "hosts", "testserver.local", "cert.crt")
 
         with open(ca_cert_path, "rb") as f:
             initial_ca_cert = x509.load_pem_x509_certificate(f.read())
@@ -283,11 +308,11 @@ class TestReactorCAIntegration:
         with open(host_cert_path, "rb") as f:
             initial_host_cert = x509.load_pem_x509_certificate(f.read())
 
-        # Renew CA certificate (now using 'ca issue' instead of 'ca renew')
-        runner.invoke(cli, ["ca", "issue"], input="testpassword\n")
+        # Renew CA certificate with explicit paths
+        runner.invoke(cli, ["--root", temp_dir, "ca", "issue"], input="testpassword\n")
 
-        # Rekey host certificate
-        runner.invoke(cli, ["host", "rekey", "testserver.local"], input="testpassword\n")
+        # Rekey host certificate with explicit paths
+        runner.invoke(cli, ["--root", temp_dir, "host", "rekey", "testserver.local"], input="testpassword\n")
 
         # Load renewed certificates
         with open(ca_cert_path, "rb") as f:

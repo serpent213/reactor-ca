@@ -8,10 +8,12 @@ ReactorCA is a Python CLI tool to manage a homelab Certificate Authority.
 
 ```bash
 # Format code
-poetry run poe format
+# USE `fix` INSTEAD!
+# poetry run poe format
 
 # Run linting
-poetry run poe lint
+# USE `fix` INSTEAD!
+# poetry run poe lint
 
 # Run type checking
 poetry run poe typecheck
@@ -21,6 +23,9 @@ poetry run poe test
 
 # Run all checks and tests
 poetry run poe check
+
+# Fix format and lint (unsafe)
+poetry run poe fix
 ```
 
 Use `rg` instead of `grep` for code searching.
@@ -74,6 +79,7 @@ Directory structure:
 
 - Python script with main entry point called `ca`
 - Modern Python 3.12+ and X.509 best practices
+- Keep all imports at top of file, order does not matter
 - Python environment provided by Nix DevEnv which uses Poetry for dependency management
 - YAML configuration validation using Yamale schemas
 - Key dependencies:
@@ -91,17 +97,18 @@ ca
 │   ├── init       # Generate initial config files
 │   └── validate   # Validate config files
 ├── ca             # CA management
-│   ├── create     # Create a new CA
+│   ├── issue      # Create/renew a CA
 │   ├── import     # Import existing CA (cert+key)
 │   ├── renew      # Renew the CA certificate
 │   ├── rekey      # Generate new key and renew CA certificate
 │   └── info       # Show CA info
 ├── host           # Host certificate operations
-│   ├── issue      # Issue/renew certificates
-│   ├── import     # Import existing key
+│   ├── issue      # Create/renew certificates
+│   ├── import-key # Import existing key
 │   ├── export-key # Export unencrypted private key
 │   ├── rekey      # Generate new key and issue certificate
 │   ├── list       # List all certificates
+│   ├── clean      # Remove unconfigured hosts
 │   ├── deploy     # Deploy certificates
 │   └── sign-csr   # Sign CSR (standalone operation)
 └── util           # Utility operations

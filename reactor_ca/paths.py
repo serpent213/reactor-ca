@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
-# Define central directory paths
-ROOT_DIR = Path(".")
-CONFIG_DIR = ROOT_DIR / "config"
-STORE_DIR = ROOT_DIR / "store"
-CA_DIR = STORE_DIR / "ca"
-HOSTS_DIR = STORE_DIR / "hosts"
+# Environment variable names
+ENV_ROOT_DIR = "REACTOR_CA_ROOT"
+ENV_CONFIG_DIR = "REACTOR_CA_CONFIG_DIR"
+ENV_STORE_DIR = "REACTOR_CA_STORE_DIR"
+
+# Schema directory is always relative to the code, not user configuration
+SCHEMAS_DIR = Path(__file__).parent / "schemas"

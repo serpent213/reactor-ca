@@ -31,49 +31,62 @@ def test_cli_help() -> None:
 
 def test_ca_info() -> None:
     """Test 'ca info' command after initializing a CA."""
+    from tests.helpers import assert_cert_paths, setup_test_env
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Change to temporary directory
-        original_dir = os.getcwd()
-        os.chdir(tmpdir)
+        # Setup test environment with proper paths
+        store = setup_test_env(tmpdir)
+
+        # Create directories needed for tests
+        config_dir = Path(tmpdir) / "config"
+        config_dir.mkdir(exist_ok=True)
+
+        # Create sample config file directly to match expected format
+        config_content = """
+ca:
+  common_name: Test CA
+  organization: Test Org
+  organization_unit: IT
+  country: US
+  state: Test State
+  locality: Test City
+  email: test@example.com
+  key_algorithm: RSA2048
+  validity:
+    days: 365
+  password:
+    min_length: 8
+    env_var: TEST_CA_PASSWORD
+"""
+
+        # Write the config file directly
+        with open(store.config.ca_config_path, "w") as f:
+            f.write(config_content)
+
+        # Set environment variable for password
+        os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
         try:
-            # Create necessary directories
-            Path("config").mkdir(exist_ok=True)
-            Path("store/ca").mkdir(parents=True, exist_ok=True)
-
-            # Create sample config file with env var for password
-            config_content = """
-            ca:
-              common_name: "Test CA"
-              organization: "Test Org"
-              organization_unit: "IT"
-              country: "US"
-              state: "Test State"
-              locality: "Test City"
-              email: "test@example.com"
-              key_algorithm: "RSA2048"
-              validity:
-                days: 365
-              password:
-                min_length: 8
-                env_var: "TEST_CA_PASSWORD"
-            """
-
-            with open("config/ca.yaml", "w") as f:
-                f.write(config_content)
-
-            # Set environment variable for password with at least 8 characters
-            os.environ["TEST_CA_PASSWORD"] = "testpassword"
-
-            # Create the CA first using the new 'issue' command
+            # Create the CA using the 'issue' command with explicit paths
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
-            assert result.exit_code == 0
-            assert Path("store/ca/ca.crt").exists()
-            assert Path("store/ca/ca.key.enc").exists()
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "issue"], input="testpassword\ntestpassword\n", catch_exceptions=False
+            )
 
-            # Now test the ca info command
-            result = runner.invoke(cli, ["ca", "info"])
+            # Always print debug output to see what's happening
+            print(f"Debug - CLI exit code: {result.exit_code}")
+            print(f"Debug - CLI output: {result.output}")
+            if result.exception:
+                print(f"Debug - CLI exception: {result.exception}")
+
+            assert result.exit_code == 0
+
+            # Verify certificate paths
+            assert_cert_paths(store)
+
+            # Test the ca info command with explicit paths
+            result = runner.invoke(cli, ["--root", tmpdir, "ca", "info"])
+
             assert result.exit_code == 0
 
             # Check for expected information in output
@@ -89,7 +102,8 @@ def test_ca_info() -> None:
             assert "Fingerprint" in result.output
 
             # Test JSON output
-            result = runner.invoke(cli, ["ca", "info", "--json"])
+            result = runner.invoke(cli, ["--root", tmpdir, "ca", "info", "--json"])
+
             assert result.exit_code == 0
             assert "subject" in result.output
             assert "common_name" in result.output
@@ -101,58 +115,64 @@ def test_ca_info() -> None:
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]
 
-            # Change back to original directory
-            os.chdir(original_dir)
-
 
 def test_ca_issue_new() -> None:
     """Test 'ca issue' command to create a new CA."""
+    from tests.helpers import assert_cert_paths, setup_test_env
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Change to temporary directory
-        original_dir = os.getcwd()
-        os.chdir(tmpdir)
+        # Setup test environment with proper paths
+        store = setup_test_env(tmpdir)
+
+        # Create directories needed for tests
+        config_dir = Path(tmpdir) / "config"
+        config_dir.mkdir(exist_ok=True)
+
+        # Create sample config file directly to match expected format
+        config_content = """
+ca:
+  common_name: Test CA
+  organization: Test Org
+  organization_unit: IT
+  country: US
+  state: Test State
+  locality: Test City
+  email: test@example.com
+  key_algorithm: RSA2048
+  validity:
+    days: 365
+  password:
+    min_length: 8
+    env_var: TEST_CA_PASSWORD
+"""
+
+        # Write the config file directly
+        with open(store.config.ca_config_path, "w") as f:
+            f.write(config_content)
+
+        # Set environment variable for password
+        os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
         try:
-            # Create necessary directories
-            Path("config").mkdir(exist_ok=True)
-            Path("store/ca").mkdir(parents=True, exist_ok=True)
-
-            # Create sample config file with env var for password
-            config_content = """
-            ca:
-              common_name: "Test CA"
-              organization: "Test Org"
-              organization_unit: "IT"
-              country: "US"
-              state: "Test State"
-              locality: "Test City"
-              email: "test@example.com"
-              key_algorithm: "RSA2048"
-              validity:
-                days: 365
-              password:
-                min_length: 8
-                env_var: "TEST_CA_PASSWORD"
-            """
-
-            with open("config/ca.yaml", "w") as f:
-                f.write(config_content)
-
-            # Set environment variable for password with at least 8 characters
-            os.environ["TEST_CA_PASSWORD"] = "testpassword"
-
-            # Run initialization with new 'issue' command
+            # Run initialization with 'issue' command and explicit paths
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "issue"], input="testpassword\ntestpassword\n", catch_exceptions=False
+            )
 
-            print(f"Exit code: {result.exit_code}")
-            print(f"Output: {result.output}")
-            print(f"Exception: {result.exception}")
+            # Always print debug output to see what's happening
+            print(f"Debug - CLI exit code: {result.exit_code}")
+            print(f"Debug - CLI output: {result.output}")
+            if result.exception:
+                print(f"Debug - CLI exception: {result.exception}")
 
             assert result.exit_code == 0
-            assert Path("store/ca/ca.crt").exists()
-            assert Path("store/ca/ca.key.enc").exists()
-            assert Path("store/inventory.yaml").exists()
+
+            # Verify certificate paths
+            assert_cert_paths(store)
+
+            # Also check inventory
+            assert store.config.inventory_path.exists()
             assert "CA created successfully" in result.output
 
         finally:
@@ -160,60 +180,73 @@ def test_ca_issue_new() -> None:
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]
 
-            # Change back to original directory
-            os.chdir(original_dir)
-
 
 def test_ca_issue_renew() -> None:
     """Test 'ca issue' command to renew an existing CA."""
+    from tests.helpers import assert_cert_paths, setup_test_env
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Change to temporary directory
-        original_dir = os.getcwd()
-        os.chdir(tmpdir)
+        # Setup test environment with proper paths
+        store = setup_test_env(tmpdir)
+
+        # Create directories needed for tests
+        config_dir = Path(tmpdir) / "config"
+        config_dir.mkdir(exist_ok=True)
+
+        # Create sample config file directly to match expected format
+        config_content = """
+ca:
+  common_name: Test CA
+  organization: Test Org
+  organization_unit: IT
+  country: US
+  state: Test State
+  locality: Test City
+  email: test@example.com
+  key_algorithm: RSA2048
+  validity:
+    days: 365
+  password:
+    min_length: 8
+    env_var: TEST_CA_PASSWORD
+"""
+
+        # Write the config file directly
+        with open(store.config.ca_config_path, "w") as f:
+            f.write(config_content)
+
+        # Set environment variable for password
+        os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
         try:
-            # Create necessary directories
-            Path("config").mkdir(exist_ok=True)
-            Path("store/ca").mkdir(parents=True, exist_ok=True)
-
-            # Create sample config file with env var for password
-            config_content = """
-            ca:
-              common_name: "Test CA"
-              organization: "Test Org"
-              organization_unit: "IT"
-              country: "US"
-              state: "Test State"
-              locality: "Test City"
-              email: "test@example.com"
-              key_algorithm: "RSA2048"
-              validity:
-                days: 365
-              password:
-                min_length: 8
-                env_var: "TEST_CA_PASSWORD"
-            """
-
-            with open("config/ca.yaml", "w") as f:
-                f.write(config_content)
-
-            # Set environment variable for password with at least 8 characters
-            os.environ["TEST_CA_PASSWORD"] = "testpassword"
-
-            # First create a CA
+            # First create a CA with explicit paths
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "issue"], input="testpassword\ntestpassword\n", catch_exceptions=False
+            )
             assert result.exit_code == 0
 
-            # Get the creation date of the certificate
-            original_mtime = Path("store/ca/ca.crt").stat().st_mtime
+            # Verify the certificate exists
+            assert_cert_paths(store)
 
-            # Now renew the CA
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\n")
+            # Get the creation date of the certificate
+            ca_cert_path = store.get_ca_cert_path()
+            original_mtime = ca_cert_path.stat().st_mtime
+
+            # Now renew the CA with explicit paths
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "issue"], input="testpassword\n", catch_exceptions=False
+            )
+
+            # Debug output if it fails
+            if result.exit_code != 0:
+                print(f"Debug - CLI output: {result.output}")
+                print(f"Debug - CLI exception: {result.exception}")
+
             assert result.exit_code == 0
 
             # Verify the certificate was updated
-            new_mtime = Path("store/ca/ca.crt").stat().st_mtime
+            new_mtime = ca_cert_path.stat().st_mtime
             assert new_mtime > original_mtime
             assert "CA certificate renewed successfully" in result.output
 
@@ -222,62 +255,78 @@ def test_ca_issue_renew() -> None:
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]
 
-            # Change back to original directory
-            os.chdir(original_dir)
-
 
 def test_ca_rekey() -> None:
     """Test 'ca rekey' command to rekey an existing CA."""
+    from tests.helpers import assert_cert_paths, setup_test_env
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Change to temporary directory
-        original_dir = os.getcwd()
-        os.chdir(tmpdir)
+        # Setup test environment with proper paths
+        store = setup_test_env(tmpdir)
+
+        # Create directories needed for tests
+        config_dir = Path(tmpdir) / "config"
+        config_dir.mkdir(exist_ok=True)
+
+        # Create sample config file directly to match expected format
+        config_content = """
+ca:
+  common_name: Test CA
+  organization: Test Org
+  organization_unit: IT
+  country: US
+  state: Test State
+  locality: Test City
+  email: test@example.com
+  key_algorithm: RSA2048
+  validity:
+    days: 365
+  password:
+    min_length: 8
+    env_var: TEST_CA_PASSWORD
+"""
+
+        # Write the config file directly
+        with open(store.config.ca_config_path, "w") as f:
+            f.write(config_content)
+
+        # Set environment variable for password
+        os.environ["TEST_CA_PASSWORD"] = "testpassword"
 
         try:
-            # Create necessary directories
-            Path("config").mkdir(exist_ok=True)
-            Path("store/ca").mkdir(parents=True, exist_ok=True)
-
-            # Create sample config file with env var for password
-            config_content = """
-            ca:
-              common_name: "Test CA"
-              organization: "Test Org"
-              organization_unit: "IT"
-              country: "US"
-              state: "Test State"
-              locality: "Test City"
-              email: "test@example.com"
-              key_algorithm: "RSA2048"
-              validity:
-                days: 365
-              password:
-                min_length: 8
-                env_var: "TEST_CA_PASSWORD"
-            """
-
-            with open("config/ca.yaml", "w") as f:
-                f.write(config_content)
-
-            # Set environment variable for password with at least 8 characters
-            os.environ["TEST_CA_PASSWORD"] = "testpassword"
-
-            # First create a CA
+            # First create a CA with explicit paths
             runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "issue"], input="testpassword\ntestpassword\n", catch_exceptions=False
+            )
             assert result.exit_code == 0
 
-            # Get the original certificate and key modification times
-            original_cert_mtime = Path("store/ca/ca.crt").stat().st_mtime
-            original_key_mtime = Path("store/ca/ca.key.enc").stat().st_mtime
+            # Verify certificate paths
+            assert_cert_paths(store)
 
-            # Now rekey the CA using the dedicated 'rekey' command
-            result = runner.invoke(cli, ["ca", "rekey"], input="testpassword\n")
+            # Get paths from the store
+            ca_cert_path = store.get_ca_cert_path()
+            ca_key_path = store.get_ca_key_path()
+
+            # Get the original certificate and key modification times
+            original_cert_mtime = ca_cert_path.stat().st_mtime
+            original_key_mtime = ca_key_path.stat().st_mtime
+
+            # Now rekey the CA using the dedicated 'rekey' command with explicit paths
+            result = runner.invoke(
+                cli, ["--root", tmpdir, "ca", "rekey"], input="testpassword\n", catch_exceptions=False
+            )
+
+            # Debug output if it fails
+            if result.exit_code != 0:
+                print(f"Debug - CLI output: {result.output}")
+                print(f"Debug - CLI exception: {result.exception}")
+
             assert result.exit_code == 0
 
             # Verify both the certificate and key were updated
-            new_cert_mtime = Path("store/ca/ca.crt").stat().st_mtime
-            new_key_mtime = Path("store/ca/ca.key.enc").stat().st_mtime
+            new_cert_mtime = ca_cert_path.stat().st_mtime
+            new_key_mtime = ca_key_path.stat().st_mtime
 
             assert new_cert_mtime > original_cert_mtime
             assert new_key_mtime > original_key_mtime
@@ -287,6 +336,3 @@ def test_ca_rekey() -> None:
             # Clean up environment variable
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]
-
-            # Change back to original directory
-            os.chdir(original_dir)
