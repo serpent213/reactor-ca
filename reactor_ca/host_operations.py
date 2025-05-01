@@ -1,6 +1,7 @@
 """Certificate operations for ReactorCA."""
 
 import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -80,10 +81,60 @@ def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     return ca_key, ca_cert
 
 
+@dataclass
+class CertificateParams:
+    """Parameters for certificate creation."""
+
+    private_key: PrivateKeyTypes
+    hostname: str
+    ca_key: PrivateKeyTypes
+    ca_cert: x509.Certificate
+    validity_days: int = 365
+    alt_names: dict[str, list[str]] | None = None
+    hash_algorithm: str | None = None
+    host_config: dict[str, Any] | None = None
+
+
+def create_certificate_with_params(params: CertificateParams) -> x509.Certificate:
+    """Create a certificate using parameters object."""
+    config = load_config()
+
+    # Get hash algorithm from config or parameter
+    hash_algorithm = params.hash_algorithm
+    if hash_algorithm is None:
+        hash_algorithm = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
+
+    hash_algo = get_hash_algorithm(hash_algorithm)
+
+    # Create subject using utility function
+    subject = create_subject_from_config(params.hostname, config, params.host_config)
+
+    # Create certificate builder
+    cert_builder = create_certificate_builder(
+        subject=subject,
+        issuer=params.ca_cert.subject,
+        public_key=params.private_key.public_key(),
+        validity_days=params.validity_days,
+    )
+
+    # Process Subject Alternative Names if provided
+    san_list = []
+    if params.alt_names:
+        san_list = process_all_sans(params.alt_names)
+
+    # Add standard extensions to certificate
+    cert_builder = add_standard_extensions(cert_builder=cert_builder, is_ca=False, san_list=san_list)
+
+    # Sign the certificate
+    cert = sign_certificate(cert_builder, params.ca_key, hash_algo)
+
+    return cert
+
+
 def create_certificate(
-    private_key: Any,
+    private_key: PrivateKeyTypes,
     hostname: str,
-    ca_key: Any,
+    ca_key: PrivateKeyTypes,
     ca_cert: x509.Certificate,
     validity_days: int = 365,
     alt_names: dict[str, list[str]] | None = None,
@@ -91,38 +142,26 @@ def create_certificate(
     host_config: dict[str, Any] | None = None,
 ) -> x509.Certificate:
     """Create a certificate signed by the CA."""
-    config = load_config()
-
-    # Get hash algorithm from config or parameter
-    if hash_algorithm is None:
-        hash_algorithm = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
-
-    hash_algo = get_hash_algorithm(hash_algorithm)
-
-    # Create subject using utility function
-    subject = create_subject_from_config(hostname, config, host_config)
-
-    # Create certificate builder
-    cert_builder = create_certificate_builder(
-        subject=subject, issuer=ca_cert.subject, public_key=private_key.public_key(), validity_days=validity_days
+    params = CertificateParams(
+        private_key=private_key,
+        hostname=hostname,
+        ca_key=ca_key,
+        ca_cert=ca_cert,
+        validity_days=validity_days,
+        alt_names=alt_names,
+        hash_algorithm=hash_algorithm,
+        host_config=host_config,
     )
 
-    # Process Subject Alternative Names if provided
-    san_list = []
-    if alt_names:
-        san_list = process_all_sans(alt_names)
-
-    # Add standard extensions to certificate
-    cert_builder = add_standard_extensions(cert_builder=cert_builder, is_ca=False, san_list=san_list)
-
-    # Sign the certificate
-    cert = sign_certificate(cert_builder, ca_key, hash_algo)
-
-    return cert
+    return create_certificate_with_params(params)
 
 
 def export_certificate(
-    hostname: str, certificate: x509.Certificate, key: Any | None = None, chain: bool = True, no_export: bool = False
+    hostname: str,
+    certificate: x509.Certificate,
+    key: PrivateKeyTypes | None = None,
+    chain: bool = True,
+    no_export: bool = False,
 ) -> bool:
     """Export a certificate and optionally its private key and chain to the configured location."""
     if no_export:
@@ -221,11 +260,150 @@ def deploy_host(hostname: str) -> bool:
     return run_deploy_command(hostname, deploy_command)
 
 
+def extract_hostname_from_csr(csr: x509.CertificateSigningRequest) -> str | None:
+    """Extract the hostname (common name) from a CSR.
+
+    Args:
+    ----
+        csr: Certificate signing request
+
+    Returns:
+    -------
+        Hostname string if found, None otherwise
+
+    """
+    for attr in csr.subject:
+        if attr.oid == NameOID.COMMON_NAME:
+            # Handle both string and bytes value types
+            return attr.value.decode("utf-8") if isinstance(attr.value, bytes) else attr.value
+    return None
+
+
+def extract_sans_from_csr(csr: x509.CertificateSigningRequest) -> dict[str, list[str]]:
+    """Extract Subject Alternative Names from a CSR.
+
+    Args:
+    ----
+        csr: Certificate signing request
+
+    Returns:
+    -------
+        Dictionary of SAN types and values
+
+    """
+    alt_names: dict[str, list[str]] = {
+        "dns": [],
+        "ip": [],
+        "email": [],
+        "uri": [],
+        "directory_name": [],
+        "registered_id": [],
+        "other_name": [],
+    }
+
+    for ext in csr.extensions:
+        if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
+            for san in ext.value:
+                if isinstance(san, x509.DNSName):
+                    alt_names["dns"].append(san.value)
+                elif isinstance(san, x509.IPAddress):
+                    alt_names["ip"].append(str(san.value))
+                elif isinstance(san, x509.RFC822Name):
+                    alt_names["email"].append(san.value)
+                elif isinstance(san, UniformResourceIdentifier):
+                    alt_names["uri"].append(san.value)
+                elif isinstance(san, DirectoryName):
+                    alt_names["directory_name"].append(format_directory_name(san.value))
+                elif isinstance(san, RegisteredID):
+                    alt_names["registered_id"].append(san.value.dotted_string)
+                elif isinstance(san, OtherName):
+                    alt_names["other_name"].append(format_other_name(san))
+
+    return alt_names
+
+
+def format_directory_name(directory_name_value: x509.Name) -> str:
+    """Format a DirectoryName into a string.
+
+    Args:
+    ----
+        directory_name_value: Directory name value to format
+
+    Returns:
+    -------
+        Formatted directory name string
+
+    """
+    dn_parts = []
+    for attr in directory_name_value:
+        oid = attr.oid
+        # Ensure bytes are decoded if needed
+        value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
+
+        if oid == NameOID.COMMON_NAME:
+            dn_parts.append(f"CN={value}")
+        elif oid == NameOID.ORGANIZATION_NAME:
+            dn_parts.append(f"O={value}")
+        elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
+            dn_parts.append(f"OU={value}")
+        elif oid == NameOID.COUNTRY_NAME:
+            dn_parts.append(f"C={value}")
+        elif oid == NameOID.STATE_OR_PROVINCE_NAME:
+            dn_parts.append(f"ST={value}")
+        elif oid == NameOID.LOCALITY_NAME:
+            dn_parts.append(f"L={value}")
+        elif oid == NameOID.EMAIL_ADDRESS:
+            dn_parts.append(f"E={value}")
+
+    return ",".join(dn_parts) if dn_parts else ""
+
+
+def format_other_name(other_name: OtherName) -> str:
+    """Format an OtherName into a string.
+
+    Args:
+    ----
+        other_name: OtherName value to format
+
+    Returns:
+    -------
+        Formatted other name string
+
+    """
+    try:
+        value = other_name.value.decode("utf-8")
+        return f"{other_name.type_id.dotted_string}:{value}"
+    except UnicodeDecodeError:
+        # If it's not UTF-8 decodable, use a hex representation
+        hex_value = other_name.value.hex()
+        return f"{other_name.type_id.dotted_string}:{hex_value}"
+
+
+def save_certificate_to_file(cert: x509.Certificate, out_path: str) -> None:
+    """Save a certificate to a file.
+
+    Args:
+    ----
+        cert: Certificate to save
+        out_path: Path to save the certificate to
+
+    """
+    out_file_path = Path(out_path)
+    with open(out_file_path, "wb") as f:
+        f.write(cert.public_bytes(encoding=Encoding.PEM))
+    console.print(f"✅ Certificate saved to [bold]{out_file_path}[/bold]")
+
+
 def process_csr(
-    csr_path: str, ca_key: Any, ca_cert: x509.Certificate, validity_days: int = 365, out_path: str | None = None
+    csr_path: str,
+    ca_key: PrivateKeyTypes,
+    ca_cert: x509.Certificate,
+    validity_days: int = 365,
+    out_path: str | None = None,
 ) -> tuple[str | None, x509.Certificate | None]:
     """Process a Certificate Signing Request."""
     try:
+        # Load and validate CSR
         with open(csr_path, "rb") as f:
             csr_data = f.read()
 
@@ -237,13 +415,7 @@ def process_csr(
             return None, None
 
         # Extract the hostname from the CSR's common name
-        hostname = None
-        for attr in csr.subject:
-            if attr.oid == NameOID.COMMON_NAME:
-                # Handle both string and bytes value types
-                hostname = attr.value.decode("utf-8") if isinstance(attr.value, bytes) else attr.value
-                break
-
+        hostname = extract_hostname_from_csr(csr)
         if not hostname:
             console.print("[bold red]Error:[/bold red] Could not extract hostname from CSR")
             return None, None
@@ -255,80 +427,10 @@ def process_csr(
         hash_algorithm_name = config.get("ca", {}).get("hash_algorithm", DEFAULT_HASH_ALGORITHM)
         hash_algorithm = get_hash_algorithm(hash_algorithm_name)
 
-        # Extract any SANs from the CSR
-        alt_names: dict[str, list[str]] = {
-            "dns": [],
-            "ip": [],
-            "email": [],
-            "uri": [],
-            "directory_name": [],
-            "registered_id": [],
-            "other_name": [],
-        }
+        # Extract SANs from the CSR
+        alt_names = extract_sans_from_csr(csr)
 
-        for ext in csr.extensions:
-            if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-                for san in ext.value:
-                    if isinstance(san, x509.DNSName):
-                        alt_names["dns"].append(san.value)
-                    elif isinstance(san, x509.IPAddress):
-                        alt_names["ip"].append(str(san.value))
-                    elif isinstance(san, x509.RFC822Name):
-                        alt_names["email"].append(san.value)
-                    elif isinstance(san, UniformResourceIdentifier):
-                        alt_names["uri"].append(san.value)
-                    elif isinstance(san, DirectoryName):
-                        # Format the directory name as a string for display
-                        dn_parts = []
-                        # Properly type the DirectoryName value as Name
-                        directory_name_value = san.value
-                        for attr in directory_name_value:
-                            # Each attribute in a Name has an oid property
-                            oid = attr.oid
-                            if oid == NameOID.COMMON_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"CN={value}")
-                            elif oid == NameOID.ORGANIZATION_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"O={value}")
-                            elif oid == NameOID.ORGANIZATIONAL_UNIT_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"OU={value}")
-                            elif oid == NameOID.COUNTRY_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"C={value}")
-                            elif oid == NameOID.STATE_OR_PROVINCE_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"ST={value}")
-                            elif oid == NameOID.LOCALITY_NAME:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"L={value}")
-                            elif oid == NameOID.EMAIL_ADDRESS:
-                                # Ensure bytes are decoded if needed
-                                value = attr.value.decode() if isinstance(attr.value, bytes) else attr.value
-                                dn_parts.append(f"E={value}")
-
-                        if dn_parts:
-                            alt_names["directory_name"].append(",".join(dn_parts))
-                    elif isinstance(san, RegisteredID):
-                        alt_names["registered_id"].append(san.value.dotted_string)
-                    elif isinstance(san, OtherName):
-                        # Format as OID:value
-                        try:
-                            value = san.value.decode("utf-8")
-                            alt_names["other_name"].append(f"{san.type_id.dotted_string}:{value}")
-                        except UnicodeDecodeError:
-                            # If it's not UTF-8 decodable, use a hex representation
-                            hex_value = san.value.hex()
-                            alt_names["other_name"].append(f"{san.type_id.dotted_string}:{hex_value}")
-
-        # Create certificate builder
+        # Create certificate
         cert_builder = create_certificate_builder(
             subject=csr.subject, issuer=ca_cert.subject, public_key=csr.public_key(), validity_days=validity_days
         )
@@ -344,10 +446,7 @@ def process_csr(
 
         # Save the certificate if an output path is provided
         if out_path:
-            out_file_path = Path(out_path)
-            with open(out_file_path, "wb") as f:
-                f.write(cert.public_bytes(encoding=Encoding.PEM))
-            console.print(f"✅ Certificate saved to [bold]{out_file_path}[/bold]")
+            save_certificate_to_file(cert, out_path)
 
         return hostname, cert
 
@@ -767,34 +866,43 @@ def export_host_key(hostname: str, out_path: str | None = None) -> bool:
     return True
 
 
-def list_certificates(expired: bool = False, expiring_days: int | None = None, json_output: bool = False) -> None:
-    """List all certificates with their expiration dates."""
-    # Ensure inventory is up to date
-    update_inventory()
+def calculate_days_remaining(expiry_date_str: str) -> int | None:
+    """Calculate days remaining until expiration.
 
-    # Load inventory
-    inventory = load_inventory()
+    Args:
+    ----
+        expiry_date_str: ISO format date string
 
-    # Display CA information
-    ca_info = inventory.get("ca", {})
-    if not ca_info:
-        console.print("[bold red]Error:[/bold red] CA information not found in inventory")
-        return
+    Returns:
+    -------
+        Days remaining as integer or None if date is invalid
 
-    # Calculate days until CA expiration
-    now = datetime.datetime.now(datetime.UTC)
-    ca_days_remaining = None
+    """
+    try:
+        now = datetime.datetime.now(datetime.UTC)
+        expiry_date = datetime.datetime.fromisoformat(expiry_date_str)
+        expiry_date = expiry_date.replace(tzinfo=datetime.UTC)
+        return (expiry_date - now).days
+    except (ValueError, TypeError):
+        return None
 
-    if "not_after" in ca_info:
-        try:
-            ca_expiry_date = datetime.datetime.fromisoformat(ca_info["not_after"])
-            ca_expiry_date = ca_expiry_date.replace(tzinfo=datetime.UTC)
-            ca_days_remaining = (ca_expiry_date - now).days
-        except (ValueError, TypeError):
-            pass
 
-    # Filter hosts based on expiration criteria
-    hosts = inventory.get("hosts", [])
+def filter_hosts_by_expiry(
+    hosts: list[dict[str, Any]], expired: bool = False, expiring_days: int | None = None
+) -> list[dict[str, Any]]:
+    """Filter hosts based on expiration criteria.
+
+    Args:
+    ----
+        hosts: List of host dictionaries
+        expired: Only include expired certificates if True
+        expiring_days: Only include certificates expiring within this many days
+
+    Returns:
+    -------
+        Filtered list of hosts
+
+    """
     filtered_hosts = []
 
     for host in hosts:
@@ -802,11 +910,9 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
         not_after = host.get("not_after", "Unknown")
 
         if not_after != "Unknown":
-            try:
-                expiry_date = datetime.datetime.fromisoformat(not_after)
-                expiry_date = expiry_date.replace(tzinfo=datetime.UTC)
-                days_remaining = (expiry_date - now).days
+            days_remaining = calculate_days_remaining(not_after)
 
+            if days_remaining is not None:
                 # Apply filters
                 if expired and days_remaining >= 0:
                     continue
@@ -814,31 +920,62 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
                 if expiring_days is not None and days_remaining > expiring_days:
                     continue
 
+                # Add days_remaining to host info
                 host["days_remaining"] = days_remaining
                 filtered_hosts.append(host)
-            except (ValueError, TypeError):
+            elif not expired and expiring_days is None:
                 # Include hosts with invalid dates if not filtering
-                if not expired and expiring_days is None:
-                    filtered_hosts.append(host)
+                filtered_hosts.append(host)
         elif not expired and expiring_days is None:
             # Include hosts with unknown expiry if not filtering
             filtered_hosts.append(host)
 
-    # Output JSON if requested
-    if json_output:
-        import json
+    return filtered_hosts
 
-        result = {
-            "ca": ca_info,
-            "hosts": filtered_hosts,
-            "last_update": inventory.get("last_update", "Unknown"),
-        }
-        if ca_days_remaining is not None:
-            ca_info["days_remaining"] = ca_days_remaining
-        console.print(json.dumps(result, indent=2))
-        return
 
-    # Display in tables
+def output_certificate_json(
+    ca_info: dict[str, Any],
+    filtered_hosts: list[dict[str, Any]],
+    inventory: dict[str, Any],
+    ca_days_remaining: int | None = None,
+) -> None:
+    """Output certificate information in JSON format.
+
+    Args:
+    ----
+        ca_info: CA certificate information
+        filtered_hosts: Filtered list of hosts
+        inventory: Full inventory data
+        ca_days_remaining: Days remaining until CA expiration
+
+    """
+    import json
+
+    result = {
+        "ca": ca_info.copy(),  # Use copy to avoid modifying original
+        "hosts": filtered_hosts,
+        "last_update": inventory.get("last_update", "Unknown"),
+    }
+
+    if ca_days_remaining is not None:
+        result["ca"]["days_remaining"] = ca_days_remaining
+
+    console.print(json.dumps(result, indent=2))
+
+
+def create_ca_table(ca_info: dict[str, Any], ca_days_remaining: int | None) -> Table:
+    """Create a table with CA certificate information.
+
+    Args:
+    ----
+        ca_info: CA certificate information
+        ca_days_remaining: Days remaining until CA expiration
+
+    Returns:
+    -------
+        Rich Table object with CA information
+
+    """
     ca_table = Table(title="CA Certificate")
     ca_table.add_column("Serial")
     ca_table.add_column("Expiration Date")
@@ -859,13 +996,21 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
         ca_info.get("fingerprint", "Unknown"),
     )
 
-    console.print(ca_table)
+    return ca_table
 
-    # Display host certificates
-    if not filtered_hosts:
-        console.print("\nNo host certificates match the criteria")
-        return
 
+def create_hosts_table(filtered_hosts: list[dict[str, Any]]) -> Table:
+    """Create a table with host certificate information.
+
+    Args:
+    ----
+        filtered_hosts: List of host dictionaries with certificate information
+
+    Returns:
+    -------
+        Rich Table object with host information
+
+    """
     host_table = Table(title="Host Certificates")
     host_table.add_column("Hostname")
     host_table.add_column("Serial")
@@ -875,9 +1020,9 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
     host_table.add_column("Renewals")
 
     # Sort hosts by name
-    filtered_hosts.sort(key=lambda x: x.get("name", ""))
+    sorted_hosts = sorted(filtered_hosts, key=lambda x: x.get("name", ""))
 
-    for host in filtered_hosts:
+    for host in sorted_hosts:
         name = host.get("name", "Unknown")
         serial = host.get("serial", "Unknown")
         not_after = host.get("not_after", "Unknown")
@@ -892,6 +1037,48 @@ def list_certificates(expired: bool = False, expiring_days: int | None = None, j
 
         host_table.add_row(name, serial, not_after, days_formatted, fingerprint, renewal_count)
 
+    return host_table
+
+
+def list_certificates(expired: bool = False, expiring_days: int | None = None, json_output: bool = False) -> None:
+    """List all certificates with their expiration dates."""
+    # Ensure inventory is up to date
+    update_inventory()
+
+    # Load inventory
+    inventory = load_inventory()
+
+    # Display CA information
+    ca_info = inventory.get("ca", {})
+    if not ca_info:
+        console.print("[bold red]Error:[/bold red] CA information not found in inventory")
+        return
+
+    # Calculate days until CA expiration
+    ca_days_remaining = None
+    if "not_after" in ca_info:
+        ca_days_remaining = calculate_days_remaining(ca_info["not_after"])
+
+    # Filter hosts based on expiration criteria
+    hosts = inventory.get("hosts", [])
+    filtered_hosts = filter_hosts_by_expiry(hosts, expired, expiring_days)
+
+    # Output JSON if requested
+    if json_output:
+        output_certificate_json(ca_info, filtered_hosts, inventory, ca_days_remaining)
+        return
+
+    # Display CA information in table format
+    ca_table = create_ca_table(ca_info, ca_days_remaining)
+    console.print(ca_table)
+
+    # Display host certificates
+    if not filtered_hosts:
+        console.print("\nNo host certificates match the criteria")
+        return
+
+    # Create and display hosts table
+    host_table = create_hosts_table(filtered_hosts)
     console.print("\n")
     console.print(host_table)
 

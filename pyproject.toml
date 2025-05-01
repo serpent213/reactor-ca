@@ -83,7 +83,7 @@ max-statements = 60 # Default is 50
 # No typing for tests for now, allow constant values
 "tests/*" = ["ANN", "PLR2004"]
 # Let's keep these warm for later...
-"reactor_ca/cert_operations.py" = [
+"reactor_ca/host_operations.py" = [
     "PLR0913",
     "ANN401",
     "C901",

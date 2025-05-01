@@ -343,7 +343,7 @@ def get_password(ca_init: bool = False) -> str | None:
         return None
 
     # Validate password against CA key if not in initialization mode
-    if not ca_init and not _validate_password_against_ca_key(password):
+    if not ca_init and password is not None and not _validate_password_against_ca_key(password):
         return None
 
     # Cache password for session
