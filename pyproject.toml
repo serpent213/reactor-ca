@@ -82,14 +82,6 @@ max-statements = 60 # Default is 50
 [tool.ruff.per-file-ignores]
 # No typing for tests for now, allow constant values
 "tests/*" = ["ANN", "PLR2004"]
-# Let's keep these warm for later...
-"reactor_ca/host_operations.py" = [
-    "PLR0913",
-    "ANN401",
-    "C901",
-    "PLR0915",
-    "PLR0912",
-]
 
 [tool.mypy]
 python_version = "3.12"

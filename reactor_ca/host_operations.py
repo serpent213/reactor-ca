@@ -121,26 +121,51 @@ def create_certificate_with_params(params: CertificateParams) -> x509.Certificat
     return cert
 
 
+class CertificateCreateParams:
+    """Parameters for creating a certificate."""
+
+    private_key: PrivateKeyTypes
+    hostname: str
+    ca_key: PrivateKeyTypes
+    ca_cert: x509.Certificate
+    validity_days: int
+    alt_names: AlternativeNames | None
+    hash_algorithm: str | None
+    host_config: HostConfig | None
+
+
 def create_certificate(
     private_key: PrivateKeyTypes,
     hostname: str,
     ca_key: PrivateKeyTypes,
     ca_cert: x509.Certificate,
-    validity_days: int = 365,
-    alt_names: AlternativeNames | None = None,
-    hash_algorithm: str | None = None,
-    host_config: HostConfig | None = None,
+    **kwargs: Any,  # noqa: ANN401
 ) -> x509.Certificate:
-    """Create a certificate signed by the CA."""
+    """Create a certificate signed by the CA.
+
+    Args:
+    ----
+        private_key: Private key for the certificate
+        hostname: Hostname for the certificate
+        ca_key: CA private key
+        ca_cert: CA certificate
+        **kwargs: Additional parameters (validity_days, alt_names, hash_algorithm, host_config)
+
+    Returns:
+    -------
+        Generated certificate
+
+    """
+    # Create a properly typed params object
     params = CertificateParams(
         private_key=private_key,
         hostname=hostname,
         ca_key=ca_key,
         ca_cert=ca_cert,
-        validity_days=validity_days,
-        alt_names=alt_names,
-        hash_algorithm=hash_algorithm,
-        host_config=host_config,
+        validity_days=kwargs.get("validity_days", 365),
+        alt_names=kwargs.get("alt_names"),
+        hash_algorithm=kwargs.get("hash_algorithm"),
+        host_config=kwargs.get("host_config"),
     )
 
     return create_certificate_with_params(params)
@@ -437,6 +462,193 @@ def process_csr(
         return None, None
 
 
+def _prepare_host_config_object(
+    hostname: str,
+    host_config: dict[str, Any],
+    alt_names: AlternativeNames,
+    key_algorithm: str,
+    hash_algorithm: str | None,
+) -> HostConfig:
+    """Prepare a HostConfig object from dictionary configuration.
+
+    Args:
+    ----
+        hostname: The hostname
+        host_config: Dictionary with host configuration
+        alt_names: Alternative names object
+        key_algorithm: Key algorithm to use
+        hash_algorithm: Hash algorithm to use
+
+    Returns:
+    -------
+        HostConfig object
+
+    """
+    return HostConfig(
+        name=hostname,
+        common_name=host_config.get("common_name", hostname),
+        organization=host_config.get("organization"),
+        organization_unit=host_config.get("organization_unit"),
+        country=host_config.get("country"),
+        state=host_config.get("state"),
+        locality=host_config.get("locality"),
+        email=host_config.get("email"),
+        alternative_names=alt_names if not alt_names.is_empty() else None,
+        key_algorithm=key_algorithm,
+        hash_algorithm=hash_algorithm,
+    )
+
+
+def _prepare_alternative_names(alt_names_dict: dict[str, list[str]]) -> AlternativeNames:
+    """Create an AlternativeNames object from configuration dictionary.
+
+    Args:
+    ----
+        alt_names_dict: Dictionary with alternative names
+
+    Returns:
+    -------
+        AlternativeNames object
+
+    """
+    alt_names = AlternativeNames()
+
+    if alt_names_dict:
+        for name_type, names in alt_names_dict.items():
+            if hasattr(alt_names, name_type) and names:
+                setattr(alt_names, name_type, names)
+
+    return alt_names
+
+
+class CertificateSaveParams:
+    """Parameters for saving certificates and keys."""
+
+    cert_path: Path
+    key_path: Path
+    cert: x509.Certificate
+    private_key: PrivateKeyTypes
+    password: str
+    is_new: bool
+    hostname: str
+
+    def __init__(  # noqa: PLR0913
+        self: "CertificateSaveParams",
+        *,  # Force keyword-only arguments
+        cert_path: Path,
+        key_path: Path,
+        cert: x509.Certificate,
+        private_key: PrivateKeyTypes,
+        password: str,
+        is_new: bool,
+        hostname: str,
+    ) -> None:
+        """Initialize save parameters.
+
+        Args:
+        ----
+            cert_path: Path to save certificate
+            key_path: Path to save private key
+            cert: Certificate to save
+            private_key: Private key to save
+            password: Password for key encryption
+            is_new: Whether this is a new certificate
+            hostname: Hostname for logging
+
+        """
+        self.cert_path = cert_path
+        self.key_path = key_path
+        self.cert = cert
+        self.private_key = private_key
+        self.password = password
+        self.is_new = is_new
+        self.hostname = hostname
+
+
+def _save_certificate_and_key(params: CertificateSaveParams) -> None:
+    """Save certificate and optionally private key to disk.
+
+    Args:
+    ----
+        params: Parameters for saving certificate and key
+
+    """
+    # Save key if new
+    if params.is_new:
+        with open(params.key_path, "wb") as f:
+            f.write(encrypt_key(params.private_key, params.password))
+        console.print(f"✅ Private key saved to [bold]{params.key_path}[/bold]")
+
+    # Save certificate
+    with open(params.cert_path, "wb") as f:
+        f.write(params.cert.public_bytes(encoding=Encoding.PEM))
+
+    action = "Generat" if params.is_new else "Renew"
+    console.print(f"✅ Certificate {action}ed successfully for [bold]{params.hostname}[/bold]")
+    console.print(f"   Certificate: [bold]{params.cert_path}[/bold]")
+    if params.is_new:
+        console.print(f"   Private key (encrypted): [bold]{params.key_path}[/bold]")
+
+
+def _handle_existing_key(key_path: Path, key_algorithm: str) -> tuple[PrivateKeyTypes | None, str | None]:
+    """Handle loading and validating an existing private key.
+
+    Args:
+    ----
+        key_path: Path to the private key
+        key_algorithm: Expected key algorithm
+
+    Returns:
+    -------
+        Tuple of (private_key, password) or (None, None) if failed
+
+    """
+    # Get password and decrypt private key
+    password = get_password()
+    if not password:
+        return None, None
+
+    try:
+        private_key = decrypt_key(key_path, password)
+    except Exception as e:
+        console.print(f"[bold red]Error decrypting private key:[/bold red] {str(e)}")
+        return None, None
+
+    # Verify that the existing key matches the algorithm in the config
+    if not verify_key_algorithm(private_key, key_algorithm):
+        console.print(
+            "[bold red]Error:[/bold red] The existing key algorithm does not match the configuration. "
+            "To generate a new key with the configured algorithm, use 'host rekey'."
+        )
+        return None, None
+
+    return private_key, password
+
+
+def _create_new_key(hostname: str, key_algorithm: str) -> tuple[PrivateKeyTypes | None, str | None]:
+    """Create a new private key.
+
+    Args:
+    ----
+        hostname: Hostname for logging
+        key_algorithm: Key algorithm to use
+
+    Returns:
+    -------
+        Tuple of (private_key, password) or (None, None) if failed
+
+    """
+    console.print(f"Generating {key_algorithm} key for {hostname}...")
+    private_key = generate_key(key_algorithm=key_algorithm)
+
+    # Get password with validation against CA key
+    password = get_password()
+    if not password:
+        return None, None
+
+    return private_key, password
+
+
 def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = False) -> bool:
     """Issue or renew a certificate for a host."""
     # Validate configuration first
@@ -466,84 +678,32 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
-    # Get host paths from utility function
+    # Get host paths and key algorithm
     host_dir, cert_path, key_path = get_host_paths(hostname)
-
-    # Get the configured key algorithm
     key_algorithm = host_config.get("key_algorithm", "RSA2048")
+    is_new = not (cert_path.exists() and key_path.exists())
 
-    is_new = False
-
-    if not cert_path.exists() or not key_path.exists():
-        # This is a new certificate
-        is_new = True
+    # Handle key creation or loading
+    if is_new:
         host_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate key
-        console.print(f"Generating {key_algorithm} key for {hostname}...")
-        private_key = generate_key(key_algorithm=key_algorithm)
-
-        # Get password with validation against CA key
-        password = get_password()
-        if not password:
-            return False
+        private_key, password = _create_new_key(hostname, key_algorithm)
     else:
-        # This is a renewal
-        # Get password and decrypt private key
-        password = get_password()
-        if not password:
-            return False
+        private_key, password = _handle_existing_key(key_path, key_algorithm)
 
-        try:
-            private_key = decrypt_key(key_path, password)
-        except Exception as e:
-            console.print(f"[bold red]Error decrypting private key:[/bold red] {str(e)}")
-            return False
+    if not private_key or not password:
+        return False
 
-        # Verify that the existing key matches the algorithm in the config
-
-        if not verify_key_algorithm(private_key, key_algorithm):
-            console.print(
-                "[bold red]Error:[/bold red] The existing key algorithm does not match the configuration. "
-                "To generate a new key with the configured algorithm, use 'host rekey'."
-            )
-            return False
-
-    # Get validity period
+    # Get validity period and prepare alternative names
     validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
+    alt_names = _prepare_alternative_names(host_config.get("alternative_names", {}))
 
-    # Get alternative names
-    alt_names_dict = host_config.get("alternative_names", {})
-    alt_names = AlternativeNames()
-
-    # Convert dictionary to AlternativeNames if needed
-    if alt_names_dict:
-        for name_type, names in alt_names_dict.items():
-            if hasattr(alt_names, name_type) and names:
-                setattr(alt_names, name_type, names)
-
+    # Log operation
     action = "Generating" if is_new else "Renewing"
     console.print(f"{action} certificate for {hostname} valid for {validity_days} days...")
 
-    # Get hash algorithm if specified in host config
+    # Get hash algorithm and prepare host config object
     hash_algorithm = host_config.get("hash_algorithm")
-
-    # Convert dict host_config to HostConfig
-    host_config_obj = None
-    if host_config:
-        host_config_obj = HostConfig(
-            name=hostname,
-            common_name=host_config.get("common_name", hostname),
-            organization=host_config.get("organization"),
-            organization_unit=host_config.get("organization_unit"),
-            country=host_config.get("country"),
-            state=host_config.get("state"),
-            locality=host_config.get("locality"),
-            email=host_config.get("email"),
-            alternative_names=alt_names if not alt_names.is_empty() else None,
-            key_algorithm=key_algorithm,
-            hash_algorithm=hash_algorithm,
-        )
+    host_config_obj = _prepare_host_config_object(hostname, host_config, alt_names, key_algorithm, hash_algorithm)
 
     # Create certificate
     cert = create_certificate(
@@ -551,34 +711,32 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         hostname,
         ca_key,
         ca_cert,
-        validity_days,
-        alt_names if not alt_names.is_empty() else None,
-        hash_algorithm,
-        host_config_obj,
+        validity_days=validity_days,
+        alt_names=alt_names if not alt_names.is_empty() else None,
+        hash_algorithm=hash_algorithm,
+        host_config=host_config_obj,
     )
 
-    # Save key if new or certificate
-    if is_new:
-        with open(key_path, "wb") as f:
-            f.write(encrypt_key(private_key, password))
-        console.print(f"✅ Private key saved to [bold]{key_path}[/bold]")
-
-    with open(cert_path, "wb") as f:
-        f.write(cert.public_bytes(encoding=Encoding.PEM))
-
-    console.print(f"✅ Certificate {action.lower()[:-3]}ed successfully for [bold]{hostname}[/bold]")
-    console.print(f"   Certificate: [bold]{cert_path}[/bold]")
-    if is_new:
-        console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
+    # Save certificate and key
+    save_params = CertificateSaveParams(
+        cert_path=cert_path,
+        key_path=key_path,
+        cert=cert,
+        private_key=private_key,
+        password=password,
+        is_new=is_new,
+        hostname=hostname,
+    )
+    _save_certificate_and_key(save_params)
 
     # Export certificate
     export_certificate(hostname, cert, no_export=no_export)
 
-    # Deploy if requested (regardless of export success)
+    # Deploy if requested
     if do_deploy:
         deploy_host(hostname)
 
-    # Update inventory using utility function
+    # Update inventory
     inventory = load_inventory()
     inventory = update_inventory_for_cert(
         inventory=inventory, hostname=hostname, cert=cert, rekeyed=False, renewal_count_increment=1
@@ -659,66 +817,38 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
 
     # Get host paths from utility function
     host_dir, cert_path, key_path = get_host_paths(hostname)
-
-    # Create directory if needed
     host_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate new key
     key_algorithm = host_config.get("key_algorithm", "RSA2048")
-
-    console.print(f"Generating new {key_algorithm} key for {hostname}...")
-    private_key = generate_key(key_algorithm=key_algorithm)
-
-    # Get password for key encryption
-    password = get_password()
-    if not password:
+    private_key, password = _create_new_key(hostname, key_algorithm)
+    if not private_key or not password:
         return False
 
-    # Get validity period
+    # Get validity period and prepare alternative names
     validity_days = calculate_validity_days(host_config.get("validity", {"days": 365}))
+    alt_names = _prepare_alternative_names(host_config.get("alternative_names", {}))
 
-    # Get alternative names
-    alt_names_dict = host_config.get("alternative_names", {})
-    alt_names = AlternativeNames()
-
-    # Convert dictionary to AlternativeNames if needed
-    if alt_names_dict:
-        for name_type, names in alt_names_dict.items():
-            if hasattr(alt_names, name_type) and names:
-                setattr(alt_names, name_type, names)
-
-    # Create certificate
+    # Log operation
     console.print(f"Generating certificate for {hostname} valid for {validity_days} days...")
 
-    # Convert dict host_config to HostConfig
-    host_config_obj = None
-    if host_config:
-        host_config_obj = HostConfig(
-            name=hostname,
-            common_name=host_config.get("common_name", hostname),
-            organization=host_config.get("organization"),
-            organization_unit=host_config.get("organization_unit"),
-            country=host_config.get("country"),
-            state=host_config.get("state"),
-            locality=host_config.get("locality"),
-            email=host_config.get("email"),
-            alternative_names=alt_names if not alt_names.is_empty() else None,
-            key_algorithm=key_algorithm,
-            hash_algorithm=host_config.get("hash_algorithm"),
-        )
+    # Get hash algorithm and prepare host config object
+    hash_algorithm = host_config.get("hash_algorithm")
+    host_config_obj = _prepare_host_config_object(hostname, host_config, alt_names, key_algorithm, hash_algorithm)
 
+    # Create certificate
     cert = create_certificate(
         private_key,
         hostname,
         ca_key,
         ca_cert,
-        validity_days,
-        alt_names if not alt_names.is_empty() else None,
-        host_config.get("hash_algorithm"),
-        host_config_obj,
+        validity_days=validity_days,
+        alt_names=alt_names if not alt_names.is_empty() else None,
+        hash_algorithm=hash_algorithm,
+        host_config=host_config_obj,
     )
 
-    # Save key and certificate
+    # Save certificate and key (always save both for rekey)
     with open(key_path, "wb") as f:
         f.write(encrypt_key(private_key, password))
 
@@ -732,11 +862,11 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     # Export certificate
     export_certificate(hostname, cert, no_export=no_export)
 
-    # Deploy if requested (regardless of export success)
+    # Deploy if requested
     if do_deploy:
         deploy_host(hostname)
 
-    # Update inventory using utility function
+    # Update inventory
     inventory = load_inventory()
     inventory = update_inventory_for_cert(
         inventory=inventory, hostname=hostname, cert=cert, rekeyed=True, renewal_count_increment=1
