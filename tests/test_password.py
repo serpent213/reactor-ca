@@ -6,11 +6,23 @@ from pathlib import Path
 
 import yaml
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
+from cryptography.hazmat.primitives.serialization import (
+    BestAvailableEncryption,
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
 
-from reactor_ca.ca_operations import encrypt_key
 from reactor_ca.host_operations import import_host_key
+from reactor_ca.store import Store
 from reactor_ca.utils import _password_cache_container
+
+
+# Create a function to encrypt keys for testing
+def encrypt_key(key, password):
+    """Encrypt a private key with a password - test helper function."""
+    encryption = BestAvailableEncryption(password.encode("utf-8"))
+    return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, encryption)
 
 
 def test_import_host_key_with_different_password(monkeypatch):
@@ -107,6 +119,16 @@ def test_import_host_key_with_different_password(monkeypatch):
                 return "password2"  # Different password than CA password
 
             monkeypatch.setattr("click.prompt", mock_prompt)
+
+            # Mock the Store.unlock method to avoid password issues
+            def mock_unlock(self, password=None, ca_init=False):
+                if password == "password1" or os.environ.get("TEST_CA_PASSWORD") == "password1":
+                    self._password = "password1"
+                    self._unlocked = True
+                    return True
+                return False
+
+            monkeypatch.setattr(Store, "unlock", mock_unlock)
 
             # Run the import_host_key function - should fail because passwords don't match
             result = import_host_key("test_host", str(key_file))

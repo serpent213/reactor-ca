@@ -27,12 +27,11 @@ from reactor_ca.host_operations import (
     rekey_host,
 )
 from reactor_ca.models import ValidityConfig
+from reactor_ca.store import get_store
 from reactor_ca.utils import (
     calculate_validity_days,
     change_password,
     console,
-    create_default_config,
-    ensure_dirs,
 )
 
 
@@ -41,7 +40,8 @@ from reactor_ca.utils import (
 def cli() -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
     # Create necessary directories if they don't exist
-    ensure_dirs()
+    store = get_store()
+    store.init()
 
 
 # Configuration commands
@@ -54,7 +54,8 @@ def config() -> None:
 @config.command(name="init")
 def config_init() -> None:
     """Initialize configuration files."""
-    create_default_config()
+    store = get_store()
+    store.create_default_config()
 
 
 @config.command(name="validate")
@@ -204,9 +205,8 @@ def host_clean() -> None:
     from reactor_ca.paths import HOSTS_DIR
 
     # Load the hosts configuration
-    from reactor_ca.utils import load_hosts_config, update_inventory
-
-    hosts_config = load_hosts_config()
+    store = get_store()
+    hosts_config = store.load_hosts_config()
     configured_hosts = [host["name"] for host in hosts_config.get("hosts", [])]
 
     # Check if HOSTS_DIR exists
@@ -240,7 +240,7 @@ def host_clean() -> None:
 
     # Update inventory after cleaning
     console.print("Updating inventory...")
-    update_inventory()
+    store.update_inventory()
     console.print("✅ Inventory updated.")
 
 

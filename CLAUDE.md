@@ -27,6 +27,28 @@ Use `rg` instead of `grep` for code searching.
 
 Remember to run `poetry install` after modifying dependencies.
 
+## Typing Guidelines
+
+To pass linting checks, follow these rules:
+
+1. **Type Annotations**:
+   - Always include type annotation for `self` in class methods: `def method(self: ClassName) -> ReturnType:`
+   - Use Python 3.10+ union syntax: `X | Y` instead of `Union[X, Y]` 
+   - Always include return type annotations for functions
+
+2. **Type Patterns**:
+   - Use specific types from cryptography module when applicable:
+     - `PrivateKeyTypes` and `PublicKeyTypes` for keys
+     - Use proper return type signatures: `tuple[bool, x509.Certificate | None, SubjectIdentity]`
+   - For collections, use concrete types: `dict[str, Any]`, `list[str]`, etc.
+
+## String Delimiters
+
+- Prefer double quotes (`"`) for string delimiters in general
+- Use single quotes (`'`) for strings that contain double quotes inside them to avoid unnecessary escaping
+- For docstrings, always use triple double quotes (`"""`)
+- Be consistent within the same file
+
 ## Overview
 
 - Create and manage a self-signed Certificate Authority

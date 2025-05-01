@@ -21,8 +21,6 @@ from rich.table import Table
 
 from reactor_ca.ca_operations import (
     DEFAULT_HASH_ALGORITHM,
-    decrypt_key,
-    encrypt_key,
     generate_key,
     get_hash_algorithm,
     verify_key_algorithm,
@@ -34,6 +32,7 @@ from reactor_ca.models import (
     HostConfig,
 )
 from reactor_ca.paths import CA_DIR
+from reactor_ca.store import get_store
 from reactor_ca.utils import (
     add_standard_extensions,
     calculate_validity_days,
@@ -41,16 +40,11 @@ from reactor_ca.utils import (
     create_subject_from_config,
     format_certificate_expiry,
     get_host_paths,
-    get_password,
     load_config,
     load_hosts_config,
-    load_inventory,
     process_all_sans,
     run_deploy_command,
-    save_inventory,
     sign_certificate,
-    update_inventory,
-    update_inventory_for_cert,
 )
 
 console = Console()
@@ -58,37 +52,34 @@ console = Console()
 
 def load_ca_key_cert() -> tuple[PrivateKeyTypes, x509.Certificate]:
     """Load the CA key and certificate."""
-    # Check if CA exists
-    ca_cert_path = CA_DIR / "ca.crt"
-    ca_key_path = CA_DIR / "ca.key.enc"
+    # Initialize store
+    store = get_store()
 
-    if not ca_cert_path.exists() or not ca_key_path.exists():
+    # Check if CA exists
+    if not store.ca_cert_exists() or not store.ca_key_exists():
         console.print(
             "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         raise FileNotFoundError("CA certificate or key not found")
 
-    # Load CA certificate
-    with open(ca_cert_path, "rb") as f:
-        ca_cert = x509.load_pem_x509_certificate(f.read())
+    # Unlock the store
+    if not store.unlock():
+        raise ValueError("Could not unlock the store")
 
-    # Get password and decrypt CA key (password validation is done inside get_password)
-    password = get_password()
-    if not password:
-        raise ValueError("No password provided for CA key")
+    # Load CA certificate and key
+    ca_cert = store.load_ca_cert()
+    ca_key = store.load_ca_key()
 
-    try:
-        ca_key = decrypt_key(ca_key_path, password)
-    except Exception as e:
-        # This should never happen as get_password already validated the password
-        raise ValueError(f"Failed to decrypt CA key: {e}") from e
+    if not ca_cert or not ca_key:
+        raise FileNotFoundError("CA certificate or key not found")
 
     return ca_key, ca_cert
 
 
 def create_certificate_with_params(params: CertificateParams) -> x509.Certificate:
     """Create a certificate using parameters object."""
-    config = load_config()
+    store = get_store()
+    config = store.load_config()
 
     # Get hash algorithm from config or parameter
     hash_algorithm = params.hash_algorithm
@@ -120,7 +111,6 @@ def create_certificate_with_params(params: CertificateParams) -> x509.Certificat
     cert = sign_certificate(cert_builder, params.ca_key, hash_algo)
 
     return cert
-
 
 
 def create_certificate(  # noqa: PLR0913
@@ -537,21 +527,28 @@ def _save_certificate_and_key(params: CertificateSaveParams) -> None:
         params: Parameters for saving certificate and key
 
     """
+    store = get_store()
+
+    # Unlock the store
+    if not store.is_unlocked:
+        if not store.unlock(params.password):
+            raise ValueError("Failed to unlock the store with the provided password")
+
+    # Save cert and key
+    cert_path = store.save_host_cert(params.hostname, params.cert)
+
     # Save key if new
     if params.is_new:
-        with open(params.key_path, "wb") as f:
-            f.write(encrypt_key(params.private_key, params.password))
-        console.print(f"✅ Private key saved to [bold]{params.key_path}[/bold]")
-
-    # Save certificate
-    with open(params.cert_path, "wb") as f:
-        f.write(params.cert.public_bytes(encoding=Encoding.PEM))
+        key_path = store.save_host_key(params.hostname, params.private_key)
+        console.print(f"✅ Private key saved to [bold]{key_path}[/bold]")
+    else:
+        key_path = store.get_host_key_path(params.hostname)
 
     action = "Generat" if params.is_new else "Renew"
     console.print(f"✅ Certificate {action}ed successfully for [bold]{params.hostname}[/bold]")
-    console.print(f"   Certificate: [bold]{params.cert_path}[/bold]")
+    console.print(f"   Certificate: [bold]{cert_path}[/bold]")
     if params.is_new:
-        console.print(f"   Private key (encrypted): [bold]{params.key_path}[/bold]")
+        console.print(f"   Private key (encrypted): [bold]{key_path}[/bold]")
 
 
 def _handle_existing_key(key_path: Path, key_algorithm: str) -> tuple[PrivateKeyTypes | None, str | None]:
@@ -567,13 +564,22 @@ def _handle_existing_key(key_path: Path, key_algorithm: str) -> tuple[PrivateKey
         Tuple of (private_key, password) or (None, None) if failed
 
     """
-    # Get password and decrypt private key
-    password = get_password()
+    # Initialize the store and unlock it
+    store = get_store()
+    if not store.unlock():
+        return None, None
+
+    password = store._password
     if not password:
         return None, None
 
     try:
-        private_key = decrypt_key(key_path, password)
+        # Use store to load the key using the path
+        with open(key_path, "rb") as f:
+            key_data = f.read()
+
+        # Need to manually load it here since we're working with a direct path
+        private_key = load_pem_private_key(key_data, password=password.encode())
     except Exception as e:
         console.print(f"[bold red]Error decrypting private key:[/bold red] {str(e)}")
         return None, None
@@ -605,8 +611,12 @@ def _create_new_key(hostname: str, key_algorithm: str) -> tuple[PrivateKeyTypes 
     console.print(f"Generating {key_algorithm} key for {hostname}...")
     private_key = generate_key(key_algorithm=key_algorithm)
 
-    # Get password with validation against CA key
-    password = get_password()
+    # Get password by unlocking the store
+    store = get_store()
+    if not store.unlock():
+        return None, None
+
+    password = store._password
     if not password:
         return None, None
 
@@ -623,6 +633,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         )
         return False
 
+    # Initialize the store
+    store = get_store()
+
     try:
         ca_key, ca_cert = load_ca_key_cert()
     except (FileNotFoundError, ValueError) as e:
@@ -630,7 +643,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         return False
 
     # Check if hostname exists in hosts config
-    hosts_config = load_hosts_config()
+    hosts_config = store.load_hosts_config()
     host_config = None
 
     for host in hosts_config.get("hosts", []):
@@ -642,16 +655,17 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
-    # Get host paths and key algorithm
-    host_dir, cert_path, key_path = get_host_paths(hostname)
+    # Check if certificate and key exist
     key_algorithm = host_config.get("key_algorithm", "RSA2048")
-    is_new = not (cert_path.exists() and key_path.exists())
+    is_new = not (store.host_cert_exists(hostname) and store.host_key_exists(hostname))
 
     # Handle key creation or loading
     if is_new:
-        host_dir.mkdir(parents=True, exist_ok=True)
+        store.init()  # Ensure directories exist
         private_key, password = _create_new_key(hostname, key_algorithm)
     else:
+        # Use the existing key
+        key_path = store.get_host_key_path(hostname)
         private_key, password = _handle_existing_key(key_path, key_algorithm)
 
     if not private_key or not password:
@@ -687,6 +701,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         host_config=host_config_obj,
     )
 
+    # Get certificate and key paths
+    host_dir, cert_path, key_path = get_host_paths(hostname)
+
     # Save certificate and key
     save_params = CertificateSaveParams(
         cert_path=cert_path,
@@ -706,12 +723,9 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     if do_deploy:
         deploy_host(hostname)
 
-    # Update inventory
-    inventory = load_inventory()
-    inventory = update_inventory_for_cert(
-        inventory=inventory, hostname=hostname, cert=cert, rekeyed=False, renewal_count_increment=1
-    )
-    save_inventory(inventory)
+    # Update inventory is done automatically by the store when saving certificates
+    inventory_store = get_store()
+    inventory_store.update_inventory()
     console.print("📋 Inventory updated")
 
     return True
@@ -727,7 +741,9 @@ def issue_all_certificates(no_export: bool = False, do_deploy: bool = False) -> 
         )
         return False
 
-    hosts_config = load_hosts_config()
+    # Initialize the store
+    store = get_store()
+    hosts_config = store.load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
     hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
@@ -846,12 +862,9 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     if do_deploy:
         deploy_host(hostname)
 
-    # Update inventory
-    inventory = load_inventory()
-    inventory = update_inventory_for_cert(
-        inventory=inventory, hostname=hostname, cert=cert, rekeyed=True, renewal_count_increment=1
-    )
-    save_inventory(inventory)
+    # Update inventory is done automatically by the store when saving certificates
+    inventory_store = get_store()
+    inventory_store.update_inventory()
     console.print("📋 Inventory updated")
 
     return True
@@ -867,7 +880,9 @@ def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
         )
         return False
 
-    hosts_config = load_hosts_config()
+    # Initialize the store
+    store = get_store()
+    hosts_config = store.load_hosts_config()
 
     # Explicitly typing this as List[str] to avoid Collection[str] typing issue
     hosts: list[str] = [host["name"] for host in hosts_config.get("hosts", [])]
@@ -898,8 +913,11 @@ def rekey_all_hosts(no_export: bool = False, do_deploy: bool = False) -> bool:
 
 def import_host_key(hostname: str, key_path: str) -> bool:
     """Import an existing private key for a host."""
+    # Initialize the store
+    store = get_store()
+
     # Check if hostname exists in hosts config
-    hosts_config = load_hosts_config()
+    hosts_config = store.load_hosts_config()
     host_exists = False
 
     for host in hosts_config.get("hosts", []):
@@ -917,15 +935,13 @@ def import_host_key(hostname: str, key_path: str) -> bool:
         console.print(f"[bold red]Error:[/bold red] Key file not found: {key_path}")
         return False
 
-    # Get host paths from utility function
-    host_dir, cert_path, key_dest_path = get_host_paths(hostname)
-
-    if cert_path.exists() or key_dest_path.exists():
+    # Check if host already has certificate or key
+    if store.host_cert_exists(hostname) or store.host_key_exists(hostname):
         if not click.confirm(f"Certificate or key for {hostname} already exists. Overwrite?", default=False):
             return False
 
-    # Create host directory if it doesn't exist
-    host_dir.mkdir(parents=True, exist_ok=True)
+    # Make sure the store is initialized
+    store.init()
 
     # Load the key
     try:
@@ -950,14 +966,12 @@ def import_host_key(hostname: str, key_path: str) -> bool:
         console.print(f"[bold red]Error loading key to import:[/bold red] {str(e)}")
         return False
 
-    # Get password for encrypting the key - validation is handled by get_password()
-    dest_password = get_password()
-    if not dest_password:
+    # Unlock the store with the destination password
+    if not store.unlock():
         return False
 
-    # Encrypt and save the key
-    with open(key_dest_path, "wb") as f:
-        f.write(encrypt_key(private_key, dest_password))
+    # Save the key using the store API
+    key_dest_path = store.save_host_key(hostname, private_key)
 
     console.print(f"✅ Key imported successfully for [bold]{hostname}[/bold]")
     console.print(f"   Private key (encrypted): [bold]{key_dest_path}[/bold]")
@@ -967,49 +981,44 @@ def import_host_key(hostname: str, key_path: str) -> bool:
 
 def export_host_key(hostname: str, out_path: str | None = None) -> bool:
     """Export an unencrypted private key for a host."""
-    # Get host paths from utility function
-    host_dir, cert_path, key_path = get_host_paths(hostname)
+    store = get_store()
 
-    if not key_path.exists():
+    if not store.host_key_exists(hostname):
         console.print(f"[bold red]Error:[/bold red] Key for {hostname} not found")
         return False
 
-    # Get password and decrypt the key
-    password = get_password()
-    if not password:
+    # Unlock the store
+    if not store.unlock():
         return False
 
     try:
-        private_key = decrypt_key(key_path, password)
+        if out_path:
+            # Export the key to file using the store API (decrypted)
+            if store.export_host_key(hostname, out_path, decrypt=True):
+                console.print(f"✅ Unencrypted key exported to [bold]{out_path}[/bold]")
+                return True
+            else:
+                console.print(f"[bold red]Error exporting key for {hostname}[/bold red]")
+                return False
+        else:
+            # For stdout display, we need to load the key and format it
+            private_key = store.load_host_key(hostname)
+            if private_key:
+                # Convert to unencrypted PEM format
+                unencrypted_key_data = private_key.private_bytes(
+                    encoding=Encoding.PEM,
+                    format=PrivateFormat.PKCS8,
+                    encryption_algorithm=NoEncryption(),
+                )
+                # Write to stdout
+                console.print(unencrypted_key_data.decode())
+                return True
+            else:
+                console.print(f"[bold red]Error loading key for {hostname}[/bold red]")
+                return False
     except Exception as e:
-        console.print(f"[bold red]Error decrypting key:[/bold red] {str(e)}")
+        console.print(f"[bold red]Error exporting key for {hostname}:[/bold red] {str(e)}")
         return False
-
-    # Export the unencrypted key
-    # Cast to the appropriate type for private_bytes method
-    pk_typed: PrivateKeyTypes = private_key
-    unencrypted_key_data = pk_typed.private_bytes(
-        encoding=Encoding.PEM,
-        format=PrivateFormat.PKCS8,
-        encryption_algorithm=NoEncryption(),
-    )
-
-    if out_path:
-        # Write to file
-        out_file_path = Path(out_path)
-        try:
-            out_file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(out_file_path, "wb") as f:
-                f.write(unencrypted_key_data)
-            console.print(f"✅ Unencrypted key exported to [bold]{out_file_path}[/bold]")
-        except Exception as e:
-            console.print(f"[bold red]Error writing key to file:[/bold red] {str(e)}")
-            return False
-    else:
-        # Print to stdout
-        console.print(unencrypted_key_data.decode("utf-8"))
-
-    return True
 
 
 def calculate_days_remaining(expiry_date_str: str) -> int | None:
@@ -1188,11 +1197,14 @@ def create_hosts_table(filtered_hosts: list[dict[str, Any]]) -> Table:
 
 def list_certificates(expired: bool = False, expiring_days: int | None = None, json_output: bool = False) -> None:
     """List all certificates with their expiration dates."""
+    # Initialize the store
+    store = get_store()
+
     # Ensure inventory is up to date
-    update_inventory()
+    store.update_inventory()
 
     # Load inventory
-    inventory = load_inventory()
+    inventory = store._load_inventory()
 
     # Display CA information
     ca_info = inventory.get("ca", {})

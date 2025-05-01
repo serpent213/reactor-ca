@@ -1419,9 +1419,11 @@ def run_deploy_command(hostname: str, command: str) -> bool:
                 return False
 
             try:
-                from reactor_ca.ca_operations import decrypt_key
+                from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
-                private_key = decrypt_key(key_path, password)
+                with open(key_path, "rb") as f:
+                    key_data = f.read()
+                    private_key = load_pem_private_key(key_data, password.encode("utf-8"))
 
                 # Write key to temporary file
                 temp_key_path, created_temp_files = write_private_key_to_temp_file(private_key, hostname)

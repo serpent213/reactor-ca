@@ -15,10 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.types import (
     PublicKeyTypes,
 )
 from cryptography.hazmat.primitives.serialization import (
-    BestAvailableEncryption,
     Encoding,
-    NoEncryption,
-    PrivateFormat,
     load_pem_private_key,
 )
 from rich.console import Console
@@ -28,6 +25,7 @@ from reactor_ca.models import (
     SubjectIdentity,
 )
 from reactor_ca.paths import CA_DIR, CONFIG_DIR
+from reactor_ca.store import get_store
 from reactor_ca.utils import (
     add_standard_extensions,
     calculate_validity_days,
@@ -38,9 +36,7 @@ from reactor_ca.utils import (
     get_certificate_metadata,
     get_password,
     load_certificate,
-    load_config,
     load_inventory,
-    save_certificate,
     save_inventory,
     save_private_key,
     sign_certificate,
@@ -128,31 +124,6 @@ def generate_key(key_algorithm: str = "RSA4096") -> PrivateKeyTypes:
         raise ValueError(f"Unsupported key algorithm: {key_algorithm}")
 
 
-def encrypt_key(private_key: PrivateKeyTypes, password: str | None) -> bytes:
-    """Encrypt a private key with a password."""
-    # All PrivateKeyTypes implement the private_bytes method, but typing doesn't capture that
-    # We don't need type: ignore as PrivateKeyTypes should have the private_bytes method
-    if not password:
-        # Use no encryption if password is empty
-        return private_key.private_bytes(
-            encoding=Encoding.PEM,
-            format=PrivateFormat.PKCS8,
-            encryption_algorithm=NoEncryption(),
-        )
-
-    return private_key.private_bytes(
-        encoding=Encoding.PEM,
-        format=PrivateFormat.PKCS8,
-        encryption_algorithm=BestAvailableEncryption(password.encode()),
-    )
-
-
-def decrypt_key(key_path: Path, password: str | None) -> PrivateKeyTypes:
-    """Decrypt a private key file with a password."""
-    with open(key_path, "rb") as key_file:
-        return load_pem_private_key(key_file.read(), password=password.encode() if password else None)
-
-
 def generate_ca_cert(
     private_key: PrivateKeyTypes, config: dict[str, Any], validity_days: int = 3650
 ) -> x509.Certificate:
@@ -229,20 +200,18 @@ def issue_ca() -> None:
         )
         return
 
-    # Check if CA already exists
+    # Initialize store
+    store = get_store()
+    store.init()
 
-    ca_cert_path = CA_DIR / "ca.crt"
-    ca_key_path = CA_DIR / "ca.key.enc"
-    ca_exists = ca_cert_path.exists() or ca_key_path.exists()
+    # Check if CA already exists
+    ca_exists = store.ca_cert_exists() or store.ca_key_exists()
 
     # Load config
-    config = load_config()
+    config = store.load_config()
 
     # Get expected key algorithm from config
     key_algorithm = config["ca"]["key_algorithm"]
-
-    # Create certificate directories
-    ensure_directory_exists(CA_DIR)
 
     if not ca_exists:
         # Creating a new CA
@@ -250,9 +219,8 @@ def issue_ca() -> None:
             if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
                 return
 
-        # Get password with confirmation for new key
-        password = get_password(ca_init=True)
-        if not password and config["ca"]["password"]["min_length"] > 0:
+        # Unlock the store with confirmation for new key
+        if not store.unlock(ca_init=True) and config["ca"]["password"]["min_length"] > 0:
             return
 
         # Generate key
@@ -265,37 +233,29 @@ def issue_ca() -> None:
         cert = generate_ca_cert(private_key, config, validity_days)
 
         # Save encrypted key and certificate
-        save_private_key(private_key, ca_key_path, password.encode() if password else None)
-        save_certificate(cert, ca_cert_path)
+        ca_key_path = store.save_ca_key(private_key)
+        ca_cert_path = store.save_ca_cert(cert)
 
         console.print("✅ CA created successfully")
         console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
         console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
 
-        # Initialize inventory
-        inventory = {
-            "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
-            "ca": {
-                "serial": format(cert.serial_number, "x"),
-                "not_after": cert.not_valid_after.isoformat(),
-                "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-            },
-            "hosts": [],
-        }
-        save_inventory(inventory)
+        # Inventory is automatically updated by store.save_ca_cert()
         console.print("📋 Inventory initialized")
     else:
         # Renewing existing CA certificate
-        # Get password
-        password = get_password()
-        if not password:
+        # Unlock the store
+        if not store.unlock():
             return
 
-        # Decrypt the CA key
+        # Load the CA key
         try:
-            ca_key = decrypt_key(ca_key_path, password)
+            ca_key = store.load_ca_key()
+            if not ca_key:
+                console.print("[bold red]Error:[/bold red] Could not load CA key")
+                return
         except Exception as e:
-            console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+            console.print(f"[bold red]Error loading CA key:[/bold red] {str(e)}")
             return
 
         # Verify that the existing key matches the algorithm in the config
@@ -314,20 +274,12 @@ def issue_ca() -> None:
         new_ca_cert = generate_ca_cert(ca_key, config, validity_days)
 
         # Save the new certificate
-        save_certificate(new_ca_cert, ca_cert_path)
+        ca_cert_path = store.save_ca_cert(new_ca_cert)
 
         console.print("✅ CA certificate renewed successfully")
         console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
 
-        # Update inventory
-        inventory = load_inventory()
-        inventory["ca"] = {
-            "serial": format(new_ca_cert.serial_number, "x"),
-            "not_after": new_ca_cert.not_valid_after.isoformat(),
-            "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
-        }
-        inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-        save_inventory(inventory)
+        # Inventory is automatically updated by store.save_ca_cert()
         console.print("📋 Inventory updated")
 
 
@@ -341,30 +293,22 @@ def rekey_ca() -> None:
         )
         return
 
-    # Check if CA exists
-    ca_cert_path = CA_DIR / "ca.crt"
-    ca_key_path = CA_DIR / "ca.key.enc"
+    # Initialize store
+    store = get_store()
 
-    if not ca_cert_path.exists() or not ca_key_path.exists():
+    # Check if CA exists
+    if not store.ca_cert_exists() or not store.ca_key_exists():
         console.print(
             "[bold red]Error:[/bold red] " + "CA certificate or key not found. Please initialize the CA first."
         )
         return
 
-    # Get password
-    password = get_password()
-    if not password:
-        return
-
-    # Decrypt the old CA key to validate password
-    try:
-        decrypt_key(ca_key_path, password)
-    except Exception as e:
-        console.print(f"[bold red]Error decrypting CA key:[/bold red] {str(e)}")
+    # Unlock the store
+    if not store.unlock():
         return
 
     # Load config
-    config = load_config()
+    config = store.load_config()
 
     # Generate a new key
     key_algorithm = config["ca"]["key_algorithm"]
@@ -380,22 +324,14 @@ def rekey_ca() -> None:
     new_ca_cert = generate_ca_cert(new_ca_key, config, validity_days)
 
     # Save the new certificate and key
-    save_certificate(new_ca_cert, ca_cert_path)
-    save_private_key(new_ca_key, ca_key_path, password.encode() if password else None)
+    ca_cert_path = store.save_ca_cert(new_ca_cert)
+    ca_key_path = store.save_ca_key(new_ca_key)
 
     console.print("✅ CA rekeyed successfully")
     console.print(f"   Certificate: [bold]{ca_cert_path}[/bold]")
     console.print(f"   Private key (encrypted): [bold]{ca_key_path}[/bold]")
 
-    # Update inventory
-    inventory = load_inventory()
-    inventory["ca"] = {
-        "serial": format(new_ca_cert.serial_number, "x"),
-        "not_after": new_ca_cert.not_valid_after.isoformat(),
-        "fingerprint": "SHA256:" + new_ca_cert.fingerprint(hashes.SHA256()).hex(),
-    }
-    inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
-    save_inventory(inventory)
+    # Inventory is automatically updated by store.save_ca_cert()
     console.print("📋 Inventory updated")
 
 
