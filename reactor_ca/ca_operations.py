@@ -217,8 +217,6 @@ def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
     return True
 
 
-
-
 def issue_ca() -> None:
     """Issue a CA certificate. Creates one if it doesn't exist, renews if it does."""
     # Validate configuration first

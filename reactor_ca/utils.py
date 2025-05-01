@@ -290,14 +290,15 @@ def read_password_from_file(password_file: str) -> str | None:
 
 def get_password(ca_init: bool = False) -> str | None:
     """Get password for key encryption/decryption, with multiple sources.
-    
+
     Args:
     ----
         ca_init: If True, ask for password confirmation. If False, validate against CA key.
-    
+
     Returns:
     -------
         Password string if successful, None otherwise
+
     """
     # Load config to check password settings
     config = load_config()
@@ -353,25 +354,26 @@ def get_password(ca_init: bool = False) -> str | None:
 
 def _validate_password_against_ca_key(password: str) -> bool:
     """Validate a password against the CA key.
-    
+
     Args:
     ----
         password: Password to validate
-        
+
     Returns:
     -------
         True if password is valid for the CA key, False otherwise
+
     """
     ca_key_path = CA_DIR / "ca.key.enc"
-    
+
     if not ca_key_path.exists():
         # No CA key to validate against
         return True
-        
+
     try:
         with open(ca_key_path, "rb") as f:
             encrypted_key_data = f.read()
-        
+
         # Try to decrypt the key with the password
         load_pem_private_key(
             encrypted_key_data,

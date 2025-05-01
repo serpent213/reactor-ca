@@ -1,4 +1,4 @@
-"""Tests for the ReactorCA tool."""
+"""Tests for CA operations in ReactorCA."""
 
 import os
 import tempfile
@@ -282,108 +282,6 @@ def test_ca_rekey() -> None:
             assert new_cert_mtime > original_cert_mtime
             assert new_key_mtime > original_key_mtime
             assert "CA rekeyed successfully" in result.output
-
-        finally:
-            # Clean up environment variable
-            if "TEST_CA_PASSWORD" in os.environ:
-                del os.environ["TEST_CA_PASSWORD"]
-
-            # Change back to original directory
-            os.chdir(original_dir)
-
-
-def test_host_issue_with_key_check() -> None:
-    """Test 'host issue' command with key algorithm verification."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Change to temporary directory
-        original_dir = os.getcwd()
-        os.chdir(tmpdir)
-
-        try:
-            # Create necessary directories
-            Path("config").mkdir(exist_ok=True)
-            Path("store/ca").mkdir(parents=True, exist_ok=True)
-
-            # Create sample CA config
-            ca_config_content = """
-            ca:
-              common_name: "Test CA"
-              organization: "Test Org"
-              organization_unit: "IT"
-              country: "US"
-              state: "Test State"
-              locality: "Test City"
-              email: "test@example.com"
-              key_algorithm: "RSA2048"
-              validity:
-                days: 365
-              password:
-                min_length: 8
-                env_var: "TEST_CA_PASSWORD"
-            """
-
-            # Create sample hosts config with a host
-            hosts_config_content = """
-            hosts:
-              - name: "test.example.com"
-                common_name: "test.example.com"
-                key_algorithm: "RSA2048"
-                validity:
-                  days: 365
-            """
-
-            with open("config/ca.yaml", "w") as f:
-                f.write(ca_config_content)
-
-            with open("config/hosts.yaml", "w") as f:
-                f.write(hosts_config_content)
-
-            # Set environment variable for password with at least 8 characters
-            os.environ["TEST_CA_PASSWORD"] = "testpassword"
-
-            # Create the CA first
-            runner = CliRunner()
-            result = runner.invoke(cli, ["ca", "issue"], input="testpassword\ntestpassword\n")
-            assert result.exit_code == 0
-
-            # Issue host certificate
-            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\ntestpassword\n")
-            assert result.exit_code == 0
-            assert Path("store/hosts/test.example.com/cert.crt").exists()
-            assert Path("store/hosts/test.example.com/cert.key.enc").exists()
-
-            # Get the original certificate modification time
-            original_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
-
-            # Now renew the certificate
-            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
-            assert result.exit_code == 0
-
-            # Verify certificate was updated
-            new_cert_mtime = Path("store/hosts/test.example.com/cert.crt").stat().st_mtime
-            assert new_cert_mtime > original_cert_mtime
-
-            # Change the key algorithm in the hosts config to test the validation
-            hosts_config_content = """
-            hosts:
-              - name: "test.example.com"
-                common_name: "test.example.com"
-                key_algorithm: "RSA4096"  # Changed from RSA2048
-                validity:
-                  days: 365
-            """
-
-            with open("config/hosts.yaml", "w") as f:
-                f.write(hosts_config_content)
-
-            # Try to renew the certificate - should fail due to key algorithm mismatch
-            result = runner.invoke(cli, ["host", "issue", "test.example.com"], input="testpassword\n")
-            assert "The existing key algorithm does not match the configuration" in result.output
-
-            # Rekey should work with new algorithm
-            result = runner.invoke(cli, ["host", "rekey", "test.example.com"], input="testpassword\n")
-            assert result.exit_code == 0
-            assert "rekeyed successfully" in result.output
 
         finally:
             # Clean up environment variable

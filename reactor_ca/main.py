@@ -12,7 +12,8 @@ from reactor_ca.ca_operations import (
     rekey_ca,
     show_ca_info,
 )
-from reactor_ca.cert_operations import (
+from reactor_ca.config_validator import validate_configs
+from reactor_ca.host_operations import (
     deploy_all_hosts,
     deploy_host,
     export_host_key,
@@ -25,7 +26,6 @@ from reactor_ca.cert_operations import (
     rekey_all_hosts,
     rekey_host,
 )
-from reactor_ca.config_validator import validate_configs
 from reactor_ca.utils import (
     calculate_validity_days,
     change_password,
@@ -193,6 +193,54 @@ def host_deploy(hostname: str | None, all_hosts: bool) -> None:
         # hostname is not None here because we checked earlier
         assert hostname is not None
         deploy_host(hostname)
+
+
+@host.command(name="clean")
+def host_clean() -> None:
+    """Remove host folders that are no longer in the configuration."""
+    import shutil
+
+    from reactor_ca.paths import HOSTS_DIR
+
+    # Load the hosts configuration
+    from reactor_ca.utils import load_hosts_config, update_inventory
+
+    hosts_config = load_hosts_config()
+    configured_hosts = [host["name"] for host in hosts_config.get("hosts", [])]
+
+    # Check if HOSTS_DIR exists
+    if not HOSTS_DIR.exists():
+        console.print("[bold yellow]Warning:[/bold yellow] No hosts directory found.")
+        return
+
+    # Get all host directories
+    existing_host_dirs = [d for d in HOSTS_DIR.iterdir() if d.is_dir()]
+
+    # Find hosts that are no longer in the configuration
+    hosts_to_remove = []
+    for host_dir in existing_host_dirs:
+        hostname = host_dir.name
+        if hostname not in configured_hosts:
+            hosts_to_remove.append(hostname)
+
+    if not hosts_to_remove:
+        console.print("✅ No obsolete host folders found.")
+        return
+
+    # Ask for confirmation for each host
+    for hostname in hosts_to_remove:
+        if click.confirm(f"Remove host folder for {hostname}?", default=True):
+            host_dir = HOSTS_DIR / hostname
+            try:
+                shutil.rmtree(host_dir)
+                console.print(f"✅ Removed host folder for [bold]{hostname}[/bold]")
+            except Exception as e:
+                console.print(f"[bold red]Error removing host folder for {hostname}:[/bold red] {str(e)}")
+
+    # Update inventory after cleaning
+    console.print("Updating inventory...")
+    update_inventory()
+    console.print("✅ Inventory updated.")
 
 
 @host.command(name="sign-csr")

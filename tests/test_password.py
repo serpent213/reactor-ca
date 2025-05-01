@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
 from reactor_ca.ca_operations import encrypt_key
-from reactor_ca.cert_operations import import_host_key
+from reactor_ca.host_operations import import_host_key
 from reactor_ca.utils import _password_cache_container
 
 
@@ -72,7 +72,7 @@ def test_import_host_key_with_different_password(monkeypatch):
                     "key_algorithm": "RSA2048",  # Updated to match main code
                     "password": {
                         "min_length": 8,
-                        "env_var": "TEST_CA_PASSWORD"  # Add environment variable for password
+                        "env_var": "TEST_CA_PASSWORD",  # Add environment variable for password
                     },
                     "validity": {"days": 365},
                 }
@@ -117,7 +117,7 @@ def test_import_host_key_with_different_password(monkeypatch):
             # Now try with the correct password set in env var
             os.environ["TEST_CA_PASSWORD"] = ca_password
             _password_cache_container[0] = None  # Clear cached password
-            
+
             # This should succeed
             result = import_host_key("test_host", str(key_file))
             assert result is True
