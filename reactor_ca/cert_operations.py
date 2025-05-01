@@ -6,13 +6,13 @@ from typing import Any
 
 import click
 from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
     PrivateFormat,
+    load_pem_private_key,
 )
-
-# Import ObjectIdentifier from the correct location
 from cryptography.x509.general_name import DirectoryName, OtherName, RegisteredID, UniformResourceIdentifier
 from cryptography.x509.oid import NameOID
 from rich.console import Console
@@ -23,9 +23,12 @@ from reactor_ca.ca_operations import (
     decrypt_key,
     encrypt_key,
     generate_key,
+    get_confirmed_password,
     get_hash_algorithm,
+    verify_key_algorithm,
 )
 from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.paths import CA_DIR
 from reactor_ca.utils import (
     add_standard_extensions,
     calculate_validity_days,
@@ -51,8 +54,8 @@ console = Console()
 def load_ca_key_cert() -> tuple[Any | None, x509.Certificate | None]:
     """Load the CA key and certificate."""
     # Check if CA exists
-    ca_cert_path = Path("store/ca/ca.crt")
-    ca_key_path = Path("store/ca/ca.key.enc")
+    ca_cert_path = CA_DIR / "ca.crt"
+    ca_key_path = CA_DIR / "ca.key.enc"
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
@@ -175,7 +178,7 @@ def export_certificate(
         chain_export_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Load CA certificate
-        ca_cert_path = Path("store/ca/ca.crt")
+        ca_cert_path = CA_DIR / "ca.crt"
         try:
             with open(ca_cert_path, "rb") as f:
                 ca_cert_data = f.read()
@@ -399,7 +402,6 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
         private_key = generate_key(key_algorithm=key_algorithm)
 
         # Get password with confirmation for key encryption
-        from reactor_ca.ca_operations import get_confirmed_password
 
         password = get_confirmed_password()
         if not password:
@@ -418,7 +420,6 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
             return False
 
         # Verify that the existing key matches the algorithm in the config
-        from reactor_ca.ca_operations import verify_key_algorithm
 
         if not verify_key_algorithm(private_key, key_algorithm):
             console.print(
@@ -690,8 +691,6 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
 
         # Try to load it without password first
         try:
-            from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
             private_key = load_pem_private_key(key_data, password=None)
             src_password = None
         except (TypeError, ValueError):
@@ -712,7 +711,7 @@ def import_host_key(hostname: str, key_path: str, password: str | None = None) -
         return False
 
     # Validate against CA key password to ensure consistent encryption
-    ca_key_path = Path("store/ca/ca.key.enc")
+    ca_key_path = CA_DIR / "ca.key.enc"
     if ca_key_path.exists():
         try:
             decrypt_key(ca_key_path, dest_password)
@@ -751,9 +750,6 @@ def export_host_key(hostname: str, out_path: str | None = None) -> bool:
         return False
 
     # Export the unencrypted key
-    # Use proper typing for the private_key to avoid type errors
-    from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
-
     # Cast to the appropriate type for private_bytes method
     pk_typed: PrivateKeyTypes = private_key
     unencrypted_key_data = pk_typed.private_bytes(

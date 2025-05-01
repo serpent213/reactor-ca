@@ -4,7 +4,8 @@ from pathlib import Path
 
 import yamale  # type: ignore
 
-from reactor_ca.utils import console, path_exists
+from reactor_ca.paths import CONFIG_DIR
+from reactor_ca.utils import console
 
 
 def validate_ca_config(config_path: str) -> tuple[bool, list[str]]:
@@ -91,19 +92,18 @@ def validate_configs() -> bool:
         True if all validations pass, False otherwise.
 
     """
-    config_dir = Path("config")
-    ca_config_path = config_dir / "ca_config.yaml"
-    hosts_config_path = config_dir / "hosts.yaml"
+    ca_config_path = CONFIG_DIR / "ca_config.yaml"
+    hosts_config_path = CONFIG_DIR / "hosts.yaml"
 
     all_valid = True
 
     # Check if files exist using utility function
-    if not path_exists(ca_config_path):
+    if not ca_config_path.exists():
         console.print(f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}")
         console.print("Run 'ca config init' to create a default configuration.")
         return False
 
-    if not path_exists(hosts_config_path):
+    if not hosts_config_path.exists():
         console.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_config_path}")
         console.print("You may want to create a hosts configuration to issue certificates.")
 
@@ -118,7 +118,7 @@ def validate_configs() -> bool:
         console.print("✅ CA configuration is valid")
 
     # Validate hosts config if it exists
-    if path_exists(hosts_config_path):
+    if hosts_config_path.exists():
         hosts_valid, hosts_errors = validate_hosts_config(str(hosts_config_path))
         if not hosts_valid:
             console.print("[bold red]Hosts configuration validation failed:[/bold red]")

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import yaml
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, ed448, ed25519, rsa
@@ -23,11 +24,13 @@ from cryptography.hazmat.primitives.serialization import (
 from rich.console import Console
 
 from reactor_ca.config_validator import validate_config_before_operation
+from reactor_ca.paths import CA_DIR, CONFIG_DIR
 from reactor_ca.utils import (
     SubjectIdentity,
     add_standard_extensions,
     calculate_validity_days,
     create_certificate_builder,
+    create_default_config,
     create_subject_name,
     ensure_directory_exists,
     get_certificate_metadata,
@@ -142,7 +145,7 @@ def encrypt_key(private_key: PrivateKeyTypes, password: str | None) -> bytes:
     )
 
 
-def decrypt_key(key_path: str | Path, password: str | None) -> PrivateKeyTypes:
+def decrypt_key(key_path: Path, password: str | None) -> PrivateKeyTypes:
     """Decrypt a private key file with a password."""
     with open(key_path, "rb") as key_file:
         return load_pem_private_key(key_file.read(), password=password.encode() if password else None)
@@ -258,8 +261,9 @@ def issue_ca() -> None:
         return
 
     # Check if CA already exists
-    ca_cert_path = Path("store/ca/ca.crt")
-    ca_key_path = Path("store/ca/ca.key.enc")
+
+    ca_cert_path = CA_DIR / "ca.crt"
+    ca_key_path = CA_DIR / "ca.key.enc"
     ca_exists = ca_cert_path.exists() or ca_key_path.exists()
 
     # Load config
@@ -269,7 +273,7 @@ def issue_ca() -> None:
     key_algorithm = config["ca"]["key_algorithm"]
 
     # Create certificate directories
-    ensure_directory_exists("store/ca")
+    ensure_directory_exists(CA_DIR)
 
     if not ca_exists:
         # Creating a new CA
@@ -369,8 +373,8 @@ def rekey_ca() -> None:
         return
 
     # Check if CA exists
-    ca_cert_path = Path("store/ca/ca.crt")
-    ca_key_path = Path("store/ca/ca.key.enc")
+    ca_cert_path = CA_DIR / "ca.crt"
+    ca_key_path = CA_DIR / "ca.key.enc"
 
     if not ca_cert_path.exists() or not ca_key_path.exists():
         console.print(
@@ -426,7 +430,7 @@ def rekey_ca() -> None:
     console.print("📋 Inventory updated")
 
 
-def _validate_ca_import_paths(cert_path: str | Path, key_path: str | Path) -> tuple[bool, Path, Path, Path, Path]:
+def _validate_ca_import_paths(cert_path: Path, key_path: Path) -> tuple[bool, Path, Path, Path, Path]:
     """Validate paths for CA import and check if CA exists.
 
     Returns
@@ -434,29 +438,28 @@ def _validate_ca_import_paths(cert_path: str | Path, key_path: str | Path) -> tu
         A tuple containing (success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest)
 
     """
-    ca_cert_dest = Path("store/ca/ca.crt")
-    ca_key_dest = Path("store/ca/ca.key.enc")
+    from reactor_ca.paths import CA_DIR
+
+    ca_cert_dest = CA_DIR / "ca.crt"
+    ca_key_dest = CA_DIR / "ca.key.enc"
 
     if ca_cert_dest.exists() or ca_key_dest.exists():
         if not click.confirm("CA already exists. Do you want to overwrite it?", default=False):
             return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Check if source files exist
-    src_cert_path = Path(cert_path)
-    src_key_path = Path(key_path)
-
-    if not src_cert_path.exists():
+    if not cert_path.exists():
         console.print(f"[bold red]Error:[/bold red] Certificate file not found: {cert_path}")
         return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
-    if not src_key_path.exists():
+    if not key_path.exists():
         console.print(f"[bold red]Error:[/bold red] Key file not found: {key_path}")
         return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Create certificate directories
-    ensure_directory_exists("store/ca")
+    ensure_directory_exists(CA_DIR)
 
-    return True, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest
+    return True, cert_path, key_path, ca_cert_dest, ca_key_dest
 
 
 def _load_and_validate_cert(src_cert_path: Path) -> tuple[bool, x509.Certificate | None, SubjectIdentity]:
@@ -586,15 +589,13 @@ def _determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
 
 def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm: str) -> bool:
     """Create or update configuration based on imported CA metadata."""
-    config_path = Path("config/ca_config.yaml")
+    config_path = CONFIG_DIR / "ca_config.yaml"
     config_exists = config_path.exists()
-    import yaml
 
     if not config_exists:
         console.print("📝 No CA configuration found. Creating new configuration from certificate metadata...")
 
         # Create default config with metadata from certificate
-        from reactor_ca.utils import create_default_config
 
         create_default_config()
 
@@ -661,8 +662,6 @@ def _update_config_with_metadata(
 
 def _write_config_file(config_path: Path, config: dict) -> None:
     """Write configuration to file with standard header."""
-    import yaml
-
     with open(config_path, "w") as f:
         f.write("# ReactorCA Configuration\n")
         f.write("# This file contains settings for the Certificate Authority\n")
@@ -713,7 +712,7 @@ def _complete_ca_import(
     return True
 
 
-def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
+def import_ca(cert_path: Path, key_path: Path) -> bool:
     """Import an existing CA certificate and key."""
     # Validate paths and check if CA exists
     success, src_cert_path, src_key_path, ca_cert_dest, ca_key_dest = _validate_ca_import_paths(cert_path, key_path)
@@ -744,7 +743,9 @@ def import_ca(cert_path: str | Path, key_path: str | Path) -> bool:
 def show_ca_info(json_output: bool = False) -> None:
     """Show information about the CA certificate."""
     # Check if CA exists
-    ca_cert_path = Path("store/ca/ca.crt")
+    from reactor_ca.paths import CA_DIR
+
+    ca_cert_path = CA_DIR / "ca.crt"
 
     if not ca_cert_path.exists():
         console.print("[bold red]Error:[/bold red] CA certificate not found. Please initialize the CA first.")

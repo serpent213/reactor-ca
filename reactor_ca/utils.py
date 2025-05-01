@@ -33,6 +33,8 @@ from cryptography.x509.general_name import (
 from cryptography.x509.oid import NameOID
 from rich.console import Console
 
+from reactor_ca.paths import CA_DIR, CONFIG_DIR, HOSTS_DIR, STORE_DIR
+
 # Constants for expiration warnings
 EXPIRY_CRITICAL = 30  # days
 EXPIRY_WARNING = 90  # days
@@ -118,9 +120,9 @@ _password_cache_container: list[str | None] = [None]
 
 def ensure_dirs() -> None:
     """Ensure all required directories exist."""
-    dirs = ["config", "store/ca", "store/hosts"]
+    dirs = [CONFIG_DIR, CA_DIR, HOSTS_DIR]
     for dir_path in dirs:
-        Path(dir_path).mkdir(parents=True, exist_ok=True)
+        dir_path.mkdir(parents=True, exist_ok=True)
 
 
 def calculate_validity_days(validity_config: dict[str, int]) -> int:
@@ -197,10 +199,10 @@ def create_default_config() -> None:
     }
 
     # Create config directory if it doesn't exist
-    Path("config").mkdir(exist_ok=True)
+    CONFIG_DIR.mkdir(exist_ok=True)
 
     # Write CA config with header comment
-    ca_config_path = Path("config/ca_config.yaml")
+    ca_config_path = CONFIG_DIR / "ca_config.yaml"
     with open(ca_config_path, "w") as f:
         f.write("# ReactorCA Configuration\n")
         f.write("# This file contains settings for the Certificate Authority\n")
@@ -208,7 +210,7 @@ def create_default_config() -> None:
         yaml.dump(ca_config, f, default_flow_style=False, sort_keys=False)
 
     # Write hosts config with header comment
-    hosts_config_path = Path("config/hosts.yaml")
+    hosts_config_path = CONFIG_DIR / "hosts.yaml"
     with open(hosts_config_path, "w") as f:
         f.write("# ReactorCA Hosts Configuration\n")
         f.write("# This file contains settings for host certificates\n")
@@ -229,7 +231,7 @@ def load_yaml_config(config_file: str) -> dict[str, Any]:
 
 def load_config() -> dict[str, Any]:
     """Load CA configuration."""
-    config_path = Path("config/ca_config.yaml")
+    config_path = CONFIG_DIR / "ca_config.yaml"
 
     if not config_path.exists():
         console.print(f"[bold red]Error:[/bold red] Configuration file not found: {config_path}")
@@ -256,7 +258,7 @@ def load_config() -> dict[str, Any]:
 
 def load_hosts_config() -> dict[str, Any]:
     """Load hosts configuration."""
-    hosts_path = Path("config/hosts.yaml")
+    hosts_path = CONFIG_DIR / "hosts.yaml"
 
     if not hosts_path.exists():
         console.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_path}")
@@ -332,11 +334,11 @@ def get_password() -> str | None:
 
 def save_inventory(inventory: dict[str, Any]) -> None:
     """Save certificate inventory."""
-    inventory_path = Path("store/inventory.yaml")
+    inventory_path = STORE_DIR / "inventory.yaml"
 
     try:
         # Ensure the store directory exists
-        Path("store").mkdir(exist_ok=True)
+        STORE_DIR.mkdir(exist_ok=True)
         with open(inventory_path, "w") as f:
             yaml.dump(inventory, f, default_flow_style=False, sort_keys=False)
     except Exception as e:
@@ -345,7 +347,7 @@ def save_inventory(inventory: dict[str, Any]) -> None:
 
 def load_inventory() -> dict[str, Any]:
     """Load certificate inventory."""
-    inventory_path = Path("store/inventory.yaml")
+    inventory_path = STORE_DIR / "inventory.yaml"
 
     if not inventory_path.exists():
         # Create empty inventory
@@ -375,11 +377,9 @@ def load_inventory() -> dict[str, Any]:
 def scan_cert_files() -> dict[str, Any]:
     """Scan certificate files and update inventory."""
     inventory = load_inventory()
-    ca_dir = Path("store/ca")
-    hosts_dir = Path("store/hosts")
 
     # Check CA certificate
-    ca_cert_path = ca_dir / "ca.crt"
+    ca_cert_path = CA_DIR / "ca.crt"
     if ca_cert_path.exists():
         try:
             with open(ca_cert_path, "rb") as f:
@@ -394,8 +394,8 @@ def scan_cert_files() -> dict[str, Any]:
             console.print(f"[bold red]Error loading CA certificate:[/bold red] {str(e)}")
 
     # Check host certificates
-    if hosts_dir.exists():
-        host_dirs = [d for d in hosts_dir.iterdir() if d.is_dir()]
+    if HOSTS_DIR.exists():
+        host_dirs = [d for d in HOSTS_DIR.iterdir() if d.is_dir()]
 
         for host_dir in host_dirs:
             hostname = host_dir.name
@@ -471,14 +471,13 @@ def change_password() -> None:
     key_files = []
 
     # CA key
-    ca_key_path = Path("store/ca/ca.key.enc")
+    ca_key_path = CA_DIR / "ca.key.enc"
     if ca_key_path.exists():
         key_files.append(ca_key_path)
 
     # Host keys
-    hosts_dir = Path("store/hosts")
-    if hosts_dir.exists():
-        for host_dir in [d for d in hosts_dir.iterdir() if d.is_dir()]:
+    if HOSTS_DIR.exists():
+        for host_dir in [d for d in HOSTS_DIR.iterdir() if d.is_dir()]:
             key_path = host_dir / "cert.key.enc"
             if key_path.exists():
                 key_files.append(key_path)
@@ -536,7 +535,7 @@ def change_password() -> None:
 
 
 # File and Path Operations
-def ensure_directory_exists(directory_path: str | Path) -> Path:
+def ensure_directory_exists(directory_path: Path) -> Path:
     """Ensure a directory exists, creating it if necessary.
 
     Args:
@@ -548,12 +547,11 @@ def ensure_directory_exists(directory_path: str | Path) -> Path:
         Path object of the directory
 
     """
-    path = Path(directory_path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    directory_path.mkdir(parents=True, exist_ok=True)
+    return directory_path
 
 
-def path_exists(path: str | Path) -> bool:
+def path_exists(path: Path) -> bool:
     """Check if a path exists.
 
     Args:
@@ -565,11 +563,11 @@ def path_exists(path: str | Path) -> bool:
         True if path exists, False otherwise
 
     """
-    return Path(path).exists()
+    return path.exists()
 
 
 # Certificate and Key File Operations
-def load_certificate(cert_path: str | Path) -> x509.Certificate:
+def load_certificate(cert_path: Path) -> x509.Certificate:
     """Load an X.509 certificate from a file.
 
     Args:
@@ -581,17 +579,16 @@ def load_certificate(cert_path: str | Path) -> x509.Certificate:
         X.509 certificate object
 
     """
-    path = Path(cert_path)
-    if not path.exists():
+    if not cert_path.exists():
         raise FileNotFoundError(f"Certificate file not found: {cert_path}")
 
-    with open(path, "rb") as f:
+    with open(cert_path, "rb") as f:
         cert_data = f.read()
 
     return x509.load_pem_x509_certificate(cert_data)
 
 
-def save_certificate(cert: x509.Certificate, cert_path: str | Path) -> None:
+def save_certificate(cert: x509.Certificate, cert_path: Path) -> None:
     """Save an X.509 certificate to a file in PEM format.
 
     Args:
@@ -600,14 +597,13 @@ def save_certificate(cert: x509.Certificate, cert_path: str | Path) -> None:
         cert_path: Path to save certificate to
 
     """
-    path = Path(cert_path)
-    ensure_directory_exists(path.parent)
+    ensure_directory_exists(cert_path.parent)
 
-    with open(path, "wb") as f:
+    with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(Encoding.PEM))
 
 
-def load_private_key(key_path: str | Path, password: bytes | None = None) -> PrivateKeyTypes:
+def load_private_key(key_path: Path, password: bytes | None = None) -> PrivateKeyTypes:
     """Load an RSA private key from a file.
 
     Args:
@@ -620,17 +616,16 @@ def load_private_key(key_path: str | Path, password: bytes | None = None) -> Pri
         Private key object
 
     """
-    path = Path(key_path)
-    if not path.exists():
+    if not key_path.exists():
         raise FileNotFoundError(f"Private key file not found: {key_path}")
 
-    with open(path, "rb") as f:
+    with open(key_path, "rb") as f:
         key_data = f.read()
 
     return load_pem_private_key(key_data, password=password)
 
 
-def save_private_key(key: PrivateKeyTypes, key_path: str | Path, password: bytes | None = None) -> None:
+def save_private_key(key: PrivateKeyTypes, key_path: Path, password: bytes | None = None) -> None:
     """Save a private key to a file in PEM format.
 
     Args:
@@ -640,14 +635,13 @@ def save_private_key(key: PrivateKeyTypes, key_path: str | Path, password: bytes
         password: Optional password to encrypt the key
 
     """
-    path = Path(key_path)
-    ensure_directory_exists(path.parent)
+    ensure_directory_exists(key_path.parent)
 
     encryption_algorithm: NoEncryption | BestAvailableEncryption = NoEncryption()
     if password:
         encryption_algorithm = BestAvailableEncryption(password)
 
-    with open(path, "wb") as f:
+    with open(key_path, "wb") as f:
         f.write(
             key.private_bytes(
                 encoding=Encoding.PEM, format=PrivateFormat.PKCS8, encryption_algorithm=encryption_algorithm
@@ -655,7 +649,7 @@ def save_private_key(key: PrivateKeyTypes, key_path: str | Path, password: bytes
         )
 
 
-def load_crl(crl_path: str | Path) -> x509.CertificateRevocationList:
+def load_crl(crl_path: Path) -> x509.CertificateRevocationList:
     """Load a Certificate Revocation List from a file.
 
     Args:
@@ -667,17 +661,16 @@ def load_crl(crl_path: str | Path) -> x509.CertificateRevocationList:
         CertificateRevocationList object
 
     """
-    path = Path(crl_path)
-    if not path.exists():
+    if not crl_path.exists():
         raise FileNotFoundError(f"CRL file not found: {crl_path}")
 
-    with open(path, "rb") as f:
+    with open(crl_path, "rb") as f:
         crl_data = f.read()
 
     return x509.load_pem_x509_crl(crl_data)
 
 
-def save_crl(crl: x509.CertificateRevocationList, crl_path: str | Path) -> None:
+def save_crl(crl: x509.CertificateRevocationList, crl_path: Path) -> None:
     """Save a Certificate Revocation List to a file in PEM format.
 
     Args:
@@ -686,10 +679,9 @@ def save_crl(crl: x509.CertificateRevocationList, crl_path: str | Path) -> None:
         crl_path: Path to save CRL to
 
     """
-    path = Path(crl_path)
-    ensure_directory_exists(path.parent)
+    ensure_directory_exists(crl_path.parent)
 
-    with open(path, "wb") as f:
+    with open(crl_path, "wb") as f:
         f.write(crl.public_bytes(Encoding.PEM))
 
 
@@ -743,7 +735,7 @@ def get_host_paths(hostname: str) -> tuple[Path, Path, Path]:
         Tuple containing (host_dir, cert_path, key_path)
 
     """
-    host_dir = Path(f"store/hosts/{hostname}")
+    host_dir = HOSTS_DIR / hostname
     cert_path = host_dir / "cert.crt"
     key_path = host_dir / "cert.key.enc"
     return host_dir, cert_path, key_path

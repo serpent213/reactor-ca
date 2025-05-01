@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Main CLI entry point for the ReactorCA tool."""
 
+from pathlib import Path
+
 import click
 
 from reactor_ca import __version__
 from reactor_ca.ca_operations import (
     import_ca,
+    issue_ca,
     rekey_ca,
     show_ca_info,
 )
@@ -17,6 +20,7 @@ from reactor_ca.cert_operations import (
     issue_all_certificates,
     issue_certificate,
     list_certificates,
+    load_ca_key_cert,
     process_csr,
     rekey_all_hosts,
     rekey_host,
@@ -68,8 +72,6 @@ def ca() -> None:
 @ca.command(name="issue")
 def ca_issue() -> None:
     """Create or renew a CA certificate."""
-    from reactor_ca.ca_operations import issue_ca
-
     issue_ca()
 
 
@@ -89,7 +91,7 @@ def ca_help(ctx: click.Context) -> None:
 @click.option("--key", required=True, help="Path to CA private key file")
 def ca_import(cert: str, key: str) -> None:
     """Import an existing CA."""
-    import_ca(cert, key)
+    import_ca(Path(cert), Path(key))
 
 
 @ca.command(name="rekey")
@@ -211,8 +213,6 @@ def host_deploy(hostname: str | None, all_hosts: bool) -> None:
 @click.option("--validity-years", type=int, default=None, help="Validity period in years")
 def host_sign_csr(csr: str, out: str, validity_days: int | None, validity_years: int | None) -> None:
     """Sign a CSR and output the certificate."""
-    from reactor_ca.cert_operations import load_ca_key_cert
-
     # Calculate validity period using utility function
     if validity_days is not None and validity_years is not None:
         console.print("[bold red]Error:[/bold red] Cannot specify both --validity-days and --validity-years")
