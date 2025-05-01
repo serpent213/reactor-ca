@@ -132,10 +132,10 @@ def host_issue(hostname: str | None, all_hosts: bool, no_export: bool, deploy: b
         issue_certificate(hostname, no_export=no_export, do_deploy=deploy)
 
 
-@host.command(name="import")
+@host.command(name="import-key")
 @click.argument("hostname", required=True)
 @click.option("--key", required=True, help="Path to private key file")
-def host_import(hostname: str, key: str) -> None:
+def host_import_key(hostname: str, key: str) -> None:
     """Import an existing key for a host."""
     import_host_key(hostname, key)
 
