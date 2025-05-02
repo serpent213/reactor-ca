@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives.serialization import (
 
 from reactor_ca.host_operations import import_host_key
 from reactor_ca.store import Store
-from reactor_ca.utils import _password_cache_container
 
 
 # Create a function to encrypt keys for testing
@@ -138,15 +137,13 @@ def test_import_host_key_with_different_password(monkeypatch):
 
             # Now try with the correct password set in env var
             os.environ["TEST_CA_PASSWORD"] = ca_password
-            _password_cache_container[0] = None  # Clear cached password
 
             # This should succeed
             result = import_host_key("test_host", str(key_file))
             assert result is True
 
         finally:
-            # Restore working directory, clear password cache, and environment
+            # Restore working directory and environment
             os.chdir(original_dir)
-            _password_cache_container[0] = None
             if "TEST_CA_PASSWORD" in os.environ:
                 del os.environ["TEST_CA_PASSWORD"]

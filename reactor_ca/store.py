@@ -11,6 +11,7 @@ from getpass import getpass
 from pathlib import Path
 from typing import Any
 
+import click
 import yaml
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
@@ -23,7 +24,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from reactor_ca.config import Config
+from reactor_ca.config import Config, load_ca_config
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -74,11 +75,14 @@ class Store:
     def unlock(self: "Store", password: str | None = None, ca_init: bool = False) -> bool:
         """Unlock the store with the provided password.
 
-        If password is not provided, prompt the user.
+        If password is not provided, tries multiple sources in order:
+        1. Password file specified in config
+        2. Environment variable specified in config
+        3. User prompt
 
         Args:
         ----
-            password: Optional password to unlock the store
+            password: Optional explicit password to use
             ca_init: Whether this is for CA initialization (skip validation)
 
         Returns:
@@ -166,6 +170,137 @@ class Store:
             logger.error(f"Error reading password file: {e}")
             return None
 
+    def change_password(self: "Store", old_password: str | None = None) -> bool:
+        """Change password for all encrypted keys.
+
+        Args:
+        ----
+            old_password: Optional current password. If not provided, will prompt.
+
+        Returns:
+        -------
+            True if password was changed successfully, False otherwise
+
+        """
+        from rich.console import Console
+
+        console = Console()
+
+        # Get old password if not provided
+        if old_password is None:
+            old_password = click.prompt(
+                "Enter current password",
+                hide_input=True,
+                confirmation_prompt=False,
+            )
+
+        # Verify old password by trying to unlock
+        current_unlocked = self._unlocked
+        current_password = self._password
+
+        # Temporarily reset password state
+        self._unlocked = False
+        self._password = None
+
+        # Try to unlock with old password
+        if not self.unlock(password=old_password):
+            console.print("[bold red]Error:[/bold red] Current password is incorrect")
+
+            # Restore previous state
+            self._unlocked = current_unlocked
+            self._password = current_password
+            return False
+
+        # Get new password with confirmation
+        new_password = click.prompt(
+            "Enter new password",
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+
+        # Load config to check password requirements
+        ca_config = load_ca_config(self.config.ca_config_path)
+        min_length = ca_config.password.min_length
+
+        # Validate new password length
+        if len(new_password) < min_length:
+            console.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
+
+            # Restore previous state
+            self._unlocked = current_unlocked
+            self._password = current_password
+            return False
+
+        # Find all encrypted key files
+        key_files = []
+
+        # CA key
+        ca_key_path = self.get_ca_key_path()
+        if ca_key_path.exists():
+            key_files.append(ca_key_path)
+
+        # Host keys
+        hosts_dir = self.config.hosts_dir
+        if hosts_dir.exists():
+            for host_dir in [d for d in hosts_dir.iterdir() if d.is_dir()]:
+                key_path = host_dir / "cert.key.enc"
+                if key_path.exists():
+                    key_files.append(key_path)
+
+        if not key_files:
+            console.print("[bold yellow]Warning:[/bold yellow] No encrypted key files found")
+            return False
+
+        # Process each key file
+        success_count = 0
+        error_count = 0
+
+        for key_path in key_files:
+            try:
+                # Read encrypted key
+                with open(key_path, "rb") as f:
+                    encrypted_key_data = f.read()
+
+                # Decrypt with old password
+                try:
+                    private_key = load_pem_private_key(
+                        encrypted_key_data,
+                        password=old_password.encode(),
+                    )
+                except Exception as e:
+                    console.print(f"[bold red]Error decrypting {key_path}:[/bold red] {str(e)}")
+                    error_count += 1
+                    continue
+
+                # Re-encrypt with new password
+                new_encrypted_data = private_key.private_bytes(
+                    encoding=Encoding.PEM,
+                    format=PrivateFormat.PKCS8,
+                    encryption_algorithm=BestAvailableEncryption(new_password.encode()),
+                )
+
+                # Write updated key
+                with open(key_path, "wb") as f:
+                    f.write(new_encrypted_data)
+
+                success_count += 1
+                console.print(f"✅ Re-encrypted {key_path}")
+
+            except Exception as e:
+                console.print(f"[bold red]Error processing {key_path}:[/bold red] {str(e)}")
+                error_count += 1
+
+        # Update password for session
+        self._password = new_password
+        self._unlocked = True
+
+        # Summary
+        console.print(f"\n✅ Changed password for {success_count} key files")
+        if error_count > 0:
+            console.print(f"❌ Failed to change password for {error_count} key files")
+
+        return success_count > 0
+
     @property
     def is_unlocked(self: "Store") -> bool:
         """Check if the store is currently unlocked.
@@ -176,6 +311,15 @@ class Store:
 
         """
         return self._unlocked and self._password is not None
+
+    def reset_password(self: "Store") -> None:
+        """Reset password state for this store instance.
+
+        This method is useful for testing purposes to simulate
+        a fresh store instance without cached password.
+        """
+        self._password = None
+        self._unlocked = False
 
     def require_unlock(self: "Store") -> None:
         """Ensure the store is unlocked or raise an exception.
@@ -298,9 +442,33 @@ class Store:
         return self.config.ca_crl_path()
 
     def ensure_directory_exists(self: "Store", path: Path) -> Path:
-        """Ensure a directory exists, creating it if necessary."""
+        """Ensure a directory exists, creating it if necessary.
+
+        Args:
+        ----
+            path: Path to directory
+
+        Returns:
+        -------
+            Path object of the directory
+
+        """
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def path_exists(self: "Store", path: Path) -> bool:
+        """Check if a path exists.
+
+        Args:
+        ----
+            path: Path to check
+
+        Returns:
+        -------
+            True if path exists, False otherwise
+
+        """
+        return path.exists()
 
     def save_ca_cert(self: "Store", cert: x509.Certificate) -> Path:
         """Save the CA certificate to the store.
@@ -983,3 +1151,53 @@ def get_store(config: Config | None = None) -> Store:
         config = Config.create()
 
     return Store(config)
+
+
+def change_password(store: Store | None = None) -> bool:
+    """Change password for all encrypted keys in the store.
+
+    This is a convenience function that calls the change_password method on the Store.
+
+    Args:
+    ----
+        store: Optional Store instance. If None, a default Store is created.
+
+    Returns:
+    -------
+        True if password was changed successfully, False otherwise
+
+    """
+    if store is None:
+        store = get_store()
+
+    # Unlock the store first if needed
+    if not store.is_unlocked:
+        if not store.unlock():
+            return False
+
+    # Call the Store method to change password
+    return store.change_password()
+
+
+def get_password(store: Store, ca_init: bool = False) -> str | None:
+    """Get password for key encryption/decryption.
+
+    Args:
+    ----
+        store: Store instance for access to configuration
+        ca_init: If True, ask for password confirmation. If False, validate against CA key.
+
+    Returns:
+    -------
+        Password string if successful, None otherwise
+
+    """
+    # If the store is already unlocked, use its password
+    if store.is_unlocked:
+        return store._password
+
+    # Try to unlock the store
+    if store.unlock(ca_init=ca_init):
+        return store._password
+
+    return None

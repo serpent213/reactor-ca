@@ -15,6 +15,9 @@ from reactor_ca.ca_operations import (
     show_ca_info,
 )
 from reactor_ca.config import init_config_files, validate_config_files
+from reactor_ca.crypto import (
+    calculate_validity_days,
+)
 from reactor_ca.host_operations import (
     deploy_all_hosts,
     deploy_host,
@@ -29,10 +32,8 @@ from reactor_ca.host_operations import (
     rekey_host,
 )
 from reactor_ca.models import ValidityConfig
-from reactor_ca.store import get_store
+from reactor_ca.store import change_password, get_store
 from reactor_ca.utils import (
-    calculate_validity_days,
-    change_password,
     console,
 )
 

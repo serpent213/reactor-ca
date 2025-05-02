@@ -82,10 +82,7 @@ def temp_dir():
 @pytest.fixture
 def create_test_configs(temp_dir):
     """Create test configurations optimized for fast test execution."""
-    # Clear password cache and environment variable before test
-    from reactor_ca.utils import _password_cache_container
-
-    _password_cache_container[0] = None
+    # Environment variable cleanup is now handled in the Store class
 
     # Create config and export directories
     config_dir = os.path.join(temp_dir, "config")
@@ -164,8 +161,6 @@ def create_test_configs(temp_dir):
         # Clean up environment variable after the test
         if "TEST_CA_PASSWORD" in os.environ:
             del os.environ["TEST_CA_PASSWORD"]
-        # Clear password cache
-        _password_cache_container[0] = None
 
 
 class TestReactorCAIntegration:

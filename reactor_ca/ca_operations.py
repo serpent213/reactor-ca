@@ -20,21 +20,20 @@ from cryptography.hazmat.primitives.serialization import (
 from rich.console import Console
 
 from reactor_ca.config import load_ca_config, validate_config
-from reactor_ca.models import (
-    CAConfig,
-    SubjectIdentity,
-)
-from reactor_ca.store import Store
-from reactor_ca.utils import (
+from reactor_ca.crypto import (
     add_standard_extensions,
     create_certificate_builder,
     create_subject_name,
     get_certificate_metadata,
-    get_password,
     load_certificate,
     save_private_key,
     sign_certificate,
 )
+from reactor_ca.models import (
+    CAConfig,
+    SubjectIdentity,
+)
+from reactor_ca.store import Store, get_password
 
 console = Console()
 
@@ -585,24 +584,6 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
                 return False
 
     return True
-
-
-# These functions are now moved to config.py
-# This is just a stub for reference in case of any lingering dependencies
-def _update_config_with_metadata(
-    config: dict, cert_metadata: "SubjectIdentity", key_algorithm: str, fallback_to_default: bool = False
-) -> None:
-    """Use update_config_with_metadata from config.py instead."""
-    from reactor_ca.config import update_config_with_metadata
-
-    return update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default)
-
-
-def _write_config_file(config: dict, config_path: Path, config_type: str = "ca") -> None:
-    """Use write_config_file from config.py instead."""
-    from reactor_ca.config import write_config_file
-
-    return write_config_file(config, config_path, config_type)
 
 
 def _complete_ca_import(

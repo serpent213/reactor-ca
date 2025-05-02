@@ -35,6 +35,12 @@ from reactor_ca.config import (
 from reactor_ca.config import (
     load_hosts_config_dict as load_hosts_config,
 )
+from reactor_ca.crypto import (
+    add_standard_extensions,
+    create_certificate_builder,
+    process_all_sans,
+    sign_certificate,
+)
 from reactor_ca.models import (
     AlternativeNames,
     CertificateParams,
@@ -43,13 +49,9 @@ from reactor_ca.models import (
 )
 from reactor_ca.store import Store, get_store
 from reactor_ca.utils import (
-    add_standard_extensions,
-    create_certificate_builder,
     format_certificate_expiry,
     get_host_paths,
-    process_all_sans,
     run_deploy_command,
-    sign_certificate,
 )
 
 console = Console()
