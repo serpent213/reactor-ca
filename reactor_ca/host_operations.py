@@ -1,6 +1,7 @@
 """Certificate operations for ReactorCA."""
 
 import datetime
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union
@@ -87,8 +88,6 @@ def create_certificate_with_params(
     params: CertificateParams, config: Union["Config", None] = None
 ) -> x509.Certificate:
     """Create a certificate using parameters object."""
-    from reactor_ca.config import Config
-
     if config is None:
         config = Config.create()
 
@@ -760,7 +759,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     )
 
     # Get certificate and key paths
-    host_dir, cert_path, key_path = get_host_paths(store, hostname)
+    _host_dir, cert_path, key_path = get_host_paths(store, hostname)
 
     # Save certificate and key
     save_params = CertificateSaveParams(
@@ -1164,8 +1163,6 @@ def output_certificate_json(
         ca_days_remaining: Days remaining until CA expiration
 
     """
-    import json
-
     result = {
         "ca": ca_info.copy(),  # Use copy to avoid modifying original
         "hosts": filtered_hosts,

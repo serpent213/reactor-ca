@@ -127,7 +127,7 @@ def run_deploy_command(store: "Store", hostname: str, command: str) -> bool:
         modified_command = command
 
         # Get standard paths for this host
-        host_dir, cert_path, key_path = get_host_paths(store, hostname)
+        _host_dir, cert_path, key_path = get_host_paths(store, hostname)
 
         # Replace ${cert} with certificate path if it exists
         if "${cert}" in command and cert_path.exists():

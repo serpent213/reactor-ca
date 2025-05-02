@@ -6,12 +6,12 @@ from pathlib import Path
 
 import yaml
 
-from reactor_ca.config import create_default_config, validate_config
+from reactor_ca.config import Config, create_default_config, validate_config
 
 
 def test_validate_ca_config_valid() -> None:
     """Test validating a valid CA configuration using the config.validate_config function."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
             "ca": {
                 "common_name": "Test CA",
@@ -44,7 +44,7 @@ def test_validate_ca_config_valid() -> None:
 
 def test_validate_ca_config_invalid() -> None:
     """Test validating an invalid CA configuration."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         invalid_config = {
             "ca": {
                 "common_name": "Test CA",
@@ -74,7 +74,7 @@ def test_validate_ca_config_invalid() -> None:
 
 def test_validate_hosts_config_valid_rsa2048() -> None:
     """Test validating a valid hosts configuration (RSA2048)."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
             "hosts": [
                 {
@@ -110,7 +110,7 @@ def test_validate_hosts_config_valid_rsa2048() -> None:
 
 def test_validate_hosts_config_valid_rsa4096() -> None:
     """Test validating a valid hosts configuration (RSA4096)."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
             "hosts": [
                 {
@@ -146,7 +146,7 @@ def test_validate_hosts_config_valid_rsa4096() -> None:
 
 def test_validate_hosts_config_invalid1() -> None:
     """Test validating an invalid hosts configuration (common name, algo)."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         invalid_config = {
             "hosts": [
                 {
@@ -174,7 +174,7 @@ def test_validate_hosts_config_invalid1() -> None:
 
 def test_validate_hosts_config_invalid2() -> None:
     """Test validating a valid hosts configuration (invalid key algorithm)."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         invalid_config = {
             "hosts": [
                 {
@@ -226,8 +226,6 @@ def test_default_config_ca_validates() -> None:
             os.environ["REACTOR_CA_ROOT"] = str(temp_path)
 
             # Create default configuration with explicit config
-            from reactor_ca.config import Config
-
             config = Config.create(root_dir=str(temp_path))
             create_default_config(config)
 
@@ -270,8 +268,6 @@ def test_default_config_hosts_validates() -> None:
             os.environ["REACTOR_CA_ROOT"] = str(temp_path)
 
             # Create default configuration with explicit config
-            from reactor_ca.config import Config
-
             config = Config.create(root_dir=str(temp_path))
             create_default_config(config)
 

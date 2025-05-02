@@ -25,7 +25,14 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from rich.console import Console
 
-from reactor_ca.config import Config, load_ca_config
+from reactor_ca.config import (
+    Config,
+    get_default_ca_config,
+    load_ca_config,
+)
+from reactor_ca.config import (
+    create_default_config as create_default_config_files,
+)
 
 # Module-level console instance
 CONSOLE = Console()
@@ -150,7 +157,8 @@ class Store:
             self._unlocked = True
             return True
 
-    def _read_password_from_file(self: "Store", password_file: str) -> str | None:
+    @staticmethod
+    def _read_password_from_file(password_file: str) -> str | None:
         """Read password from a file.
 
         Args:
@@ -163,7 +171,7 @@ class Store:
 
         """
         try:
-            with open(password_file) as f:
+            with open(password_file, encoding="locale") as f:
                 return f.read().strip()
         except Exception as e:
             logger.error(f"Error reading password file: {e}")
@@ -340,7 +348,7 @@ class Store:
             return self._get_default_config()
 
         try:
-            with open(self.config.ca_config_path) as f:
+            with open(self.config.ca_config_path, encoding="locale") as f:
                 return yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
@@ -359,7 +367,7 @@ class Store:
             return {"hosts": []}
 
         try:
-            with open(self.config.hosts_config_path) as f:
+            with open(self.config.hosts_config_path, encoding="locale") as f:
                 hosts_config = yaml.safe_load(f)
                 if not isinstance(hosts_config, dict):
                     return {"hosts": []}
@@ -368,7 +376,8 @@ class Store:
             logger.error(f"Failed to load hosts configuration: {e}")
             return {"hosts": []}
 
-    def _get_default_config(self: "Store") -> dict[str, Any]:
+    @staticmethod
+    def _get_default_config() -> dict[str, Any]:
         """Get default CA configuration.
 
         Returns
@@ -376,17 +385,14 @@ class Store:
             Dictionary containing default CA configuration
 
         """
-        from reactor_ca.config import get_default_ca_config
-
         return get_default_ca_config()
 
-    def create_default_config(self: "Store") -> None:
+    @staticmethod
+    def create_default_config() -> None:
         """Create default configuration files if they don't exist.
 
         This creates both ca.yaml and hosts.yaml with reasonable defaults.
         """
-        from reactor_ca.config import create_default_config as create_default_config_files
-
         create_default_config_files()
         logger.info("Created default configuration files")
 
@@ -414,7 +420,8 @@ class Store:
         """Get the path to the certificate revocation list."""
         return self.config.ca_crl_path()
 
-    def ensure_directory_exists(self: "Store", path: Path) -> Path:
+    @staticmethod
+    def _ensure_directory_exists(path: Path) -> Path:
         """Ensure a directory exists, creating it if necessary.
 
         Args:
@@ -429,7 +436,8 @@ class Store:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def path_exists(self: "Store", path: Path) -> bool:
+    @staticmethod
+    def _path_exists(path: Path) -> bool:
         """Check if a path exists.
 
         Args:
@@ -456,7 +464,7 @@ class Store:
 
         """
         cert_path = self.get_ca_cert_path()
-        self.ensure_directory_exists(cert_path.parent)
+        self._ensure_directory_exists(cert_path.parent)
         cert_bytes = cert.public_bytes(Encoding.PEM)
 
         with open(cert_path, "wb") as f:
@@ -485,7 +493,7 @@ class Store:
         """
         self.require_unlock()
         key_path = self.get_ca_key_path()
-        self.ensure_directory_exists(key_path.parent)
+        self._ensure_directory_exists(key_path.parent)
 
         # Ensure password exists
         if self._password is None:
@@ -515,7 +523,7 @@ class Store:
 
         """
         cert_path = self.get_host_cert_path(hostname)
-        self.ensure_directory_exists(cert_path.parent)
+        self._ensure_directory_exists(cert_path.parent)
         cert_bytes = cert.public_bytes(Encoding.PEM)
 
         with open(cert_path, "wb") as f:
@@ -543,7 +551,7 @@ class Store:
         """
         self.require_unlock()
         key_path = self.get_host_key_path(hostname)
-        self.ensure_directory_exists(key_path.parent)
+        self._ensure_directory_exists(key_path.parent)
 
         # Ensure password exists
         if self._password is None:
@@ -572,7 +580,7 @@ class Store:
 
         """
         crl_path = self.get_crl_path()
-        self.ensure_directory_exists(crl_path.parent)
+        self._ensure_directory_exists(crl_path.parent)
         crl_bytes = crl.public_bytes(Encoding.PEM)
 
         with open(crl_path, "wb") as f:
@@ -734,7 +742,7 @@ class Store:
             self._save_inventory(inventory)
             return inventory
 
-        with open(self.config.inventory_path) as f:
+        with open(self.config.inventory_path, encoding="locale") as f:
             try:
                 return yaml.safe_load(f)
             except Exception as e:
@@ -748,9 +756,9 @@ class Store:
 
     def _save_inventory(self: "Store", inventory: dict[str, Any]) -> None:
         """Save the certificate inventory."""
-        self.ensure_directory_exists(self.config.inventory_path.parent)
+        self._ensure_directory_exists(self.config.inventory_path.parent)
 
-        with open(self.config.inventory_path, "w") as f:
+        with open(self.config.inventory_path, "w", encoding="locale") as f:
             yaml.dump(inventory, f, default_flow_style=False, sort_keys=False)
 
         logger.debug(f"Saved inventory to {self.config.inventory_path}")
@@ -827,7 +835,8 @@ class Store:
                 except Exception as e:
                     logger.error(f"Error loading certificate for {hostname}: {e}")
 
-    def _update_host_entry(self: "Store", inventory: dict[str, Any], hostname: str, cert: x509.Certificate) -> None:
+    @staticmethod
+    def _update_host_entry(inventory: dict[str, Any], hostname: str, cert: x509.Certificate) -> None:
         """Update or create a host entry in the inventory.
 
         Args:

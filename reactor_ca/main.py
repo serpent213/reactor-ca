@@ -14,7 +14,7 @@ from reactor_ca.ca_operations import (
     rekey_ca,
     show_ca_info,
 )
-from reactor_ca.config import init_config_files, validate_config_files
+from reactor_ca.config import Config, init_config_files, validate_config_files
 from reactor_ca.crypto import (
     calculate_validity_days,
 )
@@ -49,7 +49,6 @@ from reactor_ca.utils import (
 def cli(ctx: click.Context, config: str | None = None, store: str | None = None, root: str | None = None) -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
     # Create Config and Store instances
-    from reactor_ca.config import Config
 
     # Set environment variables for tests that change directories
     if root:

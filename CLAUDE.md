@@ -32,6 +32,50 @@ Use `rg` instead of `grep` for code searching.
 
 Remember to run `poetry install` after modifying dependencies.
 
+## Overview
+
+- Create and manage a self-signed Certificate Authority
+- Generate, renew, and rekey certificates for hosts
+- Support for DNS and IP alternative names
+- Strong key encryption with password protection
+- Certificate inventory tracking
+- Certificate chain support for services requiring full chain
+- Export unencrypted private keys when needed
+- Flexible password options (prompt, environment variable, file)
+- Run deployment commands after certificate exports
+- No backup functionality, we expect to keep the cert store in a Git repo
+- Do not take care of backward compatibility when making changes
+
+Directory structure:
+
+- `reactor_ca`: main source code folder
+- `reactor_ca/schemas`: YAML schemas
+- `tests`: Pytest tests
+- `example_config`: Some "full blown" config examples for users to look at
+
+## Organization Principles
+
+- `config.py`: Configuration management and validation
+- `store.py`: File operations, storage management, and inventory
+- `crypto.py`: Cryptographic operations for certificate generation and validation
+- `ca_operations.py`: High-level CA management operations
+- `host_operations.py`: Host certificate operations
+- `utils.py`: General utilities (mainly console/CLI/UI)
+
+## Technical Details
+
+- Python script with main entry point called `ca`
+- Modern Python 3.12+ and X.509 best practices
+- Keep all imports at top of file, order does not matter
+- Python environment provided by Nix DevEnv which uses Poetry for dependency management
+- YAML configuration validation using Yamale schemas
+- Key dependencies:
+  - click: CLI interface
+  - cryptography: X.509 operations
+  - pyyaml: Configuration management
+  - yamale: Schema validation
+  - rich: Terminal formatting and output
+
 ## Typing Guidelines
 
 To pass linting checks, follow these rules:
@@ -54,40 +98,6 @@ To pass linting checks, follow these rules:
 - For docstrings, always use triple double quotes (`"""`)
 - Be consistent within the same file
 
-## Overview
-
-- Create and manage a self-signed Certificate Authority
-- Generate, renew, and rekey certificates for hosts
-- Support for DNS and IP alternative names
-- Strong key encryption with password protection
-- Certificate inventory tracking
-- Certificate chain support for services requiring full chain
-- Export unencrypted private keys when needed
-- Flexible password options (prompt, environment variable, file)
-- Run deployment commands after certificate exports
-- No backup functionality, we expect to keep the cert store in a Git repo
-- Do not take care of backward compatibility when making changes
-
-Directory structure:
-
-- `reactor_ca`: main source code folder
-- `reactor_ca/schemas`: YAML schemas
-- `tests`: Pytest tests
-- `example_config`: Some "full blown" config examples for users to look at
-
-## Technical Details
-
-- Python script with main entry point called `ca`
-- Modern Python 3.12+ and X.509 best practices
-- Keep all imports at top of file, order does not matter
-- Python environment provided by Nix DevEnv which uses Poetry for dependency management
-- YAML configuration validation using Yamale schemas
-- Key dependencies:
-  - click: CLI interface
-  - cryptography: X.509 operations
-  - pyyaml: Configuration management
-  - yamale: Schema validation
-  - rich: Terminal formatting and output
 
 ## Command Structure
 

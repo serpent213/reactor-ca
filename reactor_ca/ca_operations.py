@@ -1,6 +1,7 @@
 """Certificate Authority operations for ReactorCA."""
 
 import datetime
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -15,11 +16,19 @@ from cryptography.hazmat.primitives.asymmetric.types import (
 )
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
+    PublicFormat,
     load_pem_private_key,
 )
 from rich.console import Console
 
-from reactor_ca.config import load_ca_config, validate_config
+from reactor_ca.config import (
+    create_default_config,
+    load_ca_config,
+    load_yaml_file,
+    update_config_with_metadata,
+    validate_config,
+    write_config_file,
+)
 from reactor_ca.crypto import (
     add_standard_extensions,
     create_certificate_builder,
@@ -33,7 +42,7 @@ from reactor_ca.models import (
     CAConfig,
     SubjectIdentity,
 )
-from reactor_ca.store import Store
+from reactor_ca.store import Store, get_store
 
 console = Console()
 
@@ -190,8 +199,6 @@ def issue_ca(store: Store | None = None) -> None:
         store: Optional Store instance. If None, a default Store is created.
 
     """
-    from reactor_ca.store import get_store
-
     # If store is not provided, create a default one
     if store is None:
         store = get_store()
@@ -300,8 +307,6 @@ def rekey_ca(store: Store | None = None) -> None:
         store: Optional Store instance. If None, a default Store is created.
 
     """
-    from reactor_ca.store import get_store
-
     # If store is not provided, create a default one
     if store is None:
         store = get_store()
@@ -335,7 +340,7 @@ def rekey_ca(store: Store | None = None) -> None:
         console.print(f"[bold red]Error:[/bold red] Failed to load CA configuration: {e}")
         console.print(
             f"Config path: {ca_config_path}, Content: "
-            + f"{open(ca_config_path).read() if ca_config_path.exists() else 'file not found'}"
+            + f"{open(ca_config_path, encoding='locale').read() if ca_config_path.exists() else 'file not found'}"
         )
         return
 
@@ -395,7 +400,7 @@ def _validate_ca_import_paths(cert_path: Path, key_path: Path, store: Store) -> 
         return False, Path(), Path(), ca_cert_dest, ca_key_dest
 
     # Create certificate directories
-    store.ensure_directory_exists(ca_cert_dest.parent)
+    store._ensure_directory_exists(ca_cert_dest.parent)
 
     return True, cert_path, key_path, ca_cert_dest, ca_key_dest
 
@@ -477,15 +482,11 @@ def _verify_key_matches_cert(cert_public_key: PublicKeyTypes, key_public_key: Pu
         if cert_public_numbers.n != key_public_numbers.n or cert_public_numbers.e != key_public_numbers.e:
             console.print("[bold red]Error:[/bold red] Certificate and key do not match")
             return False
-    else:
-        # For all other key types (including EC), use a more general comparison
-        from cryptography.hazmat.primitives.serialization import PublicFormat
-
-        if cert_public_key.public_bytes(
-            Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
-        ) != key_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo):
-            console.print("[bold red]Error:[/bold red] Certificate and key do not match")
-            return False
+    elif cert_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo) != key_public_key.public_bytes(
+        Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+    ):
+        console.print("[bold red]Error:[/bold red] Certificate and key do not match")
+        return False
 
     return True
 
@@ -539,13 +540,6 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
         True if configuration was successfully handled, False otherwise
 
     """
-    from reactor_ca.config import (
-        create_default_config,
-        load_yaml_file,
-        update_config_with_metadata,
-        write_config_file,
-    )
-
     ca_config_path = store.config.ca_config_path
     config_exists = ca_config_path.exists()
 
@@ -615,8 +609,6 @@ def _complete_ca_import(
         True if import was successful, False otherwise
 
     """
-    from reactor_ca.store import get_store
-
     # If store is not provided, create a default one
     if store is None:
         store = get_store()
@@ -657,8 +649,6 @@ def import_ca(cert_path: Path, key_path: Path, store: Store | None = None) -> bo
         store: Optional Store instance. If None, a default Store is created.
 
     """
-    from reactor_ca.store import get_store
-
     # If store is not provided, create a default one
     if store is None:
         store = get_store()
@@ -700,8 +690,6 @@ def show_ca_info(json_output: bool = False, store: Store | None = None) -> None:
         store: Optional Store instance. If None, a default Store is created.
 
     """
-    from reactor_ca.store import get_store
-
     # If store is not provided, create a default one
     if store is None:
         store = get_store()
@@ -750,8 +738,6 @@ def show_ca_info(json_output: bool = False, store: Store | None = None) -> None:
 
     # Display the information
     if json_output:
-        import json
-
         console.print(json.dumps(ca_info, indent=2))
     else:
         console.print("[bold]CA Certificate Information[/bold]")

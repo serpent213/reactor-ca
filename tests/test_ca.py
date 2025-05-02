@@ -7,6 +7,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from reactor_ca.main import cli
+from tests.helpers import assert_cert_paths, setup_test_env
 
 
 def test_cli_version() -> None:
@@ -31,8 +32,6 @@ def test_cli_help() -> None:
 
 def test_ca_info() -> None:
     """Test 'ca info' command after initializing a CA."""
-    from tests.helpers import assert_cert_paths, setup_test_env
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup test environment with proper paths
         store = setup_test_env(tmpdir)
@@ -60,7 +59,7 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w") as f:
+        with open(store.config.ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -118,8 +117,6 @@ ca:
 
 def test_ca_issue_new() -> None:
     """Test 'ca issue' command to create a new CA."""
-    from tests.helpers import assert_cert_paths, setup_test_env
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup test environment with proper paths
         store = setup_test_env(tmpdir)
@@ -147,7 +144,7 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w") as f:
+        with open(store.config.ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -183,8 +180,6 @@ ca:
 
 def test_ca_issue_renew() -> None:
     """Test 'ca issue' command to renew an existing CA."""
-    from tests.helpers import assert_cert_paths, setup_test_env
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup test environment with proper paths
         store = setup_test_env(tmpdir)
@@ -212,7 +207,7 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w") as f:
+        with open(store.config.ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -258,8 +253,6 @@ ca:
 
 def test_ca_rekey() -> None:
     """Test 'ca rekey' command to rekey an existing CA."""
-    from tests.helpers import assert_cert_paths, setup_test_env
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Setup test environment with proper paths
         store = setup_test_env(tmpdir)
@@ -287,7 +280,7 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w") as f:
+        with open(store.config.ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password

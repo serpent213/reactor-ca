@@ -114,7 +114,7 @@ def test_integration_with_various_algorithms(tmp_path) -> None:
             hash_algorithm=hash_algorithm,
         )
 
-        with open(config_dir / "ca.yaml", "w") as f:
+        with open(config_dir / "ca.yaml", "w", encoding="locale") as f:
             f.write(curr_config)
 
         # No need to import here - already imported at the module level

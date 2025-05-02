@@ -7,6 +7,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from reactor_ca.main import cli
+from reactor_ca.store import get_store
 
 
 def test_host_issue_with_key_check() -> None:
@@ -23,8 +24,6 @@ def test_host_issue_with_key_check() -> None:
             Path("store/hosts").mkdir(parents=True, exist_ok=True)
 
             # Initialize store with this temp dir
-            from reactor_ca.store import get_store
-
             store = get_store()
             store.init()
 
@@ -56,10 +55,10 @@ def test_host_issue_with_key_check() -> None:
                   days: 365
             """
 
-            with open("config/ca.yaml", "w") as f:
+            with open("config/ca.yaml", "w", encoding="locale") as f:
                 f.write(ca_config_content)
 
-            with open("config/hosts.yaml", "w") as f:
+            with open("config/hosts.yaml", "w", encoding="locale") as f:
                 f.write(hosts_config_content)
 
             # Set environment variable for password with at least 8 characters
@@ -97,7 +96,7 @@ def test_host_issue_with_key_check() -> None:
                   days: 365
             """
 
-            with open("config/hosts.yaml", "w") as f:
+            with open("config/hosts.yaml", "w", encoding="locale") as f:
                 f.write(hosts_config_content)
 
             # Try to renew the certificate - should fail due to key algorithm mismatch
@@ -132,8 +131,6 @@ def test_host_clean() -> None:
             Path("store/hosts").mkdir(parents=True, exist_ok=True)
 
             # Initialize store with this temp dir
-            from reactor_ca.store import get_store
-
             store = get_store()
             store.init()
             Path("store/hosts").mkdir(parents=True, exist_ok=True)
@@ -188,10 +185,10 @@ def test_host_clean() -> None:
                   days: 365
             """
 
-            with open("config/ca.yaml", "w") as f:
+            with open("config/ca.yaml", "w", encoding="locale") as f:
                 f.write(ca_config_content)
 
-            with open("config/hosts.yaml", "w") as f:
+            with open("config/hosts.yaml", "w", encoding="locale") as f:
                 f.write(hosts_config_content)
 
             # Create an inventory file
@@ -216,7 +213,7 @@ def test_host_clean() -> None:
                 renewal_count: 1
             """
 
-            with open("store/inventory.yaml", "w") as f:
+            with open("store/inventory.yaml", "w", encoding="locale") as f:
                 f.write(inventory_content)
 
             # Run the host clean command, confirming removal

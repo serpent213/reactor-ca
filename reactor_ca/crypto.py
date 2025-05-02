@@ -13,7 +13,15 @@ from urllib.parse import urlparse
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import dh, x448, x25519
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
+from cryptography.hazmat.primitives.serialization import (
+    BestAvailableEncryption,
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
+from cryptography.x509 import GeneralName, ObjectIdentifier
 from cryptography.x509.general_name import (
     DirectoryName,
     OtherName,
@@ -115,9 +123,6 @@ def create_certificate_builder(
     """
     now = datetime.datetime.now(datetime.UTC)
 
-    # DHPublicKey is not supported by certificate builder, so we need to check for it
-    from cryptography.hazmat.primitives.asymmetric import dh
-
     if isinstance(public_key, dh.DHPublicKey):
         raise ValueError("DHPublicKey is not supported for certificates")
 
@@ -200,8 +205,6 @@ def add_standard_extensions(
 
     # Add Subject Alternative Names if provided
     if san_list and len(san_list) > 0:
-        from cryptography.x509 import GeneralName
-
         # Cast to the type that SubjectAlternativeName expects
         general_names = cast(list[GeneralName], san_list)
 
@@ -245,8 +248,6 @@ def sign_certificate(
     # Sign the certificate
     # We need to specifically exclude DHPrivateKey and X25519/X448PrivateKey from the sign method
     # because the cryptography library doesn't support signing with these keys
-    from cryptography.hazmat.primitives.asymmetric import dh, x448, x25519
-
     if isinstance(private_key, dh.DHPrivateKey | x25519.X25519PrivateKey | x448.X448PrivateKey):
         raise ValueError(f"Cannot sign with {type(private_key).__name__} as it is not supported for signing")
     return cert_builder.sign(private_key, hash_algo)
@@ -406,8 +407,6 @@ def process_registered_ids(oids: list[str]) -> list[x509.RegisteredID]:
         List of valid x509.RegisteredID objects
 
     """
-    from cryptography.x509 import ObjectIdentifier
-
     result = []
 
     for oid in oids:
@@ -435,8 +434,6 @@ def process_other_names(other_names: list[str]) -> list[x509.OtherName]:
         List of valid x509.OtherName objects
 
     """
-    from cryptography.x509 import ObjectIdentifier
-
     result = []
 
     for other_name in other_names:
@@ -475,46 +472,36 @@ def process_all_sans(alt_names: AlternativeNames) -> list[Any]:
         List of all valid SAN objects
 
     """
-    from cryptography.x509 import GeneralName
-
     # Initialize the result list
     result: list[GeneralName] = []
 
     # Add DNS names
     if alt_names.dns:
-        dns_names = process_dns_names(alt_names.dns)
-        # All items in dns_names are GeneralName subtypes which can be safely added
-        result.extend(cast(list[GeneralName], dns_names))
+        result.extend(cast(list[GeneralName], process_dns_names(alt_names.dns)))
 
     # Add IP addresses
     if alt_names.ip:
-        ip_addresses = process_ip_addresses(alt_names.ip)
-        result.extend(cast(list[GeneralName], ip_addresses))
+        result.extend(cast(list[GeneralName], process_ip_addresses(alt_names.ip)))
 
     # Add email addresses
     if alt_names.email:
-        email_addresses = process_email_addresses(alt_names.email)
-        result.extend(cast(list[GeneralName], email_addresses))
+        result.extend(cast(list[GeneralName], process_email_addresses(alt_names.email)))
 
     # Add URIs
     if alt_names.uri:
-        uris = process_uri_addresses(alt_names.uri)
-        result.extend(cast(list[GeneralName], uris))
+        result.extend(cast(list[GeneralName], process_uri_addresses(alt_names.uri)))
 
     # Add directory names
     if alt_names.directory_name:
-        directory_names = process_directory_names(alt_names.directory_name)
-        result.extend(cast(list[GeneralName], directory_names))
+        result.extend(cast(list[GeneralName], process_directory_names(alt_names.directory_name)))
 
     # Add registered IDs (OIDs)
     if alt_names.registered_id:
-        registered_ids = process_registered_ids(alt_names.registered_id)
-        result.extend(cast(list[GeneralName], registered_ids))
+        result.extend(cast(list[GeneralName], process_registered_ids(alt_names.registered_id)))
 
     # Add other names
     if alt_names.other_name:
-        other_names = process_other_names(alt_names.other_name)
-        result.extend(cast(list[GeneralName], other_names))
+        result.extend(cast(list[GeneralName], process_other_names(alt_names.other_name)))
 
     return result
 
@@ -608,13 +595,6 @@ def save_private_key(private_key: PrivateKeyTypes, key_path: Path, password: byt
         password: Optional password for encryption
 
     """
-    from cryptography.hazmat.primitives.serialization import (
-        BestAvailableEncryption,
-        Encoding,
-        NoEncryption,
-        PrivateFormat,
-    )
-
     # Ensure parent directory exists
     key_path.parent.mkdir(parents=True, exist_ok=True)
 

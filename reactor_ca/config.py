@@ -186,7 +186,7 @@ def load_yaml_file(file_path: Path) -> dict[str, Any]:
     if not file_path.exists():
         raise ConfigNotFoundError(f"File not found: {file_path}")
 
-    with open(file_path) as f:
+    with open(file_path, encoding="locale") as f:
         return yaml.safe_load(f)
 
 
@@ -202,7 +202,7 @@ def save_yaml_file(data: dict[str, Any], file_path: Path) -> None:
     # Ensure the directory exists
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(file_path, "w") as f:
+    with open(file_path, "w", encoding="locale") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
 
@@ -234,7 +234,7 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
         raise ConfigNotFoundError(f"Configuration file not found: {config_path}")
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="locale") as f:
             config = yaml.safe_load(f)
 
         if not isinstance(config, dict):
@@ -268,7 +268,7 @@ def load_hosts_config_dict(config_path: Path | None = None) -> dict[str, Any]:
         return {"hosts": []}
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="locale") as f:
             hosts_config = yaml.safe_load(f)
 
         if not isinstance(hosts_config, dict):
@@ -401,7 +401,7 @@ def get_password(
     if password_file is not None:
         if not os.path.exists(password_file):
             raise FileNotFoundError(f"Password file not found: {password_file}")
-        with open(password_file) as f:
+        with open(password_file, encoding="locale") as f:
             return f.read().strip()
 
     if password_env is not None:
@@ -727,7 +727,7 @@ def write_config_file(config: dict, config_path: Path, config_type: str = "ca") 
 
     header = headers.get(config_type, headers["ca"])
 
-    with open(config_path, "w") as f:
+    with open(config_path, "w", encoding="locale") as f:
         for line in header:
             f.write(line + "\n")
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)

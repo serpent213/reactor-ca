@@ -15,7 +15,9 @@ from click.testing import CliRunner
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 
+from reactor_ca.config import Config
 from reactor_ca.main import cli
+from reactor_ca.store import get_store
 
 
 def run_command(command):
@@ -64,9 +66,6 @@ def temp_dir():
     os.environ["REACTOR_CA_ROOT"] = temp_dir
 
     # Initialize store with this temp dir
-    from reactor_ca.config import Config
-    from reactor_ca.store import get_store
-
     config = Config.create(root_dir=temp_dir)
     store = get_store(config)
     store.init()
@@ -144,12 +143,12 @@ def create_test_configs(temp_dir):
 
     # Write CA config
     ca_config_path = os.path.join(config_dir, "ca.yaml")
-    with open(ca_config_path, "w") as f:
+    with open(ca_config_path, "w", encoding="locale") as f:
         yaml.dump(ca_config, f)
 
     # Write hosts config
     hosts_config_path = os.path.join(config_dir, "hosts.yaml")
-    with open(hosts_config_path, "w") as f:
+    with open(hosts_config_path, "w", encoding="locale") as f:
         yaml.dump(hosts_config, f)
 
     # Set environment variable for test password
