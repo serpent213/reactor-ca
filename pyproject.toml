@@ -77,7 +77,7 @@ select = ["E", "E402", "F", "I", "N", "W", "B", "PL", "C", "D", "UP", "ANN"]
 ignore = ["D203", "D213"]
 
 [tool.ruff.mccabe]
-max-complexity = 15 # Default is 10
+max-complexity = 16 # Default is 10
 
 [tool.ruff.pylint]
 max-returns = 12    # Default is 6

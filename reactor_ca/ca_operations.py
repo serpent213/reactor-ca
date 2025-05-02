@@ -33,7 +33,7 @@ from reactor_ca.models import (
     CAConfig,
     SubjectIdentity,
 )
-from reactor_ca.store import Store, get_password
+from reactor_ca.store import Store
 
 console = Console()
 
@@ -539,7 +539,12 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
         True if configuration was successfully handled, False otherwise
 
     """
-    from reactor_ca.config import create_default_config, load_yaml, update_config_with_metadata, write_config_file
+    from reactor_ca.config import (
+        create_default_config,
+        load_yaml_file,
+        update_config_with_metadata,
+        write_config_file,
+    )
 
     ca_config_path = store.config.ca_config_path
     config_exists = ca_config_path.exists()
@@ -552,7 +557,7 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
 
         try:
             # Load the created config
-            config = load_yaml(ca_config_path)
+            config = load_yaml_file(ca_config_path)
 
             # Update config with metadata from certificate
             update_config_with_metadata(config, cert_metadata, key_algorithm, fallback_to_default=True)
@@ -571,7 +576,7 @@ def _handle_config_for_imported_ca(cert_metadata: SubjectIdentity, key_algorithm
         ):
             try:
                 # Load existing config
-                config = load_yaml(ca_config_path)
+                config = load_yaml_file(ca_config_path)
 
                 # Update only non-empty fields from certificate
                 update_config_with_metadata(config, cert_metadata, key_algorithm)
@@ -617,9 +622,9 @@ def _complete_ca_import(
         store = get_store()
 
     # Get password for encrypting the key
-    dest_password = get_password(store)
-    if not dest_password:
+    if not store.unlock():
         return False
+    dest_password = store._password
 
     # Encrypt and save the key using utility function
     save_private_key(private_key, ca_key_dest, dest_password.encode() if dest_password else None)

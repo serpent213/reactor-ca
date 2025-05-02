@@ -23,8 +23,12 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     load_pem_private_key,
 )
+from rich.console import Console
 
 from reactor_ca.config import Config, load_ca_config
+
+# Module-level console instance
+CONSOLE = Console()
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -45,10 +49,7 @@ class Store:
             config: Config instance with paths for this store
 
         """
-        # Store the config instance
         self.config = config
-
-        # Password for private key operations
         self._password: str | None = None
         self._unlocked = False
 
@@ -57,7 +58,6 @@ class Store:
 
         Creates necessary folders if they don't exist.
         """
-        # Create all necessary directories
         self.config.ensure_dirs()
 
         # Initialize inventory if it doesn't exist
@@ -90,15 +90,15 @@ class Store:
             bool: True if unlocking was successful
 
         """
-        # Load config for password validation
-        config = self.load_config()
-        min_length = config["ca"]["password"]["min_length"]
-        password_file = config["ca"]["password"].get("file", "")
-        env_var = config["ca"]["password"].get("env_var", "")
-
         # If already unlocked with a password, return success
         if self._unlocked and self._password:
             return True
+
+        # Load config for password validation
+        ca_config = self.load_config()
+        min_length = ca_config["ca"]["password"]["min_length"]
+        password_file = ca_config["ca"]["password"].get("file", "")
+        env_var = ca_config["ca"]["password"].get("env_var", "")
 
         # Try to get password from file if specified
         if password_file and not password:
@@ -129,7 +129,7 @@ class Store:
             logger.debug("CA store unlocked for initialization")
             return True
 
-        # Validate against CA key if it exists and not in init mode
+        # Validate against CA key if it exists
         ca_key_path = self.get_ca_key_path()
         if ca_key_path.exists():
             try:
@@ -164,8 +164,7 @@ class Store:
         """
         try:
             with open(password_file) as f:
-                password = f.read().strip()
-                return password
+                return f.read().strip()
         except Exception as e:
             logger.error(f"Error reading password file: {e}")
             return None
@@ -182,10 +181,6 @@ class Store:
             True if password was changed successfully, False otherwise
 
         """
-        from rich.console import Console
-
-        console = Console()
-
         # Get old password if not provided
         if old_password is None:
             old_password = click.prompt(
@@ -194,21 +189,18 @@ class Store:
                 confirmation_prompt=False,
             )
 
-        # Verify old password by trying to unlock
-        current_unlocked = self._unlocked
-        current_password = self._password
+        # Store current state to restore in case of failure
+        current_state = (self._unlocked, self._password)
 
-        # Temporarily reset password state
+        # Reset password state
         self._unlocked = False
         self._password = None
 
         # Try to unlock with old password
         if not self.unlock(password=old_password):
-            console.print("[bold red]Error:[/bold red] Current password is incorrect")
-
+            CONSOLE.print("[bold red]Error:[/bold red] Current password is incorrect")
             # Restore previous state
-            self._unlocked = current_unlocked
-            self._password = current_password
+            self._unlocked, self._password = current_state
             return False
 
         # Get new password with confirmation
@@ -224,20 +216,18 @@ class Store:
 
         # Validate new password length
         if len(new_password) < min_length:
-            console.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
-
+            CONSOLE.print(f"[bold red]Error:[/bold red] Password must be at least {min_length} characters long")
             # Restore previous state
-            self._unlocked = current_unlocked
-            self._password = current_password
+            self._unlocked, self._password = current_state
             return False
 
         # Find all encrypted key files
-        key_files = []
+        encrypted_key_files = []
 
         # CA key
         ca_key_path = self.get_ca_key_path()
         if ca_key_path.exists():
-            key_files.append(ca_key_path)
+            encrypted_key_files.append(ca_key_path)
 
         # Host keys
         hosts_dir = self.config.hosts_dir
@@ -245,17 +235,17 @@ class Store:
             for host_dir in [d for d in hosts_dir.iterdir() if d.is_dir()]:
                 key_path = host_dir / "cert.key.enc"
                 if key_path.exists():
-                    key_files.append(key_path)
+                    encrypted_key_files.append(key_path)
 
-        if not key_files:
-            console.print("[bold yellow]Warning:[/bold yellow] No encrypted key files found")
+        if not encrypted_key_files:
+            CONSOLE.print("[bold yellow]Warning:[/bold yellow] No encrypted key files found")
             return False
 
         # Process each key file
-        success_count = 0
-        error_count = 0
+        successful_keys = 0
+        failed_keys = 0
 
-        for key_path in key_files:
+        for key_path in encrypted_key_files:
             try:
                 # Read encrypted key
                 with open(key_path, "rb") as f:
@@ -268,8 +258,8 @@ class Store:
                         password=old_password.encode(),
                     )
                 except Exception as e:
-                    console.print(f"[bold red]Error decrypting {key_path}:[/bold red] {str(e)}")
-                    error_count += 1
+                    CONSOLE.print(f"[bold red]Error decrypting {key_path}:[/bold red] {str(e)}")
+                    failed_keys += 1
                     continue
 
                 # Re-encrypt with new password
@@ -283,23 +273,23 @@ class Store:
                 with open(key_path, "wb") as f:
                     f.write(new_encrypted_data)
 
-                success_count += 1
-                console.print(f"✅ Re-encrypted {key_path}")
+                successful_keys += 1
+                CONSOLE.print(f"✅ Re-encrypted {key_path}")
 
             except Exception as e:
-                console.print(f"[bold red]Error processing {key_path}:[/bold red] {str(e)}")
-                error_count += 1
+                CONSOLE.print(f"[bold red]Error processing {key_path}:[/bold red] {str(e)}")
+                failed_keys += 1
 
         # Update password for session
         self._password = new_password
         self._unlocked = True
 
         # Summary
-        console.print(f"\n✅ Changed password for {success_count} key files")
-        if error_count > 0:
-            console.print(f"❌ Failed to change password for {error_count} key files")
+        CONSOLE.print(f"\n✅ Changed password for {successful_keys} key files")
+        if failed_keys > 0:
+            CONSOLE.print(f"❌ Failed to change password for {failed_keys} key files")
 
-        return success_count > 0
+        return successful_keys > 0
 
     @property
     def is_unlocked(self: "Store") -> bool:
@@ -321,8 +311,12 @@ class Store:
         self._password = None
         self._unlocked = False
 
-    def require_unlock(self: "Store") -> None:
+    def require_unlock(self: "Store") -> bool:
         """Ensure the store is unlocked or raise an exception.
+
+        Returns
+        -------
+            True if already unlocked
 
         Raises
         ------
@@ -331,22 +325,7 @@ class Store:
         """
         if not self.is_unlocked:
             raise RuntimeError("Certificate store is locked. Call unlock() first.")
-
-    def _ensure_password_is_str(self: "Store", password: str | None) -> str | None:
-        """Ensure password is a string or None, not bytes.
-
-        Args:
-        ----
-            password: Password to validate
-
-        Returns:
-        -------
-            Password as string or None
-
-        """
-        if password is None:
-            return None
-        return password
+        return True
 
     def load_config(self: "Store") -> dict[str, Any]:
         """Load CA configuration.
@@ -356,14 +335,12 @@ class Store:
             Dictionary containing CA configuration
 
         """
-        config_path = self.config.ca_config_path
-
-        if not config_path.exists():
-            logger.warning(f"Configuration file not found at {config_path}")
+        if not self.config.ca_config_path.exists():
+            logger.warning(f"Configuration file not found at {self.config.ca_config_path}")
             return self._get_default_config()
 
         try:
-            with open(config_path) as f:
+            with open(self.config.ca_config_path) as f:
                 return yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
@@ -377,14 +354,12 @@ class Store:
             Dictionary containing hosts configuration
 
         """
-        hosts_path = self.config.hosts_config_path
-
-        if not hosts_path.exists():
-            logger.warning(f"Hosts configuration file not found at {hosts_path}")
+        if not self.config.hosts_config_path.exists():
+            logger.warning(f"Hosts configuration file not found at {self.config.hosts_config_path}")
             return {"hosts": []}
 
         try:
-            with open(hosts_path) as f:
+            with open(self.config.hosts_config_path) as f:
                 hosts_config = yaml.safe_load(f)
                 if not isinstance(hosts_config, dict):
                     return {"hosts": []}
@@ -412,9 +387,7 @@ class Store:
         """
         from reactor_ca.config import create_default_config as create_default_config_files
 
-        # Use the config module's function for creating default config files
         create_default_config_files()
-
         logger.info("Created default configuration files")
 
     def get_ca_cert_path(self: "Store") -> Path:
@@ -792,6 +765,28 @@ class Store:
         """
         inventory = self._load_inventory()
 
+        # Update CA info
+        self._update_ca_inventory(inventory)
+
+        # Update host certificates
+        self._update_hosts_inventory(inventory)
+
+        # Update last_update timestamp
+        inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
+
+        # Save updated inventory
+        self._save_inventory(inventory)
+
+        return inventory
+
+    def _update_ca_inventory(self: "Store", inventory: dict[str, Any]) -> None:
+        """Update CA information in inventory.
+
+        Args:
+        ----
+            inventory: The inventory dictionary to update
+
+        """
         # Check CA certificate
         ca_cert_path = self.get_ca_cert_path()
         if ca_cert_path.exists():
@@ -806,51 +801,61 @@ class Store:
             except Exception as e:
                 logger.error(f"Error loading CA certificate: {e}")
 
+    def _update_hosts_inventory(self: "Store", inventory: dict[str, Any]) -> None:
+        """Update hosts information in inventory.
+
+        Args:
+        ----
+            inventory: The inventory dictionary to update
+
+        """
         # Check host certificates
-        if self.config.hosts_dir.exists():
-            host_dirs = [d for d in self.config.hosts_dir.iterdir() if d.is_dir()]
+        if not self.config.hosts_dir.exists():
+            return
 
-            for host_dir in host_dirs:
-                hostname = host_dir.name
-                cert_path = host_dir / "cert.crt"
+        host_dirs = [d for d in self.config.hosts_dir.iterdir() if d.is_dir()]
 
-                if cert_path.exists():
-                    try:
-                        cert = self.load_host_cert(hostname)
-                        if cert:
-                            # Find existing host entry or create new one
-                            for host in inventory.setdefault("hosts", []):
-                                if host["name"] == hostname:
-                                    host["serial"] = format(cert.serial_number, "x")
-                                    host["not_after"] = cert.not_valid_after.isoformat()
-                                    host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
-                                    # Keep renewal count if exists
-                                    break
-                            else:
-                                # Add new entry if not found
-                                inventory.setdefault("hosts", []).append(
-                                    {
-                                        "name": hostname,
-                                        "serial": format(cert.serial_number, "x"),
-                                        "not_after": cert.not_valid_after.isoformat(),
-                                        "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-                                        "renewal_count": 0,
-                                    }
-                                )
-                    except Exception as e:
-                        logger.error(f"Error loading certificate for {hostname}: {e}")
+        for host_dir in host_dirs:
+            hostname = host_dir.name
+            cert_path = host_dir / "cert.crt"
 
-        # Update last_update timestamp
-        inventory["last_update"] = datetime.datetime.now(datetime.UTC).isoformat()
+            if cert_path.exists():
+                try:
+                    cert = self.load_host_cert(hostname)
+                    if cert:
+                        self._update_host_entry(inventory, hostname, cert)
+                except Exception as e:
+                    logger.error(f"Error loading certificate for {hostname}: {e}")
 
-        # Save updated inventory
-        self._save_inventory(inventory)
+    def _update_host_entry(self: "Store", inventory: dict[str, Any], hostname: str, cert: x509.Certificate) -> None:
+        """Update or create a host entry in the inventory.
 
-        return inventory
+        Args:
+        ----
+            inventory: The inventory dictionary to update
+            hostname: The hostname to update
+            cert: The certificate with the host information
 
-    def scan_cert_files(self: "Store") -> dict[str, Any]:
-        """Scan certificate files and update inventory."""
-        return self.update_inventory()
+        """
+        # Find existing host entry or create new one
+        for host in inventory.setdefault("hosts", []):
+            if host["name"] == hostname:
+                host["serial"] = format(cert.serial_number, "x")
+                host["not_after"] = cert.not_valid_after.isoformat()
+                host["fingerprint"] = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
+                # Keep renewal count if exists
+                break
+        else:
+            # Add new entry if not found
+            inventory.setdefault("hosts", []).append(
+                {
+                    "name": hostname,
+                    "serial": format(cert.serial_number, "x"),
+                    "not_after": cert.not_valid_after.isoformat(),
+                    "fingerprint": "SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+                    "renewal_count": 0,
+                }
+            )
 
     def update_inventory_for_cert(
         self: "Store",
@@ -1167,37 +1172,11 @@ def change_password(store: Store | None = None) -> bool:
         True if password was changed successfully, False otherwise
 
     """
-    if store is None:
-        store = get_store()
+    store = store or get_store()
 
     # Unlock the store first if needed
-    if not store.is_unlocked:
-        if not store.unlock():
-            return False
+    if not store.is_unlocked and not store.unlock():
+        return False
 
     # Call the Store method to change password
     return store.change_password()
-
-
-def get_password(store: Store, ca_init: bool = False) -> str | None:
-    """Get password for key encryption/decryption.
-
-    Args:
-    ----
-        store: Store instance for access to configuration
-        ca_init: If True, ask for password confirmation. If False, validate against CA key.
-
-    Returns:
-    -------
-        Password string if successful, None otherwise
-
-    """
-    # If the store is already unlocked, use its password
-    if store.is_unlocked:
-        return store._password
-
-    # Try to unlock the store
-    if store.unlock(ca_init=ca_init):
-        return store._password
-
-    return None
