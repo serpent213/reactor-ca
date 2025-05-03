@@ -101,7 +101,7 @@ def test_validate_hosts_config_valid_rsa2048() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
         if not valid:
             print(f"Validation errors: {errors}")
         assert valid
@@ -137,7 +137,7 @@ def test_validate_hosts_config_valid_rsa4096() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
         if not valid:
             print(f"Validation errors: {errors}")
         assert valid
@@ -167,7 +167,7 @@ def test_validate_hosts_config_invalid1() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
         assert not valid
         assert errors
 
@@ -201,7 +201,7 @@ def test_validate_hosts_config_invalid2() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_schema.yaml")
+        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
         assert not valid
         assert errors
 
@@ -277,7 +277,7 @@ def test_default_config_hosts_validates() -> None:
             assert hosts_config_path.exists(), f"Default hosts config was not created at {hosts_config_path}"
 
             # Validate the hosts config
-            valid, errors = validate_config(hosts_config_path, "hosts_schema.yaml")
+            valid, errors = validate_config(hosts_config_path, "hosts_config_schema.yaml")
             if not valid:
                 print(f"Validation errors: {errors}")
             assert valid, f"Default hosts config does not validate against schema: {errors}"

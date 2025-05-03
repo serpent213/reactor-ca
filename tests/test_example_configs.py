@@ -29,7 +29,7 @@ def test_example_hosts_config_is_valid() -> None:
     assert example_hosts_config_path.exists(), "Example hosts config file does not exist"
 
     # Validate against schema
-    valid, errors = validate_config(example_hosts_config_path, "hosts_schema.yaml")
+    valid, errors = validate_config(example_hosts_config_path, "hosts_config_schema.yaml")
 
     # Check result
     assert valid is True, f"Example hosts config does not validate against schema: {errors}"

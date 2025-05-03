@@ -497,7 +497,7 @@ def load_hosts_config(config_path: Path) -> dict[str, HostConfig]:
 
     """
     # Validate first
-    valid, errors = validate_config(config_path, "hosts_schema.yaml")
+    valid, errors = validate_config(config_path, "hosts_config_schema.yaml")
     if not valid:
         error_message = "\n".join(errors)
         raise ConfigValidationError(f"Invalid hosts configuration:\n{error_message}")
@@ -937,7 +937,7 @@ def validate_config_files(ca_config_path: Path, hosts_config_path: Path) -> bool
 
     # Validate hosts config if it exists
     if hosts_config_path.exists():
-        hosts_valid, hosts_errors = validate_config(hosts_config_path, "hosts_schema.yaml")
+        hosts_valid, hosts_errors = validate_config(hosts_config_path, "hosts_config_schema.yaml")
         if not hosts_valid:
             CONSOLE.print("[bold red]Hosts configuration validation failed:[/bold red]")
             for error in hosts_errors:

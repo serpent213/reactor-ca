@@ -1,0 +1,37 @@
+hosts: list(include('host'))
+---
+host:
+  name: str()
+  common_name: str(required=False)
+  organization: str(required=False)
+  organization_unit: str(required=False)
+  country: str(required=False)
+  state: str(required=False)
+  locality: str(required=False)
+  email: str(required=False)
+  alternative_names: include('alternative_names_schema', required=False)
+  export: include('export_schema', required=False)
+  deploy: include('deploy_schema', required=False)
+  validity: include('validity_schema', required=False)
+  key_algorithm: enum('RSA2048', 'RSA3072', 'RSA4096', 'ECP256', 'ECP384', 'ECP521', 'ED25519', 'ED448', required=False)
+  hash_algorithm: enum('SHA256', 'SHA384', 'SHA512', required=False)
+
+alternative_names_schema:
+  dns: list(regex(r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,63}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,63}[a-zA-Z0-9]))*$'), required=False)
+  ip: list(ip(), required=False)
+  email: list(regex(r'^[^@]+@[^@]+\.[^@]+$'), required=False)
+  uri: list(regex(r'^[a-zA-Z][a-zA-Z0-9+\.-]*://.*$'), required=False)
+  directory_name: list(regex(r'^(CN|O|OU|C|ST|L|E)=.*?(,(CN|O|OU|C|ST|L|E)=.*?)*$'), required=False)
+  registered_id: list(regex(r'^\d+(\.\d+)*$'), required=False)
+  other_name: list(regex(r'^\d+(\.\d+)*:.*$'), required=False)
+
+export_schema:
+  cert: str(required=False)
+  chain: str(required=False)
+
+deploy_schema:
+  command: str()
+
+validity_schema:
+  days: int(min=1, required=False)
+  years: int(min=1, required=False)

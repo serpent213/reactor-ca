@@ -1,7 +1,6 @@
-# Ignore certificates directory, config, and inventory
-certs/
+# Ignore store and config directories
+store/
 config/
-inventory.yaml
 
 # Python artifacts
 __pycache__/
