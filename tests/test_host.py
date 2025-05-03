@@ -107,6 +107,7 @@ def test_host_issue_with_key_check() -> None:
             result = runner.invoke(cli, ["host", "rekey", "test.example.com"], input="testpassword\n")
             assert result.exit_code == 0
             assert "rekeyed successfully" in result.output
+            assert "Generating RSA4096 key for test.example.com" in result.output
 
         finally:
             # Clean up environment variable

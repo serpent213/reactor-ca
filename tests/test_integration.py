@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from functools import lru_cache
 
 import pytest
 import yaml
@@ -20,8 +21,12 @@ from reactor_ca.main import cli
 from reactor_ca.store import get_store
 
 
+@lru_cache(maxsize=32)
 def run_command(command):
-    """Run a shell command and return its output."""
+    """Run a shell command and return its output.
+
+    Results are cached to improve performance when the same command is run multiple times.
+    """
     result = subprocess.run(
         command,
         shell=True,
@@ -136,7 +141,8 @@ def create_test_configs(temp_dir):
                 "validity": {
                     "days": 30,  # Short validity period for testing
                 },
-                "key_algorithm": "RSA2048",
+                "key_algorithm": "RSA3072",
+                "hash_algorithm": "SHA384",
             }
         ]
     }
@@ -252,35 +258,43 @@ class TestReactorCAIntegration:
         assert ca_verify_result.returncode == 0
         assert "CA:TRUE" in ca_verify_result.stdout
 
-        # Verify host certificate
+        # Cache the host certificate details to avoid running the same command multiple times
         host_verify_result = run_command(f"openssl x509 -in {host_cert_path} -text -noout")
         assert host_verify_result.returncode == 0
-        assert "testserver.local" in host_verify_result.stdout
+        host_cert_text = host_verify_result.stdout
+
+        # Verify host certificate common name
+        assert "testserver.local" in host_cert_text
 
         # Verify certificate chain
         chain_verify_result = run_command(f"openssl verify -CAfile {ca_cert_path} {host_cert_path}")
         assert chain_verify_result.returncode == 0
         assert "OK" in chain_verify_result.stdout
 
-        # Verify SANs in the certificate
-        sans_verify_result = run_command(f"openssl x509 -in {host_cert_path} -text -noout")
-        assert sans_verify_result.returncode == 0
-        assert "DNS:www.testserver.local" in sans_verify_result.stdout
-        assert "IP Address:192.168.1.10" in sans_verify_result.stdout
+        # Verify SANs in the certificate (using cached result)
+        assert "DNS:www.testserver.local" in host_cert_text
+        assert "IP Address:192.168.1.10" in host_cert_text
 
-        # Verify overridden and inherited certificate metadata fields are used correctly
+        # Verify host key algorithm
+        assert "RSA Public-Key: (3072 bit)" in host_cert_text
+
+        # Verify signature algorithm
+        assert "Signature Algorithm: sha384WithRSAEncryption" in host_cert_text
+
+        # Verify subject info for the host certificate
         subject_verify_result = run_command(f"openssl x509 -in {host_cert_path} -noout -subject")
         assert subject_verify_result.returncode == 0
+        subject_info = subject_verify_result.stdout
 
         # These fields should be inherited from CA
-        assert "O=Test Org" in subject_verify_result.stdout
-        assert "C=US" in subject_verify_result.stdout
-        assert "ST=Test State" in subject_verify_result.stdout
-        assert "L=Test City" in subject_verify_result.stdout
+        assert "O=Test Org" in subject_info
+        assert "C=US" in subject_info
+        assert "ST=Test State" in subject_info
+        assert "L=Test City" in subject_info
 
         # These fields should be overridden by host config
-        assert "OU=Test Override Unit" in subject_verify_result.stdout
-        assert "emailAddress=override@example.com" in subject_verify_result.stdout
+        assert "OU=Test Override Unit" in subject_info
+        assert "emailAddress=override@example.com" in subject_info
 
     def test_renew_and_rekey(self, temp_dir, create_test_configs) -> None:
         """Test renewing and rekeying certificates."""

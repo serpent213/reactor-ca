@@ -561,7 +561,8 @@ def _parse_host_config(host_name: str, host_data: dict[str, Any]) -> HostConfig:
         email=host_data.get("email"),
         alternative_names=alt_names,
         validity=validity,
-        key_algorithm=host_data.get("key_algorithm", f"RSA{host_data.get('key_size', 2048)}"),
+        key_algorithm=host_data.get("key_algorithm", "RSA2048"),
+        hash_algorithm=host_data.get("hash_algorithm"),
     )
 
 

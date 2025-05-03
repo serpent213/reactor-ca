@@ -33,9 +33,6 @@ from reactor_ca.config import (
     load_config,
     validate_config_before_operation,
 )
-from reactor_ca.config import (
-    load_hosts_config_dict as load_hosts_config,
-)
 from reactor_ca.crypto import (
     add_standard_extensions,
     create_certificate_builder,
@@ -93,8 +90,10 @@ def create_certificate_with_params(
 
     ca_config = load_ca_config(config.ca_config_path)
 
-    # Get hash algorithm from config or parameter
+    # Get hash algorithm from params, host_config, or fallback to CA config
     hash_algorithm = params.hash_algorithm
+    if hash_algorithm is None and params.host_config and params.host_config.hash_algorithm:
+        hash_algorithm = params.host_config.hash_algorithm
     if hash_algorithm is None:
         hash_algorithm = ca_config.hash_algorithm
 
@@ -737,7 +736,7 @@ def issue_certificate(hostname: str, no_export: bool = False, do_deploy: bool = 
     console.print(f"{action} certificate for {hostname} valid for {validity_days} days...")
 
     # Get hash algorithm and prepare host config object
-    hash_algorithm = host_config.hash_algorithm if hasattr(host_config, "hash_algorithm") else None
+    hash_algorithm = getattr(host_config, "hash_algorithm", None)
     host_config_obj = _prepare_host_config_object(
         hostname=hostname,
         host_config=host_config,
@@ -843,15 +842,9 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
         return False
 
     # Check if hostname exists in hosts config
-    hosts_config = load_hosts_config()
-    host_config = None
-
-    for host in hosts_config.get("hosts", []):
-        if host["name"] == hostname:
-            host_config = host
-            break
-
-    if not host_config:
+    try:
+        host_config = get_host_config(hostname)
+    except ValueError:
         console.print(f"[bold red]Error:[/bold red] Host {hostname} not found in hosts configuration")
         return False
 
@@ -880,7 +873,7 @@ def rekey_host(hostname: str, no_export: bool = False, do_deploy: bool = False) 
     console.print(f"Generating certificate for {hostname} valid for {validity_days} days...")
 
     # Get hash algorithm and prepare host config object
-    hash_algorithm = host_config.hash_algorithm if hasattr(host_config, "hash_algorithm") else None
+    hash_algorithm = getattr(host_config, "hash_algorithm", None)
     host_config_obj = _prepare_host_config_object(
         hostname=hostname,
         host_config=host_config,
