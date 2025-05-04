@@ -27,11 +27,12 @@ from reactor_ca.models import (
     CertificateParams,
     InventoryEntry,
 )
+from reactor_ca.result import Failure, Result, Success
 
 # Key Generation and Management
 
 
-def generate_key(key_algorithm: str) -> PrivateKeyTypes:
+def generate_key(key_algorithm: str) -> Result[PrivateKeyTypes, str]:
     """Generate a private key with the specified algorithm.
 
     Args:
@@ -40,47 +41,56 @@ def generate_key(key_algorithm: str) -> PrivateKeyTypes:
 
     Returns:
     -------
-        A new private key of the specified type
+        Result containing a new private key of the specified type or error message
 
     """
     key_algorithm = key_algorithm.upper()
 
-    # RSA key algorithms
-    if key_algorithm == "RSA2048":
-        return rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-        )
-    elif key_algorithm == "RSA3072":
-        return rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=3072,
-        )
-    elif key_algorithm == "RSA4096":
-        return rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=4096,
-        )
-    # EC key algorithms
-    elif key_algorithm == "ECP256":
-        curve: ec.EllipticCurve = ec.SECP256R1()
-        return ec.generate_private_key(curve=curve)
-    elif key_algorithm == "ECP384":
-        curve = ec.SECP384R1()
-        return ec.generate_private_key(curve=curve)
-    elif key_algorithm == "ECP521":
-        curve = ec.SECP521R1()
-        return ec.generate_private_key(curve=curve)
-    # Edwards curve algorithms
-    elif key_algorithm == "ED25519":
-        return ed25519.Ed25519PrivateKey.generate()
-    elif key_algorithm == "ED448":
-        return ed448.Ed448PrivateKey.generate()
-    else:
-        raise ValueError(f"Unsupported key algorithm: {key_algorithm}")
+    try:
+        # RSA key algorithms
+        if key_algorithm == "RSA2048":
+            return Success(
+                rsa.generate_private_key(
+                    public_exponent=65537,
+                    key_size=2048,
+                )
+            )
+        elif key_algorithm == "RSA3072":
+            return Success(
+                rsa.generate_private_key(
+                    public_exponent=65537,
+                    key_size=3072,
+                )
+            )
+        elif key_algorithm == "RSA4096":
+            return Success(
+                rsa.generate_private_key(
+                    public_exponent=65537,
+                    key_size=4096,
+                )
+            )
+        # EC key algorithms
+        elif key_algorithm == "ECP256":
+            curve: ec.EllipticCurve = ec.SECP256R1()
+            return Success(ec.generate_private_key(curve=curve))
+        elif key_algorithm == "ECP384":
+            curve = ec.SECP384R1()
+            return Success(ec.generate_private_key(curve=curve))
+        elif key_algorithm == "ECP521":
+            curve = ec.SECP521R1()
+            return Success(ec.generate_private_key(curve=curve))
+        # Edwards curve algorithms
+        elif key_algorithm == "ED25519":
+            return Success(ed25519.Ed25519PrivateKey.generate())
+        elif key_algorithm == "ED448":
+            return Success(ed448.Ed448PrivateKey.generate())
+        else:
+            return Failure(f"Unsupported key algorithm: {key_algorithm}")
+    except Exception as e:
+        return Failure(f"Error generating key: {str(e)}")
 
 
-def serialize_private_key(private_key: PrivateKeyTypes, password: bytes | None = None) -> bytes:
+def serialize_private_key(private_key: PrivateKeyTypes, password: bytes | None = None) -> Result[bytes, str]:
     """Serialize a private key to bytes, optionally encrypted with password.
 
     Args:
@@ -90,14 +100,18 @@ def serialize_private_key(private_key: PrivateKeyTypes, password: bytes | None =
 
     Returns:
     -------
-        Serialized key as bytes
+        Result containing serialized key as bytes or error message
 
     """
-    encryption = BestAvailableEncryption(password) if password else NoEncryption()
-    return private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, encryption)
+    try:
+        encryption = BestAvailableEncryption(password) if password else NoEncryption()
+        serialized_key = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, encryption)
+        return Success(serialized_key)
+    except Exception as e:
+        return Failure(f"Error serializing private key: {str(e)}")
 
 
-def deserialize_private_key(key_data: bytes, password: bytes | None = None) -> PrivateKeyTypes:
+def deserialize_private_key(key_data: bytes, password: bytes | None = None) -> Result[PrivateKeyTypes, str]:
     """Deserialize a private key from bytes.
 
     Args:
@@ -107,13 +121,17 @@ def deserialize_private_key(key_data: bytes, password: bytes | None = None) -> P
 
     Returns:
     -------
-        Deserialized private key
+        Result containing deserialized private key or error message
 
     """
-    return load_pem_private_key(key_data, password=password)
+    try:
+        key = load_pem_private_key(key_data, password=password)
+        return Success(key)
+    except Exception as e:
+        return Failure(f"Error deserializing private key: {str(e)}")
 
 
-def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
+def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> Result[bool, str]:
     """Verify that a key matches the expected algorithm.
 
     Args:
@@ -123,15 +141,23 @@ def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> bool:
 
     Returns:
     -------
-        True if the key matches the expected algorithm, False otherwise
+        Result containing True if the key matches the expected algorithm, False otherwise
 
     """
-    expected_algorithm = expected_algorithm.upper()
-    actual_algorithm = determine_key_algorithm(key)
-    return actual_algorithm == expected_algorithm
+    try:
+        expected_algorithm = expected_algorithm.upper()
+        actual_algorithm_result = determine_key_algorithm(key)
+
+        if isinstance(actual_algorithm_result, Failure):
+            return actual_algorithm_result
+
+        actual_algorithm = actual_algorithm_result.unwrap()
+        return Success(actual_algorithm == expected_algorithm)
+    except Exception as e:
+        return Failure(f"Error verifying key algorithm: {str(e)}")
 
 
-def determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
+def determine_key_algorithm(private_key: PrivateKeyTypes) -> Result[str, str]:
     """Determine the algorithm used by a private key.
 
     Args:
@@ -140,43 +166,46 @@ def determine_key_algorithm(private_key: PrivateKeyTypes) -> str:
 
     Returns:
     -------
-        A string identifying the key algorithm
+        Result containing a string identifying the key algorithm or error message
 
     """
-    # Define key size constants
-    rsa_key_size_2048 = 2048
-    rsa_key_size_3072 = 3072
-    rsa_key_size_4096 = 4096
+    try:
+        # Define key size constants
+        rsa_key_size_2048 = 2048
+        rsa_key_size_3072 = 3072
+        rsa_key_size_4096 = 4096
 
-    if isinstance(private_key, rsa.RSAPrivateKey):
-        key_size = private_key.key_size
-        if key_size == rsa_key_size_2048:
-            return "RSA2048"
-        elif key_size == rsa_key_size_3072:
-            return "RSA3072"
-        elif key_size == rsa_key_size_4096:
-            return "RSA4096"
+        if isinstance(private_key, rsa.RSAPrivateKey):
+            key_size = private_key.key_size
+            if key_size == rsa_key_size_2048:
+                return Success("RSA2048")
+            elif key_size == rsa_key_size_3072:
+                return Success("RSA3072")
+            elif key_size == rsa_key_size_4096:
+                return Success("RSA4096")
+            else:
+                return Success("RSA4096")  # Default to RSA4096 for unknown sizes
+        elif isinstance(private_key, ec.EllipticCurvePrivateKey):
+            curve_name = private_key.curve.name
+            if "secp256r1" in curve_name.lower():
+                return Success("ECP256")
+            elif "secp384r1" in curve_name.lower():
+                return Success("ECP384")
+            elif "secp521r1" in curve_name.lower():
+                return Success("ECP521")
+            else:
+                return Success("ECP256")  # Default to ECP256 for unknown curves
+        elif isinstance(private_key, ed25519.Ed25519PrivateKey):
+            return Success("ED25519")
+        elif isinstance(private_key, ed448.Ed448PrivateKey):
+            return Success("ED448")
         else:
-            return "RSA4096"  # Default to RSA4096 for unknown sizes
-    elif isinstance(private_key, ec.EllipticCurvePrivateKey):
-        curve_name = private_key.curve.name
-        if "secp256r1" in curve_name.lower():
-            return "ECP256"
-        elif "secp384r1" in curve_name.lower():
-            return "ECP384"
-        elif "secp521r1" in curve_name.lower():
-            return "ECP521"
-        else:
-            return "ECP256"  # Default to ECP256 for unknown curves
-    elif isinstance(private_key, ed25519.Ed25519PrivateKey):
-        return "ED25519"
-    elif isinstance(private_key, ed448.Ed448PrivateKey):
-        return "ED448"
-    else:
-        return "RSA4096"  # Default to RSA4096 for unknown key types
+            return Success("RSA4096")  # Default to RSA4096 for unknown key types
+    except Exception as e:
+        return Failure(f"Error determining key algorithm: {str(e)}")
 
 
-def verify_key_matches_cert(cert: x509.Certificate, private_key: PrivateKeyTypes) -> bool:
+def verify_key_matches_cert(cert: x509.Certificate, private_key: PrivateKeyTypes) -> Result[bool, str]:
     """Verify that a certificate and key match.
 
     Args:
@@ -186,28 +215,33 @@ def verify_key_matches_cert(cert: x509.Certificate, private_key: PrivateKeyTypes
 
     Returns:
     -------
-        True if the key matches the certificate, False otherwise
+        Result containing True if the key matches the certificate, False otherwise
 
     """
-    cert_public_key = cert.public_key()
-    key_public_key = private_key.public_key()
+    try:
+        cert_public_key = cert.public_key()
+        key_public_key = private_key.public_key()
 
-    if isinstance(cert_public_key, rsa.RSAPublicKey) and isinstance(key_public_key, rsa.RSAPublicKey):
-        # For RSA keys, compare the public_numbers attributes
-        cert_public_numbers = cert_public_key.public_numbers()
-        key_public_numbers = key_public_key.public_numbers()
-        return cert_public_numbers.n == key_public_numbers.n and cert_public_numbers.e == key_public_numbers.e
-    else:
-        # For other key types, compare the serialized public keys
-        return cert_public_key.public_bytes(
-            Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
-        ) == key_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+        if isinstance(cert_public_key, rsa.RSAPublicKey) and isinstance(key_public_key, rsa.RSAPublicKey):
+            # For RSA keys, compare the public_numbers attributes
+            cert_public_numbers = cert_public_key.public_numbers()
+            key_public_numbers = key_public_key.public_numbers()
+            return Success(
+                cert_public_numbers.n == key_public_numbers.n and cert_public_numbers.e == key_public_numbers.e
+            )
+        else:
+            # For other key types, compare the serialized public keys
+            cert_key_bytes = cert_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+            private_key_bytes = key_public_key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+            return Success(cert_key_bytes == private_key_bytes)
+    except Exception as e:
+        return Failure(f"Error verifying key match: {str(e)}")
 
 
 # Hash Algorithm Utilities
 
 
-def get_hash_algorithm(algorithm_name: str) -> hashes.HashAlgorithm:
+def get_hash_algorithm(algorithm_name: str) -> Result[hashes.HashAlgorithm, str]:
     """Get a hash algorithm instance by name.
 
     Args:
@@ -216,11 +250,7 @@ def get_hash_algorithm(algorithm_name: str) -> hashes.HashAlgorithm:
 
     Returns:
     -------
-        HashAlgorithm instance
-
-    Raises:
-    ------
-        ValueError: If an unsupported algorithm is specified
+        Result containing HashAlgorithm instance or error message
 
     """
     hash_algorithms = {
@@ -229,17 +259,20 @@ def get_hash_algorithm(algorithm_name: str) -> hashes.HashAlgorithm:
         "SHA512": hashes.SHA512(),
     }
 
-    algorithm_name = algorithm_name.upper()
-    if algorithm_name not in hash_algorithms:
-        raise ValueError(f"Unsupported hash algorithm: {algorithm_name}")
+    try:
+        algorithm_name = algorithm_name.upper()
+        if algorithm_name not in hash_algorithms:
+            return Failure(f"Unsupported hash algorithm: {algorithm_name}")
 
-    return hash_algorithms[algorithm_name]
+        return Success(hash_algorithms[algorithm_name])
+    except Exception as e:
+        return Failure(f"Error getting hash algorithm: {str(e)}")
 
 
 # Certificate Creation
 
 
-def create_ca_certificate(params: CACertificateParams) -> x509.Certificate:
+def create_ca_certificate(params: CACertificateParams) -> Result[x509.Certificate, str]:
     """Create a self-signed CA certificate using parameters object.
 
     Args:
@@ -248,49 +281,63 @@ def create_ca_certificate(params: CACertificateParams) -> x509.Certificate:
 
     Returns:
     -------
-        Self-signed CA certificate
-
-    Raises:
-    ------
-        ValueError: If params.private_key is None and key generation fails
+        Result containing self-signed CA certificate or error message
 
     """
-    # If private key isn't provided, generate one based on algorithm (if specified)
-    if params.private_key is None:
+    try:
+        # If private key isn't provided, generate one based on algorithm (if specified)
+        private_key = None
+        if params.private_key is None:
+            if params.hash_algorithm is None:
+                return Failure("Either private_key or hash_algorithm must be provided")
+
+            key_result = generate_key(params.hash_algorithm)
+            if isinstance(key_result, Failure):
+                return key_result
+            private_key = key_result.unwrap()
+        else:
+            private_key = params.private_key
+
+        # Get validity days or return error if not specified
+        if params.validity_days is None:
+            return Failure("validity_days must be specified")
+
+        # Get hash algorithm
         if params.hash_algorithm is None:
-            raise ValueError("Either private_key or hash_algorithm must be provided")
-        private_key = generate_key(params.hash_algorithm)
-    else:
-        private_key = params.private_key
+            return Failure("hash_algorithm must be specified")
 
-    # Get validity days or raise error if not specified
-    if params.validity_days is None:
-        raise ValueError("validity_days must be specified")
+        hash_algorithm_result = get_hash_algorithm(params.hash_algorithm)
+        if isinstance(hash_algorithm_result, Failure):
+            return hash_algorithm_result
+        hash_algorithm = hash_algorithm_result.unwrap()
 
-    # Get hash algorithm
-    if params.hash_algorithm is None:
-        raise ValueError("hash_algorithm must be specified")
-    hash_algorithm = get_hash_algorithm(params.hash_algorithm)
+        # Create subject/issuer from subject identity (same for CA cert)
+        subject = issuer = params.subject_identity.to_x509_name()
 
-    # Create subject/issuer from subject identity (same for CA cert)
-    subject = issuer = params.subject_identity.to_x509_name()
+        # Get public key
+        public_key = private_key.public_key()
 
-    # Get public key
-    public_key = private_key.public_key()
+        # Create certificate builder with standard fields
+        cert_builder_result = _create_certificate_builder(
+            subject=subject, issuer=issuer, public_key=public_key, validity_days=params.validity_days
+        )
+        if isinstance(cert_builder_result, Failure):
+            return cert_builder_result
+        cert_builder = cert_builder_result.unwrap()
 
-    # Create certificate builder with standard fields
-    cert_builder = _create_certificate_builder(
-        subject=subject, issuer=issuer, public_key=public_key, validity_days=params.validity_days
-    )
+        # Add extensions
+        extensions_result = _add_standard_extensions(cert_builder, is_ca=True, alt_names=params.alt_names)
+        if isinstance(extensions_result, Failure):
+            return extensions_result
+        cert_builder = extensions_result.unwrap()
 
-    # Add extensions
-    cert_builder = _add_standard_extensions(cert_builder, is_ca=True, alt_names=params.alt_names)
+        # Sign and return the certificate
+        return _sign_certificate(cert_builder, private_key, hash_algorithm)
+    except Exception as e:
+        return Failure(f"Error creating CA certificate: {str(e)}")
 
-    # Sign and return the certificate
-    return _sign_certificate(cert_builder, private_key, hash_algorithm)
 
-
-def create_certificate(params: CertificateParams) -> x509.Certificate:
+def create_certificate(params: CertificateParams) -> Result[x509.Certificate, str]:
     """Create a certificate using parameters object.
 
     Args:
@@ -299,54 +346,68 @@ def create_certificate(params: CertificateParams) -> x509.Certificate:
 
     Returns:
     -------
-        Signed certificate
-
-    Raises:
-    ------
-        ValueError: If required parameters are missing
+        Result containing signed certificate or error message
 
     """
-    # If private key isn't provided, generate one based on algorithm
-    if params.private_key is None:
+    try:
+        # If private key isn't provided, generate one based on algorithm
+        private_key = None
+        if params.private_key is None:
+            if params.hash_algorithm is None:
+                return Failure("Either private_key or hash_algorithm must be provided")
+
+            key_result = generate_key(params.hash_algorithm)
+            if isinstance(key_result, Failure):
+                return key_result
+            private_key = key_result.unwrap()
+        else:
+            private_key = params.private_key
+
+        # Get validity days or return error if not specified
+        if params.validity_days is None:
+            return Failure("validity_days must be specified")
+
+        # Get hash algorithm
         if params.hash_algorithm is None:
-            raise ValueError("Either private_key or hash_algorithm must be provided")
-        private_key = generate_key(params.hash_algorithm)
-    else:
-        private_key = params.private_key
+            return Failure("hash_algorithm must be specified")
 
-    # Get validity days or raise error if not specified
-    if params.validity_days is None:
-        raise ValueError("validity_days must be specified")
+        hash_algorithm_result = get_hash_algorithm(params.hash_algorithm)
+        if isinstance(hash_algorithm_result, Failure):
+            return hash_algorithm_result
+        hash_algorithm = hash_algorithm_result.unwrap()
 
-    # Get hash algorithm
-    if params.hash_algorithm is None:
-        raise ValueError("hash_algorithm must be specified")
-    hash_algorithm = get_hash_algorithm(params.hash_algorithm)
+        # Create subject from subject identity
+        subject = params.subject_identity.to_x509_name()
 
-    # Create subject from subject identity
-    subject = params.subject_identity.to_x509_name()
+        # CA is the issuer
+        issuer = params.ca.cert.subject
 
-    # CA is the issuer
-    issuer = params.ca.cert.subject
+        # Get public key
+        public_key = private_key.public_key()
 
-    # Get public key
-    public_key = private_key.public_key()
+        # Create certificate builder
+        cert_builder_result = _create_certificate_builder(
+            subject=subject, issuer=issuer, public_key=public_key, validity_days=params.validity_days
+        )
+        if isinstance(cert_builder_result, Failure):
+            return cert_builder_result
+        cert_builder = cert_builder_result.unwrap()
 
-    # Create certificate builder
-    cert_builder = _create_certificate_builder(
-        subject=subject, issuer=issuer, public_key=public_key, validity_days=params.validity_days
-    )
+        # Add extensions
+        extensions_result = _add_standard_extensions(cert_builder, is_ca=False, alt_names=params.alt_names)
+        if isinstance(extensions_result, Failure):
+            return extensions_result
+        cert_builder = extensions_result.unwrap()
 
-    # Add extensions
-    cert_builder = _add_standard_extensions(cert_builder, is_ca=False, alt_names=params.alt_names)
-
-    # Sign with CA key
-    return _sign_certificate(cert_builder, params.ca.key, hash_algorithm)
+        # Sign with CA key
+        return _sign_certificate(cert_builder, params.ca.key, hash_algorithm)
+    except Exception as e:
+        return Failure(f"Error creating certificate: {str(e)}")
 
 
 def sign_csr(
     csr: x509.CertificateSigningRequest, ca: CA, validity_days: int, hash_algorithm: str
-) -> x509.Certificate:
+) -> Result[x509.Certificate, str]:
     """Sign a CSR with a CA key.
 
     Args:
@@ -358,50 +419,58 @@ def sign_csr(
 
     Returns:
     -------
-        Signed certificate
-
-    Raises:
-    ------
-        ValueError: If CSR is invalid or parameters are missing
+        Result containing signed certificate or error message
 
     """
-    # Verify the CSR signature
-    if not csr.is_signature_valid:
-        raise ValueError("CSR has an invalid signature")
+    try:
+        # Verify the CSR signature
+        if not csr.is_signature_valid:
+            return Failure("CSR has an invalid signature")
 
-    # Get hash algorithm
-    hash_algo = get_hash_algorithm(hash_algorithm)
+        # Get hash algorithm
+        hash_algo_result = get_hash_algorithm(hash_algorithm)
+        if isinstance(hash_algo_result, Failure):
+            return hash_algo_result
+        hash_algo = hash_algo_result.unwrap()
 
-    # Create certificate builder
-    cert_builder = _create_certificate_builder(
-        subject=csr.subject, issuer=ca.cert.subject, public_key=csr.public_key(), validity_days=validity_days
-    )
+        # Create certificate builder
+        cert_builder_result = _create_certificate_builder(
+            subject=csr.subject, issuer=ca.cert.subject, public_key=csr.public_key(), validity_days=validity_days
+        )
+        if isinstance(cert_builder_result, Failure):
+            return cert_builder_result
+        cert_builder = cert_builder_result.unwrap()
 
-    # Extract SANs from CSR if present
-    alt_names = None
-    for ext in csr.extensions:
-        if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-            # Convert to our AlternativeNames model
-            san_list = []
-            for san in ext.value:
-                san_list.append(san)
+        # Extract SANs from CSR if present
+        alt_names = None
+        for ext in csr.extensions:
+            if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
+                # Convert to our AlternativeNames model
+                san_list = []
+                for san in ext.value:
+                    san_list.append(san)
 
-            # Create an empty AlternativeNames object to pass to _add_standard_extensions
-            # The san_list will be passed directly
-            alt_names = AlternativeNames()
-            break
+                # Create an empty AlternativeNames object to pass to _add_standard_extensions
+                # The san_list will be passed directly
+                alt_names = AlternativeNames()
+                break
 
-    # Add standard extensions
-    cert_builder = _add_standard_extensions(cert_builder=cert_builder, is_ca=False, alt_names=alt_names)
+        # Add standard extensions
+        extensions_result = _add_standard_extensions(cert_builder=cert_builder, is_ca=False, alt_names=alt_names)
+        if isinstance(extensions_result, Failure):
+            return extensions_result
+        cert_builder = extensions_result.unwrap()
 
-    # Sign the certificate
-    return _sign_certificate(cert_builder, ca.key, hash_algo)
+        # Sign the certificate
+        return _sign_certificate(cert_builder, ca.key, hash_algo)
+    except Exception as e:
+        return Failure(f"Error signing CSR: {str(e)}")
 
 
 # Certificate Serialization
 
 
-def serialize_certificate(cert: x509.Certificate) -> bytes:
+def serialize_certificate(cert: x509.Certificate) -> Result[bytes, str]:
     """Serialize a certificate to bytes (PEM format).
 
     Args:
@@ -410,13 +479,16 @@ def serialize_certificate(cert: x509.Certificate) -> bytes:
 
     Returns:
     -------
-        PEM-encoded certificate bytes
+        Result containing PEM-encoded certificate bytes or error message
 
     """
-    return cert.public_bytes(encoding=Encoding.PEM)
+    try:
+        return Success(cert.public_bytes(encoding=Encoding.PEM))
+    except Exception as e:
+        return Failure(f"Error serializing certificate: {str(e)}")
 
 
-def deserialize_certificate(cert_data: bytes) -> x509.Certificate:
+def deserialize_certificate(cert_data: bytes) -> Result[x509.Certificate, str]:
     """Deserialize a certificate from bytes (PEM format).
 
     Args:
@@ -425,20 +497,20 @@ def deserialize_certificate(cert_data: bytes) -> x509.Certificate:
 
     Returns:
     -------
-        X.509 certificate object
-
-    Raises:
-    ------
-        ValueError: If certificate data is invalid
+        Result containing X.509 certificate object or error message
 
     """
-    return x509.load_pem_x509_certificate(cert_data)
+    try:
+        cert = x509.load_pem_x509_certificate(cert_data)
+        return Success(cert)
+    except Exception as e:
+        return Failure(f"Error deserializing certificate: {str(e)}")
 
 
 # Certificate Examination
 
 
-def is_cert_valid(cert: x509.Certificate) -> bool:
+def is_cert_valid(cert: x509.Certificate) -> Result[bool, str]:
     """Check if a certificate is currently valid (not expired or not yet valid).
 
     Args:
@@ -447,14 +519,17 @@ def is_cert_valid(cert: x509.Certificate) -> bool:
 
     Returns:
     -------
-        True if certificate is valid, False otherwise
+        Result containing True if certificate is valid, False otherwise
 
     """
-    now = datetime.datetime.now(datetime.UTC)
-    return cert.not_valid_before <= now <= cert.not_valid_after
+    try:
+        now = datetime.datetime.now(datetime.UTC)
+        return Success(cert.not_valid_before <= now <= cert.not_valid_after)
+    except Exception as e:
+        return Failure(f"Error checking certificate validity: {str(e)}")
 
 
-def get_certificate_fingerprint(cert: x509.Certificate, hash_algorithm: str) -> str:
+def get_certificate_fingerprint(cert: x509.Certificate, hash_algorithm: str) -> Result[str, str]:
     """Get the fingerprint of a certificate using the specified hash algorithm.
 
     Args:
@@ -464,18 +539,25 @@ def get_certificate_fingerprint(cert: x509.Certificate, hash_algorithm: str) -> 
 
     Returns:
     -------
-        Hex string representation of the fingerprint
+        Result containing hex string representation of the fingerprint or error message
 
     """
-    hash_algo = get_hash_algorithm(hash_algorithm)
-    fingerprint = cert.fingerprint(hash_algo)
-    return fingerprint.hex()
+    try:
+        hash_algo_result = get_hash_algorithm(hash_algorithm)
+        if isinstance(hash_algo_result, Failure):
+            return hash_algo_result
+
+        hash_algo = hash_algo_result.unwrap()
+        fingerprint = cert.fingerprint(hash_algo)
+        return Success(fingerprint.hex())
+    except Exception as e:
+        return Failure(f"Error getting certificate fingerprint: {str(e)}")
 
 
 # Inventory Integration
 
 
-def create_inventory_entry(cert: x509.Certificate, short_name: str) -> InventoryEntry:
+def create_inventory_entry(cert: x509.Certificate, short_name: str) -> Result[InventoryEntry, str]:
     """Create an inventory entry from a certificate.
 
     Args:
@@ -485,13 +567,17 @@ def create_inventory_entry(cert: x509.Certificate, short_name: str) -> Inventory
 
     Returns:
     -------
-        InventoryEntry object
+        Result containing InventoryEntry object or error message
 
     """
-    return InventoryEntry.from_certificate(short_name, cert)
+    try:
+        inventory_entry = InventoryEntry.from_certificate(short_name, cert)
+        return Success(inventory_entry)
+    except Exception as e:
+        return Failure(f"Error creating inventory entry: {str(e)}")
 
 
-def create_ca_inventory_entry(cert: x509.Certificate) -> CAInventoryEntry:
+def create_ca_inventory_entry(cert: x509.Certificate) -> Result[CAInventoryEntry, str]:
     """Create a CA inventory entry from a certificate.
 
     Args:
@@ -500,10 +586,14 @@ def create_ca_inventory_entry(cert: x509.Certificate) -> CAInventoryEntry:
 
     Returns:
     -------
-        CAInventoryEntry object
+        Result containing CAInventoryEntry object or error message
 
     """
-    return CAInventoryEntry.from_certificate(cert)
+    try:
+        ca_inventory_entry = CAInventoryEntry.from_certificate(cert)
+        return Success(ca_inventory_entry)
+    except Exception as e:
+        return Failure(f"Error creating CA inventory entry: {str(e)}")
 
 
 # Private Helper Functions
@@ -511,7 +601,7 @@ def create_ca_inventory_entry(cert: x509.Certificate) -> CAInventoryEntry:
 
 def _create_certificate_builder(
     subject: x509.Name, issuer: x509.Name, public_key: PublicKeyTypes, validity_days: int
-) -> x509.CertificateBuilder:
+) -> Result[x509.CertificateBuilder, str]:
     """Create a certificate builder with the essential attributes.
 
     Args:
@@ -523,32 +613,33 @@ def _create_certificate_builder(
 
     Returns:
     -------
-        Initialized certificate builder
-
-    Raises:
-    ------
-        ValueError: If an unsupported public key type is provided
+        Result containing initialized certificate builder or error message
 
     """
-    now = datetime.datetime.now(datetime.UTC)
+    try:
+        now = datetime.datetime.now(datetime.UTC)
 
-    if isinstance(public_key, dh.DHPublicKey):
-        raise ValueError("DHPublicKey is not supported for certificates")
+        if isinstance(public_key, dh.DHPublicKey):
+            return Failure("DHPublicKey is not supported for certificates")
 
-    return (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(public_key)
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=validity_days))
-    )
+        cert_builder = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(public_key)
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=validity_days))
+        )
+
+        return Success(cert_builder)
+    except Exception as e:
+        return Failure(f"Error creating certificate builder: {str(e)}")
 
 
 def _add_standard_extensions(
     cert_builder: x509.CertificateBuilder, is_ca: bool = False, alt_names: AlternativeNames | None = None
-) -> x509.CertificateBuilder:
+) -> Result[x509.CertificateBuilder, str]:
     """Add standard X.509 extensions to a certificate builder.
 
     Args:
@@ -559,73 +650,80 @@ def _add_standard_extensions(
 
     Returns:
     -------
-        Certificate builder with extensions added
+        Result containing certificate builder with extensions added or error message
 
     """
-    # Add BasicConstraints
-    cert_builder = cert_builder.add_extension(
-        x509.BasicConstraints(ca=is_ca, path_length=None),
-        critical=True,
-    )
-
-    # Add KeyUsage - different for CA vs server/client certs
-    if is_ca:
+    try:
+        # Add BasicConstraints
         cert_builder = cert_builder.add_extension(
-            x509.KeyUsage(
-                digital_signature=True,
-                content_commitment=False,
-                key_encipherment=False,
-                data_encipherment=False,
-                key_agreement=False,
-                key_cert_sign=True,
-                crl_sign=True,
-                encipher_only=False,
-                decipher_only=False,
-            ),
-            critical=True,
-        )
-    else:
-        cert_builder = cert_builder.add_extension(
-            x509.KeyUsage(
-                digital_signature=True,
-                content_commitment=False,
-                key_encipherment=True,
-                data_encipherment=False,
-                key_agreement=False,
-                key_cert_sign=False,
-                crl_sign=False,
-                encipher_only=False,
-                decipher_only=False,
-            ),
+            x509.BasicConstraints(ca=is_ca, path_length=None),
             critical=True,
         )
 
-    # For non-CA certs, add ExtendedKeyUsage
-    if not is_ca:
-        cert_builder = cert_builder.add_extension(
-            x509.ExtendedKeyUsage(
-                [
-                    x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-                    x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
-                ]
-            ),
-            critical=False,
-        )
+        # Add KeyUsage - different for CA vs server/client certs
+        if is_ca:
+            cert_builder = cert_builder.add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=False,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=True,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+        else:
+            cert_builder = cert_builder.add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=False,
+                    key_encipherment=True,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
 
-    # Add Subject Alternative Names if provided
-    if alt_names and not alt_names.is_empty():
-        general_names = alt_names.process_all_sans()
-        cert_builder = cert_builder.add_extension(
-            x509.SubjectAlternativeName(general_names),
-            critical=False,
-        )
+        # For non-CA certs, add ExtendedKeyUsage
+        if not is_ca:
+            cert_builder = cert_builder.add_extension(
+                x509.ExtendedKeyUsage(
+                    [
+                        x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
+                        x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
+                    ]
+                ),
+                critical=False,
+            )
 
-    return cert_builder
+        # Add Subject Alternative Names if provided
+        if alt_names and not alt_names.is_empty():
+            sans_result = alt_names.process_all_sans()
+            if isinstance(sans_result, Failure):
+                return sans_result
+
+            general_names = sans_result.unwrap()
+            cert_builder = cert_builder.add_extension(
+                x509.SubjectAlternativeName(general_names),
+                critical=False,
+            )
+
+        return Success(cert_builder)
+    except Exception as e:
+        return Failure(f"Error adding standard extensions: {str(e)}")
 
 
 def _sign_certificate(
     cert_builder: x509.CertificateBuilder, private_key: PrivateKeyTypes, hash_algo: hashes.HashAlgorithm
-) -> x509.Certificate:
+) -> Result[x509.Certificate, str]:
     """Sign a certificate builder with the given private key and hash algorithm.
 
     Args:
@@ -636,16 +734,16 @@ def _sign_certificate(
 
     Returns:
     -------
-        Signed certificate
-
-    Raises:
-    ------
-        ValueError: If an unsupported key type is provided
+        Result containing signed certificate or error message
 
     """
-    # Check if key type is supported for signing
-    if isinstance(private_key, dh.DHPrivateKey | x25519.X25519PrivateKey | x448.X448PrivateKey):
-        raise ValueError(f"Cannot sign with {type(private_key).__name__} as it is not supported for signing")
+    try:
+        # Check if key type is supported for signing
+        if isinstance(private_key, dh.DHPrivateKey | x25519.X25519PrivateKey | x448.X448PrivateKey):
+            return Failure(f"Cannot sign with {type(private_key).__name__} as it is not supported for signing")
 
-    # Sign the certificate
-    return cert_builder.sign(private_key, hash_algo)
+        # Sign the certificate
+        cert = cert_builder.sign(private_key, hash_algo)
+        return Success(cert)
+    except Exception as e:
+        return Failure(f"Error signing certificate: {str(e)}")

@@ -31,6 +31,7 @@ def resolve_paths(
     Returns:
     -------
         Tuple of (config_dir, store_dir) as Path objects
+
     """
     # Resolve root directory
     root = Path(root_dir) if root_dir else Path(os.environ.get(ENV_ROOT_DIR, "."))
@@ -62,6 +63,7 @@ def ensure_dirs(config_dir: Path, store_dir: Path) -> None:
     ----
         config_dir: Path to configuration directory
         store_dir: Path to store directory
+
     """
     config_dir.mkdir(parents=True, exist_ok=True)
     store_dir.mkdir(parents=True, exist_ok=True)

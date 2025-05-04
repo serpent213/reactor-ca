@@ -4,7 +4,7 @@ import datetime
 import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import urlparse
 
 from cryptography import x509
@@ -18,6 +18,12 @@ from cryptography.x509.general_name import (
     UniformResourceIdentifier,
 )
 from cryptography.x509.oid import NameOID
+
+from reactor_ca.result import Failure, Result, Success
+
+# Types for Result
+T = TypeVar("T")
+E = TypeVar("E")
 
 # Config
 
@@ -39,7 +45,7 @@ class AlternativeNames:
         return not any(getattr(self, attr_name) for attr_name in self.__annotations__)
 
     @classmethod
-    def process_dns_names(cls: type["AlternativeNames"], names: list[str]) -> list[x509.DNSName]:
+    def process_dns_names(cls: type["AlternativeNames"], names: list[str]) -> Result[list[x509.DNSName], str]:
         """Process DNS names into appropriate SAN format.
 
         Args:
@@ -48,13 +54,16 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of x509.DNSName objects
+            Result containing list of x509.DNSName objects or an error message
 
         """
-        return [x509.DNSName(name) for name in names]
+        try:
+            return Success([x509.DNSName(name) for name in names])
+        except Exception as err:
+            return Failure(f"Error processing DNS names: {str(err)}")
 
     @classmethod
-    def process_ip_addresses(cls: type["AlternativeNames"], ips: list[str]) -> list[x509.IPAddress]:
+    def process_ip_addresses(cls: type["AlternativeNames"], ips: list[str]) -> Result[list[x509.IPAddress], str]:
         """Process IP addresses into appropriate SAN format.
 
         Args:
@@ -63,22 +72,27 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.IPAddress objects
+            Result containing list of valid x509.IPAddress objects or an error message
 
         """
         result = []
 
-        for ip in ips:
-            try:
-                ip_obj = ipaddress.ip_address(ip)
-                result.append(x509.IPAddress(ip_obj))
-            except ValueError as err:
-                raise ValueError(f"Invalid IP address: {ip}") from err
+        try:
+            for ip in ips:
+                try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    result.append(x509.IPAddress(ip_obj))
+                except ValueError:
+                    return Failure(f"Invalid IP address: {ip}")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing IP addresses: {str(err)}")
 
     @classmethod
-    def process_email_addresses(cls: type["AlternativeNames"], emails: list[str]) -> list[x509.RFC822Name]:
+    def process_email_addresses(
+        cls: type["AlternativeNames"], emails: list[str]
+    ) -> Result[list[x509.RFC822Name], str]:
         """Process email addresses into appropriate SAN format.
 
         Args:
@@ -87,22 +101,27 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.RFC822Name objects
+            Result containing list of valid x509.RFC822Name objects or an error message
 
         """
         result = []
 
-        for email in emails:
-            # Simple email validation
-            if re.match(r"[^@]+@[^@]+\.[^@]+", email):
-                result.append(x509.RFC822Name(email))
-            else:
-                raise ValueError(f"Invalid email address: {email}")
+        try:
+            for email in emails:
+                # Simple email validation
+                if re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                    result.append(x509.RFC822Name(email))
+                else:
+                    return Failure(f"Invalid email address: {email}")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing email addresses: {str(err)}")
 
     @classmethod
-    def process_uri_addresses(cls: type["AlternativeNames"], uris: list[str]) -> list[x509.UniformResourceIdentifier]:
+    def process_uri_addresses(
+        cls: type["AlternativeNames"], uris: list[str]
+    ) -> Result[list[x509.UniformResourceIdentifier], str]:
         """Process URIs into appropriate SAN format.
 
         Args:
@@ -111,26 +130,28 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.UniformResourceIdentifier objects
+            Result containing list of valid x509.UniformResourceIdentifier objects or an error message
 
         """
         result = []
 
-        for uri in uris:
-            try:
+        try:
+            for uri in uris:
                 # Validate URI
                 parsed = urlparse(uri)
                 if parsed.scheme and parsed.netloc:
                     result.append(UniformResourceIdentifier(uri))
                 else:
-                    raise ValueError(f"Invalid URI format: {uri}")
-            except Exception as err:
-                raise ValueError(f"Invalid URI: {uri}. Error: {str(err)}") from err
+                    return Failure(f"Invalid URI format: {uri}")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing URIs: {str(err)}")
 
     @classmethod
-    def process_directory_names(cls: type["AlternativeNames"], dns: list[str]) -> list[x509.DirectoryName]:
+    def process_directory_names(
+        cls: type["AlternativeNames"], dns: list[str]
+    ) -> Result[list[x509.DirectoryName], str]:
         """Process directory names into appropriate SAN format.
 
         Args:
@@ -139,13 +160,13 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.DirectoryName objects
+            Result containing list of valid x509.DirectoryName objects or an error message
 
         """
         result = []
 
-        for dn in dns:
-            try:
+        try:
+            for dn in dns:
                 # Expect format like "CN=example,O=org,C=US"
                 attrs = []
                 for part in dn.split(","):
@@ -174,14 +195,16 @@ class AlternativeNames:
                     # Using proper typing for DirectoryName that accepts x509.Name
                     result.append(DirectoryName(name))
                 else:
-                    raise ValueError(f"No valid attributes found in directory name: {dn}")
-            except Exception as err:
-                raise ValueError(f"Invalid directory name: {dn}. Error: {str(err)}") from err
+                    return Failure(f"No valid attributes found in directory name: {dn}")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing directory names: {str(err)}")
 
     @classmethod
-    def process_registered_ids(cls: type["AlternativeNames"], oids: list[str]) -> list[x509.RegisteredID]:
+    def process_registered_ids(
+        cls: type["AlternativeNames"], oids: list[str]
+    ) -> Result[list[x509.RegisteredID], str]:
         """Process OID strings into appropriate SAN format.
 
         Args:
@@ -190,25 +213,27 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.RegisteredID objects
+            Result containing list of valid x509.RegisteredID objects or an error message
 
         """
         result = []
 
-        for oid in oids:
-            try:
+        try:
+            for oid in oids:
                 # Validate OID format
                 if re.match(r"^\d+(\.\d+)*$", oid):
                     result.append(RegisteredID(ObjectIdentifier(oid)))
                 else:
-                    raise ValueError(f"Invalid OID format: {oid}")
-            except Exception as err:
-                raise ValueError(f"Invalid OID: {oid}. Error: {str(err)}") from err
+                    return Failure(f"Invalid OID format: {oid}")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing OIDs: {str(err)}")
 
     @classmethod
-    def process_other_names(cls: type["AlternativeNames"], other_names: list[str]) -> list[x509.OtherName]:
+    def process_other_names(
+        cls: type["AlternativeNames"], other_names: list[str]
+    ) -> Result[list[x509.OtherName], str]:
         """Process other name strings into appropriate SAN format.
 
         Args:
@@ -217,13 +242,13 @@ class AlternativeNames:
 
         Returns:
         -------
-            List of valid x509.OtherName objects
+            Result containing list of valid x509.OtherName objects or an error message
 
         """
         result = []
 
-        for other_name in other_names:
-            try:
+        try:
+            for other_name in other_names:
                 # Format expected: "oid:value"
                 if ":" in other_name:
                     oid_str, value = other_name.split(":", 1)
@@ -237,20 +262,20 @@ class AlternativeNames:
                         value_bytes = value.encode("utf-8")
                         result.append(OtherName(oid_obj, value_bytes))
                     else:
-                        raise ValueError("Invalid OID format")
+                        return Failure("Invalid OID format")
                 else:
-                    raise ValueError(f"Invalid format for other name: {other_name}, expected 'oid:value'")
-            except Exception as err:
-                raise ValueError(f"Invalid other name: {other_name}. Error: {str(err)}") from err
+                    return Failure(f"Invalid format for other name: {other_name}, expected 'oid:value'")
 
-        return result
+            return Success(result)
+        except Exception as err:
+            return Failure(f"Error processing other names: {str(err)}")
 
-    def process_all_sans(self: "AlternativeNames") -> list[GeneralName]:
+    def process_all_sans(self: "AlternativeNames") -> Result[list[GeneralName], str]:
         """Process all Subject Alternative Name types from this instance.
 
         Returns
         -------
-            List of all valid SAN objects
+            Result containing list of all valid SAN objects or an error message
 
         """
         # Initialize the result list
@@ -258,33 +283,54 @@ class AlternativeNames:
 
         # Add DNS names
         if self.dns:
-            result.extend(cast(list[GeneralName], self.process_dns_names(self.dns)))
+            dns_result = self.process_dns_names(self.dns)
+            if isinstance(dns_result, Failure):
+                return dns_result
+            result.extend(cast(list[GeneralName], dns_result.unwrap()))
 
         # Add IP addresses
         if self.ip:
-            result.extend(cast(list[GeneralName], self.process_ip_addresses(self.ip)))
+            ip_result = self.process_ip_addresses(self.ip)
+            if isinstance(ip_result, Failure):
+                return ip_result
+            result.extend(cast(list[GeneralName], ip_result.unwrap()))
 
         # Add email addresses
         if self.email:
-            result.extend(cast(list[GeneralName], self.process_email_addresses(self.email)))
+            email_result = self.process_email_addresses(self.email)
+            if isinstance(email_result, Failure):
+                return email_result
+            result.extend(cast(list[GeneralName], email_result.unwrap()))
 
         # Add URIs
         if self.uri:
-            result.extend(cast(list[GeneralName], self.process_uri_addresses(self.uri)))
+            uri_result = self.process_uri_addresses(self.uri)
+            if isinstance(uri_result, Failure):
+                return uri_result
+            result.extend(cast(list[GeneralName], uri_result.unwrap()))
 
         # Add directory names
         if self.directory_name:
-            result.extend(cast(list[GeneralName], self.process_directory_names(self.directory_name)))
+            dn_result = self.process_directory_names(self.directory_name)
+            if isinstance(dn_result, Failure):
+                return dn_result
+            result.extend(cast(list[GeneralName], dn_result.unwrap()))
 
         # Add registered IDs (OIDs)
         if self.registered_id:
-            result.extend(cast(list[GeneralName], self.process_registered_ids(self.registered_id)))
+            oid_result = self.process_registered_ids(self.registered_id)
+            if isinstance(oid_result, Failure):
+                return oid_result
+            result.extend(cast(list[GeneralName], oid_result.unwrap()))
 
         # Add other names
         if self.other_name:
-            result.extend(cast(list[GeneralName], self.process_other_names(self.other_name)))
+            other_result = self.process_other_names(self.other_name)
+            if isinstance(other_result, Failure):
+                return other_result
+            result.extend(cast(list[GeneralName], other_result.unwrap()))
 
-        return result
+        return Success(result)
 
 
 @dataclass
@@ -501,33 +547,42 @@ class SubjectIdentity:
         return x509.Name(subject_attributes)
 
     @classmethod
-    def from_x509_name(cls: type["SubjectIdentity"], name: x509.Name) -> "SubjectIdentity":
+    def from_x509_name(cls: type["SubjectIdentity"], name: x509.Name) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an x509.Name object."""
+        try:
+            # Helper function to safely extract attributes from the name
+            def get_attr_value(oid: x509.ObjectIdentifier) -> str:
+                attrs = name.get_attributes_for_oid(oid)
+                return str(attrs[0].value) if attrs else ""
 
-        # Helper function to safely extract attributes from the name
-        def get_attr_value(oid: x509.ObjectIdentifier) -> str:
-            attrs = name.get_attributes_for_oid(oid)
-            return str(attrs[0].value) if attrs else ""
+            # Common name is required
+            common_name = get_attr_value(NameOID.COMMON_NAME)
+            if not common_name:
+                return Failure("X.509 name missing required Common Name")
 
-        return cls(
-            common_name=get_attr_value(NameOID.COMMON_NAME),
-            organization=get_attr_value(NameOID.ORGANIZATION_NAME),
-            organization_unit=get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME),
-            country=get_attr_value(NameOID.COUNTRY_NAME),
-            state=get_attr_value(NameOID.STATE_OR_PROVINCE_NAME),
-            locality=get_attr_value(NameOID.LOCALITY_NAME),
-            email=get_attr_value(NameOID.EMAIL_ADDRESS),
-        )
+            return Success(
+                cls(
+                    common_name=common_name,
+                    organization=get_attr_value(NameOID.ORGANIZATION_NAME),
+                    organization_unit=get_attr_value(NameOID.ORGANIZATIONAL_UNIT_NAME),
+                    country=get_attr_value(NameOID.COUNTRY_NAME),
+                    state=get_attr_value(NameOID.STATE_OR_PROVINCE_NAME),
+                    locality=get_attr_value(NameOID.LOCALITY_NAME),
+                    email=get_attr_value(NameOID.EMAIL_ADDRESS),
+                )
+            )
+        except Exception as err:
+            return Failure(f"Error extracting subject identity: {str(err)}")
 
     @classmethod
-    def from_certificate(cls: type["SubjectIdentity"], cert: x509.Certificate) -> "SubjectIdentity":
+    def from_certificate(cls: type["SubjectIdentity"], cert: x509.Certificate) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an X.509 certificate."""
         return cls.from_x509_name(cert.subject)
 
     @classmethod
     def create_from_config(
         cls: type["SubjectIdentity"], hostname: str, ca_config: CAConfig, host_config: HostConfig | None = None
-    ) -> "SubjectIdentity":
+    ) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from CA config and optional host config.
 
         Args:
@@ -538,22 +593,30 @@ class SubjectIdentity:
 
         Returns:
         -------
-            SubjectIdentity with fields from host_config or CA config
+            Result containing SubjectIdentity with fields from host_config or CA config or an error
 
         """
-        return cls(
-            common_name=hostname,
-            organization=host_config.organization
-            if host_config and host_config.organization
-            else ca_config.organization,
-            organization_unit=host_config.organization_unit
-            if host_config and host_config.organization_unit
-            else ca_config.organization_unit,
-            country=host_config.country if host_config and host_config.country else ca_config.country,
-            state=host_config.state if host_config and host_config.state else ca_config.state,
-            locality=host_config.locality if host_config and host_config.locality else ca_config.locality,
-            email=host_config.email if host_config and host_config.email else ca_config.email,
-        )
+        try:
+            if not hostname:
+                return Failure("Hostname/common name is required")
+
+            return Success(
+                cls(
+                    common_name=hostname,
+                    organization=host_config.organization
+                    if host_config and host_config.organization
+                    else ca_config.organization,
+                    organization_unit=host_config.organization_unit
+                    if host_config and host_config.organization_unit
+                    else ca_config.organization_unit,
+                    country=host_config.country if host_config and host_config.country else ca_config.country,
+                    state=host_config.state if host_config and host_config.state else ca_config.state,
+                    locality=host_config.locality if host_config and host_config.locality else ca_config.locality,
+                    email=host_config.email if host_config and host_config.email else ca_config.email,
+                )
+            )
+        except Exception as err:
+            return Failure(f"Error creating subject identity from config: {str(err)}")
 
 
 @dataclass
@@ -569,7 +632,7 @@ class CACertificateParams:
     @classmethod
     def from_ca_config(
         cls: type["CACertificateParams"], ca_config: CAConfig, private_key: PrivateKeyTypes | None = None
-    ) -> "CACertificateParams":
+    ) -> Result["CACertificateParams", str]:
         """Create CACertificateParams from a CA configuration.
 
         Args:
@@ -579,29 +642,34 @@ class CACertificateParams:
 
         Returns:
         -------
-            A CACertificateParams object with values from CA config
+            Result containing CACertificateParams object with values from CA config or an error
 
         """
-        # Create subject identity from CA config
-        subject_identity = SubjectIdentity(
-            common_name=ca_config.common_name,
-            organization=ca_config.organization,
-            organization_unit=ca_config.organization_unit,
-            country=ca_config.country,
-            state=ca_config.state,
-            locality=ca_config.locality,
-            email=ca_config.email,
-        )
+        try:
+            # Create subject identity from CA config
+            subject_identity = SubjectIdentity(
+                common_name=ca_config.common_name,
+                organization=ca_config.organization,
+                organization_unit=ca_config.organization_unit,
+                country=ca_config.country,
+                state=ca_config.state,
+                locality=ca_config.locality,
+                email=ca_config.email,
+            )
 
-        # Calculate validity days from config
-        validity_days = ca_config.validity.to_days() if ca_config.validity else None
+            # Calculate validity days from config
+            validity_days = ca_config.validity.to_days() if ca_config.validity else None
 
-        return cls(
-            subject_identity=subject_identity,
-            private_key=private_key,
-            validity_days=validity_days,
-            hash_algorithm=ca_config.hash_algorithm,
-        )
+            return Success(
+                cls(
+                    subject_identity=subject_identity,
+                    private_key=private_key,
+                    validity_days=validity_days,
+                    hash_algorithm=ca_config.hash_algorithm,
+                )
+            )
+        except Exception as err:
+            return Failure(f"Error creating CA certificate parameters: {str(err)}")
 
 
 @dataclass
@@ -618,7 +686,7 @@ class CertificateParams:
     @classmethod
     def from_host_config(
         cls: type["CertificateParams"], host_config: HostConfig, ca: CA, private_key: PrivateKeyTypes | None = None
-    ) -> "CertificateParams":
+    ) -> Result["CertificateParams", str]:
         """Create CertificateParams from a host configuration.
 
         Args:
@@ -629,25 +697,35 @@ class CertificateParams:
 
         Returns:
         -------
-            A CertificateParams object with values from host config
+            Result containing CertificateParams object with values from host config or an error
 
         """
         # Create subject identity from CA config and host config
-        subject_identity = SubjectIdentity.create_from_config(
+        subject_identity_result = SubjectIdentity.create_from_config(
             hostname=host_config.common_name, ca_config=ca.ca_config, host_config=host_config
         )
+
+        if isinstance(subject_identity_result, Failure):
+            return subject_identity_result
+
+        subject_identity = subject_identity_result.unwrap()
 
         # Calculate validity days from config
         validity_days = host_config.validity.to_days() if host_config.validity else None
 
-        return cls(
-            subject_identity=subject_identity,
-            ca=ca,
-            private_key=private_key,
-            validity_days=validity_days,
-            alt_names=host_config.alternative_names,
-            hash_algorithm=host_config.hash_algorithm,
-        )
+        try:
+            return Success(
+                cls(
+                    subject_identity=subject_identity,
+                    ca=ca,
+                    private_key=private_key,
+                    validity_days=validity_days,
+                    alt_names=host_config.alternative_names,
+                    hash_algorithm=host_config.hash_algorithm,
+                )
+            )
+        except Exception as err:
+            return Failure(f"Error creating certificate parameters from host config: {str(err)}")
 
 
 @dataclass
@@ -660,36 +738,41 @@ class CSRInfo:
     public_key: Any
 
     @classmethod
-    def from_csr(cls: type["CSRInfo"], csr: x509.CertificateSigningRequest) -> "CSRInfo":
+    def from_csr(cls: type["CSRInfo"], csr: x509.CertificateSigningRequest) -> Result["CSRInfo", str]:
         """Create CSRInfo from a Certificate Signing Request."""
-        # Extract hostname from subject common name
-        hostname = None
-        for attr in csr.subject:
-            if attr.oid == NameOID.COMMON_NAME:
-                hostname = attr.value.decode("utf-8") if isinstance(attr.value, bytes) else attr.value
-                break
+        try:
+            # Extract hostname from subject common name
+            hostname = None
+            for attr in csr.subject:
+                if attr.oid == NameOID.COMMON_NAME:
+                    hostname = attr.value.decode("utf-8") if isinstance(attr.value, bytes) else attr.value
+                    break
 
-        if not hostname:
-            raise ValueError("Could not extract hostname from CSR")
+            if not hostname:
+                return Failure("Could not extract hostname from CSR (missing Common Name)")
 
-        # Extract Subject Alternative Names
-        alt_names = AlternativeNames()
-        for ext in csr.extensions:
-            if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-                for san in ext.value:
-                    if isinstance(san, x509.DNSName):
-                        alt_names.dns.append(san.value)
-                    elif isinstance(san, x509.IPAddress):
-                        alt_names.ip.append(str(san.value))
-                    elif isinstance(san, x509.RFC822Name):
-                        alt_names.email.append(san.value)
-                    elif isinstance(san, x509.UniformResourceIdentifier):
-                        alt_names.uri.append(san.value)
-                    # Additional SAN types could be added here
+            # Extract Subject Alternative Names
+            alt_names = AlternativeNames()
+            for ext in csr.extensions:
+                if ext.oid == x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
+                    for san in ext.value:
+                        if isinstance(san, x509.DNSName):
+                            alt_names.dns.append(san.value)
+                        elif isinstance(san, x509.IPAddress):
+                            alt_names.ip.append(str(san.value))
+                        elif isinstance(san, x509.RFC822Name):
+                            alt_names.email.append(san.value)
+                        elif isinstance(san, x509.UniformResourceIdentifier):
+                            alt_names.uri.append(san.value)
+                        # Additional SAN types could be added here
 
-        return cls(
-            hostname=hostname,
-            subject=csr.subject,
-            alternative_names=alt_names,
-            public_key=csr.public_key(),
-        )
+            return Success(
+                cls(
+                    hostname=hostname,
+                    subject=csr.subject,
+                    alternative_names=alt_names,
+                    public_key=csr.public_key(),
+                )
+            )
+        except Exception as err:
+            return Failure(f"Error parsing CSR: {str(err)}")

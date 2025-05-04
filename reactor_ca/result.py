@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Callable, cast, Union
+from typing import Any, Generic, TypeVar, Union
 
 # T represents the success value type
 T = TypeVar("T")
@@ -13,11 +14,11 @@ class Success(Generic[T]):
 
     value: T
 
-    def map(self: "Success[T]", f: Callable[[T], T]) -> "Success[T]":
+    def map(self: "Success[T]", f: Callable[[T], Any]) -> "Success[Any]":
         """Apply function to the value and return new Success."""
         return Success(f(self.value))
 
-    def and_then(self: "Success[T]", f: Callable[[T], "Result[T, E]"]) -> "Result[T, E]":
+    def and_then(self: "Success[T]", f: Callable[[T], "Result[Any, E]"]) -> "Result[Any, E]":
         """Chain operations that also return Result."""
         return f(self.value)
 
@@ -40,19 +41,19 @@ class Failure(Generic[E]):
 
     error: E
 
-    def map(self: "Failure[E]", f: Callable[[T], T]) -> "Failure[E]":
+    def map(self: "Failure[E]", f: Callable[[Any], Any]) -> "Failure[E]":
         """No-op for failures."""
         return self
 
-    def and_then(self: "Failure[E]", f: Callable[[T], "Result[T, E]"]) -> "Failure[E]":
+    def and_then(self: "Failure[E]", f: Callable[[Any], "Result[Any, E]"]) -> "Failure[E]":
         """No-op for failures."""
         return self
 
-    def unwrap(self: "Failure[E]") -> T:
+    def unwrap(self: "Failure[E]") -> Any:
         """Raise exception."""
         raise ValueError(f"Cannot unwrap Failure: {self.error}")
 
-    def unwrap_or(self: "Failure[E]", default: T) -> T:
+    def unwrap_or(self: "Failure[E]", default: Any) -> Any:
         """Return the default value."""
         return default
 

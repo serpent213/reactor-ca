@@ -1,16 +1,15 @@
 """Certificate inventory management."""
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
-from datetime import datetime
 import os
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from cryptography.x509 import Certificate
 
-from .models import CertificateIdentity, SubjectIdentity, HostCertificateInfo
-from .store import Store
 from .crypto import load_certificate
+from .models import CertificateIdentity, HostCertificateInfo, SubjectIdentity
+from .store import Store
 
 
 @dataclass
@@ -29,7 +28,7 @@ class InventoryItem:
 class Inventory:
     """Certificate inventory tracking all certificates in the store."""
 
-    items: Dict[str, InventoryItem] = field(default_factory=dict)
+    items: dict[str, InventoryItem] = field(default_factory=dict)
 
     def add_item(
         self: "Inventory",
@@ -53,7 +52,7 @@ class Inventory:
             is_valid=is_valid,
         )
 
-    def get_item(self: "Inventory", hostname: str) -> Optional[InventoryItem]:
+    def get_item(self: "Inventory", hostname: str) -> InventoryItem | None:
         """Get a certificate from the inventory."""
         return self.items.get(hostname)
 
@@ -69,15 +68,15 @@ class Inventory:
             return False
         return item.is_valid
 
-    def list_valid(self: "Inventory") -> List[str]:
+    def list_valid(self: "Inventory") -> list[str]:
         """List all valid certificates."""
         return [hostname for hostname, item in self.items.items() if item.is_valid]
 
-    def list_invalid(self: "Inventory") -> List[str]:
+    def list_invalid(self: "Inventory") -> list[str]:
         """List all invalid certificates."""
         return [hostname for hostname, item in self.items.items() if not item.is_valid]
 
-    def list_all(self: "Inventory") -> List[str]:
+    def list_all(self: "Inventory") -> list[str]:
         """List all certificates."""
         return list(self.items.keys())
 
@@ -106,7 +105,6 @@ def get_inventory(store: Store) -> Inventory:
             certificate = load_certificate(cert_path)
 
             # Extract identity and certificate info from the certificate
-            subject = certificate.subject
             identity = CertificateIdentity(subject=SubjectIdentity(hostname=hostname))
 
             # Create certificate info with basic details
@@ -121,7 +119,7 @@ def get_inventory(store: Store) -> Inventory:
     return inventory
 
 
-def list_certificates(store: Store) -> Dict[str, Dict]:
+def list_certificates(store: Store) -> dict[str, dict]:
     """List all certificates with their details."""
     inventory = get_inventory(store)
     result = {}
@@ -137,7 +135,7 @@ def list_certificates(store: Store) -> Dict[str, Dict]:
     return result
 
 
-def get_certificate_details(store: Store, hostname: str) -> Optional[Dict]:
+def get_certificate_details(store: Store, hostname: str) -> dict | None:
     """Get details for a specific certificate."""
     inventory = get_inventory(store)
     item = inventory.get_item(hostname)
@@ -153,7 +151,7 @@ def get_certificate_details(store: Store, hostname: str) -> Optional[Dict]:
     }
 
 
-def clean_certificates(store: Store, configured_hosts: List[str]) -> List[str]:
+def clean_certificates(store: Store, configured_hosts: list[str]) -> list[str]:
     """Remove certificates for hosts that are not configured."""
     inventory = get_inventory(store)
     removed_hosts = []
