@@ -400,6 +400,28 @@ class Host:
 
 
 @dataclass
+class CAInventoryEntry:
+    """CA entry in the certificate inventory."""
+
+    serial: str
+    not_before: datetime.datetime
+    not_after: datetime.datetime
+    fingerprint_sha256: str
+    renewal_count: int = 0
+    rekey_count: int = 0
+
+    @classmethod
+    def from_certificate(cls: type["CAInventoryEntry"], cert: x509.Certificate) -> "CAInventoryEntry":
+        """Create CAInventoryEntry from an X.509 CA certificate."""
+        return cls(
+            serial=format(cert.serial_number, "x"),
+            not_before=cert.not_valid_before,
+            not_after=cert.not_valid_after,
+            fingerprint_sha256="SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
+        )
+
+
+@dataclass
 class InventoryEntry:
     """Entry in the certificate inventory."""
 
@@ -424,25 +446,20 @@ class InventoryEntry:
 
 
 @dataclass
-class CAInventoryEntry:
-    """CA entry in the certificate inventory."""
+class Inventory:
+    """Top-level certificate inventory."""
 
-    serial: str
-    not_before: datetime.datetime
-    not_after: datetime.datetime
-    fingerprint_sha256: str
-    renewal_count: int = 0
-    rekey_count: int = 0
+    ca: CAInventoryEntry
+    hosts: list[InventoryEntry]
 
-    @classmethod
-    def from_certificate(cls: type["CAInventoryEntry"], cert: x509.Certificate) -> "CAInventoryEntry":
-        """Create CAInventoryEntry from an X.509 CA certificate."""
-        return cls(
-            serial=format(cert.serial_number, "x"),
-            not_before=cert.not_valid_before,
-            not_after=cert.not_valid_after,
-            fingerprint_sha256="SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-        )
+
+@dataclass
+class Store:
+    """Top-level store entity."""
+
+    path: str
+    password: str | None = None
+    unlocked: bool = False
 
 
 # Certificates

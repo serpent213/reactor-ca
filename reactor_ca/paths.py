@@ -42,14 +42,7 @@ def resolve_paths(
     return config, store
 
 
-def get_ca_dir(store_dir: Path) -> Path:
-    """Get the CA directory."""
-    return store_dir / "ca"
-
-
-def get_hosts_dir(store_dir: Path) -> Path:
-    """Get the hosts directory."""
-    return store_dir / "hosts"
+# Config
 
 
 def get_ca_config_path(config_dir: Path) -> Path:
@@ -60,6 +53,33 @@ def get_ca_config_path(config_dir: Path) -> Path:
 def get_hosts_config_path(config_dir: Path) -> Path:
     """Get the hosts config file path."""
     return config_dir / "hosts.yaml"
+
+
+def ensure_dirs(config_dir: Path, store_dir: Path) -> None:
+    """Create all necessary directories.
+
+    Args:
+    ----
+        config_dir: Path to configuration directory
+        store_dir: Path to store directory
+    """
+    config_dir.mkdir(parents=True, exist_ok=True)
+    store_dir.mkdir(parents=True, exist_ok=True)
+    get_ca_dir(store_dir).mkdir(parents=True, exist_ok=True)
+    get_hosts_dir(store_dir).mkdir(parents=True, exist_ok=True)
+
+
+# Store
+
+
+def get_ca_dir(store_dir: Path) -> Path:
+    """Get the CA directory."""
+    return store_dir / "ca"
+
+
+def get_hosts_dir(store_dir: Path) -> Path:
+    """Get the hosts directory."""
+    return store_dir / "hosts"
 
 
 def get_inventory_path(store_dir: Path) -> Path:
@@ -95,17 +115,3 @@ def get_host_cert_path(store_dir: Path, hostname: str) -> Path:
 def get_host_key_path(store_dir: Path, hostname: str) -> Path:
     """Get key path for a specific host."""
     return get_host_dir(store_dir, hostname) / "cert.key.enc"
-
-
-def ensure_dirs(config_dir: Path, store_dir: Path) -> None:
-    """Create all necessary directories.
-
-    Args:
-    ----
-        config_dir: Path to configuration directory
-        store_dir: Path to store directory
-    """
-    config_dir.mkdir(parents=True, exist_ok=True)
-    store_dir.mkdir(parents=True, exist_ok=True)
-    get_ca_dir(store_dir).mkdir(parents=True, exist_ok=True)
-    get_hosts_dir(store_dir).mkdir(parents=True, exist_ok=True)
