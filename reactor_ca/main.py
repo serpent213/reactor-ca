@@ -48,15 +48,7 @@ from reactor_ca.utils import (
 @click.pass_context
 def cli(ctx: click.Context, config: str | None = None, store: str | None = None, root: str | None = None) -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
-    # Create Config and Store instances
-
-    # Set environment variables for tests that change directories
-    if root:
-        os.environ["REACTOR_CA_ROOT"] = root
-    if config:
-        os.environ["REACTOR_CA_CONFIG_DIR"] = config
-    if store:
-        os.environ["REACTOR_CA_STORE_DIR"] = store
+    # Initialise Config and Store
 
     # Create a configuration with specified paths or defaults
     # Note that we're passing absolute paths here to ensure they work correctly
