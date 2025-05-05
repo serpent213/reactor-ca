@@ -1,169 +1,351 @@
-"""Certificate inventory management."""
+"""Certificate inventory management.
 
-import os
-from dataclasses import dataclass, field
-from datetime import datetime
+This module provides functions for managing certificate inventory in the ReactorCA store.
+All inventory YAML handling is contained here.
+"""
+
+import datetime
+import logging
 from pathlib import Path
+from typing import Any
 
-from cryptography.x509 import Certificate
+from ruamel.yaml import YAML
 
-from .crypto import load_certificate
-from .models import CertificateIdentity, HostCertificateInfo, SubjectIdentity
-from .store import Store
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+
+from reactor_ca.models import (
+    CAInventoryEntry,
+    Inventory,
+    InventoryEntry,
+    Store,
+)
+from reactor_ca.paths import get_inventory_path
+from reactor_ca.result import Failure, Result, Success
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Initialize YAML parser
+yaml = YAML()
+yaml.preserve_quotes = True
+yaml.indent(mapping=2, sequence=4, offset=2)
 
 
-@dataclass
-class InventoryItem:
-    """A certificate in the inventory."""
+def read_inventory(store_path: Path) -> Result[Inventory, str]:
+    """Read the certificate inventory from the store.
 
-    hostname: str
-    identity: CertificateIdentity
-    certificate_info: HostCertificateInfo
-    valid_from: datetime
-    valid_until: datetime
-    is_valid: bool
+    Args:
+    ----
+        store_path: Path to the store directory
 
+    Returns:
+    -------
+        Result with Inventory or error message
 
-@dataclass
-class Inventory:
-    """Certificate inventory tracking all certificates in the store."""
+    """
+    inventory_path = get_inventory_path(store_path)
 
-    items: dict[str, InventoryItem] = field(default_factory=dict)
-
-    def add_item(
-        self: "Inventory",
-        hostname: str,
-        identity: CertificateIdentity,
-        certificate_info: HostCertificateInfo,
-        certificate: Certificate,
-    ) -> None:
-        """Add a certificate to the inventory."""
-        current_time = datetime.now()
-        valid_from = certificate.not_valid_before
-        valid_until = certificate.not_valid_after
-        is_valid = valid_from <= current_time <= valid_until
-
-        self.items[hostname] = InventoryItem(
-            hostname=hostname,
-            identity=identity,
-            certificate_info=certificate_info,
-            valid_from=valid_from,
-            valid_until=valid_until,
-            is_valid=is_valid,
+    if not inventory_path.exists():
+        # Create empty inventory structure
+        now = datetime.datetime.now(datetime.UTC)
+        empty_ca_entry = CAInventoryEntry(
+            serial="",
+            not_before=now,
+            not_after=now,
+            fingerprint_sha256="",
         )
 
-    def get_item(self: "Inventory", hostname: str) -> InventoryItem | None:
-        """Get a certificate from the inventory."""
-        return self.items.get(hostname)
+        return Success(Inventory(ca=empty_ca_entry, hosts=[]))
 
-    def remove_item(self: "Inventory", hostname: str) -> None:
-        """Remove a certificate from the inventory."""
-        if hostname in self.items:
-            del self.items[hostname]
+    try:
+        with open(inventory_path, encoding="utf-8") as f:
+            inventory_data = yaml.load(f)
 
-    def is_valid(self: "Inventory", hostname: str) -> bool:
-        """Check if a certificate is valid."""
-        item = self.get_item(hostname)
-        if item is None:
-            return False
-        return item.is_valid
+        # Convert raw inventory data to structured Inventory
+        ca_data = inventory_data.get("ca", {})
+        hosts_data = inventory_data.get("hosts", [])
 
-    def list_valid(self: "Inventory") -> list[str]:
-        """List all valid certificates."""
-        return [hostname for hostname, item in self.items.items() if item.is_valid]
+        # Create CA inventory entry
+        if ca_data:
+            ca_entry = CAInventoryEntry(
+                serial=ca_data.get("serial", ""),
+                not_before=datetime.datetime.fromisoformat(
+                    ca_data.get("not_before", datetime.datetime.now(datetime.UTC).isoformat())
+                ),
+                not_after=datetime.datetime.fromisoformat(
+                    ca_data.get("not_after", datetime.datetime.now(datetime.UTC).isoformat())
+                ),
+                fingerprint_sha256=ca_data.get("fingerprint", ""),
+                renewal_count=ca_data.get("renewal_count", 0),
+                rekey_count=ca_data.get("rekey_count", 0),
+            )
+        else:
+            # Create empty CA entry if none exists
+            now = datetime.datetime.now(datetime.UTC)
+            ca_entry = CAInventoryEntry(
+                serial="",
+                not_before=now,
+                not_after=now,
+                fingerprint_sha256="",
+            )
 
-    def list_invalid(self: "Inventory") -> list[str]:
-        """List all invalid certificates."""
-        return [hostname for hostname, item in self.items.items() if not item.is_valid]
+        # Create host inventory entries
+        host_entries = []
+        for host_data in hosts_data:
+            host_entry = InventoryEntry(
+                short_name=host_data.get("name", ""),
+                serial=host_data.get("serial", ""),
+                not_before=datetime.datetime.fromisoformat(
+                    host_data.get("not_before", datetime.datetime.now(datetime.UTC).isoformat())
+                ),
+                not_after=datetime.datetime.fromisoformat(
+                    host_data.get("not_after", datetime.datetime.now(datetime.UTC).isoformat())
+                ),
+                fingerprint_sha256=host_data.get("fingerprint", ""),
+                renewal_count=host_data.get("renewal_count", 0),
+                rekey_count=host_data.get("rekey_count", 0),
+            )
+            host_entries.append(host_entry)
 
-    def list_all(self: "Inventory") -> list[str]:
-        """List all certificates."""
-        return list(self.items.keys())
-
-
-def get_inventory(store: Store) -> Inventory:
-    """Build inventory from store."""
-    inventory = Inventory()
-
-    # Traverse the store to build the inventory
-    store_dir = store.store_dir
-    if not os.path.exists(store_dir):
-        return inventory
-
-    for hostname in os.listdir(store_dir):
-        host_dir = Path(store_dir) / hostname
-        if not host_dir.is_dir():
-            continue
-
-        # Read certificate and identity information
-        cert_path = host_dir / "cert.pem"
-        if not cert_path.exists():
-            continue
-
-        try:
-            # Load the certificate
-            certificate = load_certificate(cert_path)
-
-            # Extract identity and certificate info from the certificate
-            identity = CertificateIdentity(subject=SubjectIdentity(hostname=hostname))
-
-            # Create certificate info with basic details
-            certificate_info = HostCertificateInfo()
-
-            # Add to inventory
-            inventory.add_item(hostname, identity, certificate_info, certificate)
-        except Exception:
-            # Skip certificates that can't be loaded
-            pass
-
-    return inventory
+        inventory = Inventory(ca=ca_entry, hosts=host_entries)
+        return Success(inventory)
+    except Exception as e:
+        return Failure(f"Failed to load inventory: {str(e)}")
 
 
-def list_certificates(store: Store) -> dict[str, dict]:
-    """List all certificates with their details."""
-    inventory = get_inventory(store)
-    result = {}
+def write_inventory(store_path: Path, inventory: Inventory) -> Result[None, str]:
+    """Write the certificate inventory to the store.
 
-    for hostname, item in inventory.items.items():
-        result[hostname] = {
-            "hostname": item.hostname,
-            "valid_from": item.valid_from.isoformat(),
-            "valid_until": item.valid_until.isoformat(),
-            "is_valid": item.is_valid,
+    Args:
+    ----
+        store_path: Path to the store directory
+        inventory: Inventory to write
+
+    Returns:
+    -------
+        Result with None for success or error message
+
+    """
+    inventory_path = get_inventory_path(store_path)
+
+    try:
+        # Ensure parent directory exists
+        inventory_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Convert inventory to dictionary format
+        inventory_dict = {
+            "last_update": datetime.datetime.now(datetime.UTC).isoformat(),
+            "ca": {
+                "serial": inventory.ca.serial,
+                "not_before": inventory.ca.not_before.isoformat(),
+                "not_after": inventory.ca.not_after.isoformat(),
+                "fingerprint": inventory.ca.fingerprint_sha256,
+                "renewal_count": inventory.ca.renewal_count,
+                "rekey_count": inventory.ca.rekey_count,
+            },
+            "hosts": [
+                {
+                    "name": host.short_name,
+                    "serial": host.serial,
+                    "not_before": host.not_before.isoformat(),
+                    "not_after": host.not_after.isoformat(),
+                    "fingerprint": host.fingerprint_sha256,
+                    "renewal_count": host.renewal_count,
+                    "rekey_count": host.rekey_count,
+                }
+                for host in inventory.hosts
+            ],
         }
 
-    return result
+        # Write inventory
+        with open(inventory_path, "w", encoding="utf-8") as f:
+            yaml.dump(inventory_dict, f)
+
+        logger.debug(f"Saved inventory to {inventory_path}")
+        return Success(None)
+    except Exception as e:
+        return Failure(f"Failed to write inventory: {str(e)}")
 
 
-def get_certificate_details(store: Store, hostname: str) -> dict | None:
-    """Get details for a specific certificate."""
-    inventory = get_inventory(store)
-    item = inventory.get_item(hostname)
+def update_inventory_with_ca_cert(
+    store_path: Path, cert: x509.Certificate, inventory: Inventory
+) -> Result[Inventory, str]:
+    """Update inventory with CA certificate information.
 
-    if item is None:
-        return None
+    Args:
+    ----
+        store_path: Path to the store directory
+        cert: CA certificate to update inventory with
+        inventory: Current inventory
 
-    return {
-        "hostname": item.hostname,
-        "valid_from": item.valid_from.isoformat(),
-        "valid_until": item.valid_until.isoformat(),
-        "is_valid": item.is_valid,
-    }
+    Returns:
+    -------
+        Result with updated Inventory or error message
+
+    """
+    try:
+        # Update CA inventory entry
+        inventory.ca = CAInventoryEntry.from_certificate(cert)
+        return Success(inventory)
+    except Exception as e:
+        return Failure(f"Failed to update CA entry in inventory: {str(e)}")
 
 
-def clean_certificates(store: Store, configured_hosts: list[str]) -> list[str]:
-    """Remove certificates for hosts that are not configured."""
-    inventory = get_inventory(store)
-    removed_hosts = []
+def update_inventory_with_host_cert(
+    store_path: Path,
+    host_id: str,
+    cert: x509.Certificate,
+    inventory: Inventory,
+    rekeyed: bool = False,
+    renewal_count_increment: int = 1,
+) -> Result[Inventory, str]:
+    """Update inventory with host certificate information.
 
-    for hostname in inventory.list_all():
-        if hostname not in configured_hosts:
-            # Remove the certificate from the store
-            host_dir = os.path.join(store.store_dir, hostname)
-            if os.path.isdir(host_dir):
-                import shutil
+    Args:
+    ----
+        store_path: Path to the store directory
+        host_id: Host identifier
+        cert: Certificate to update inventory with
+        inventory: Current inventory
+        rekeyed: Whether the certificate was rekeyed
+        renewal_count_increment: Amount to increment renewal count
 
-                shutil.rmtree(host_dir)
-                removed_hosts.append(hostname)
+    Returns:
+    -------
+        Result with updated Inventory or error message
 
-    return removed_hosts
+    """
+    try:
+        # Find existing host entry or create new one
+        for i, host in enumerate(inventory.hosts):
+            if host.short_name == host_id:
+                # Update existing entry with new certificate info
+                updated_entry = InventoryEntry.from_certificate(host_id, cert)
+                # Preserve and increment counts
+                updated_entry.renewal_count = host.renewal_count + renewal_count_increment
+                updated_entry.rekey_count = host.rekey_count + (1 if rekeyed else 0)
+                inventory.hosts[i] = updated_entry
+                break
+        else:
+            # Add new entry
+            new_entry = InventoryEntry.from_certificate(host_id, cert)
+            new_entry.renewal_count = renewal_count_increment
+            new_entry.rekey_count = 1 if rekeyed else 0
+            inventory.hosts.append(new_entry)
+
+        return Success(inventory)
+    except Exception as e:
+        return Failure(f"Failed to update host entry in inventory: {str(e)}")
+
+
+def delete_host_from_inventory(store_path: Path, host_id: str) -> Result[None, str]:
+    """Delete a host from the inventory.
+
+    Args:
+    ----
+        store_path: Path to the store directory
+        host_id: Host identifier
+
+    Returns:
+    -------
+        Result with None for success or error message
+
+    """
+    inventory_result = read_inventory(store_path)
+    if not inventory_result:
+        return Failure(f"Failed to read inventory: {inventory_result.error}")
+
+    inventory = inventory_result.unwrap()
+
+    # Remove host from inventory
+    inventory.hosts = [host for host in inventory.hosts if host.short_name != host_id]
+
+    # Write updated inventory
+    return write_inventory(store_path, inventory)
+
+
+def get_host_info(store_path: Path, host_id: str, cert: x509.Certificate = None) -> Result[dict[str, Any], str]:
+    """Get certificate information for a host.
+
+    Args:
+    ----
+        store_path: Path to the store directory
+        host_id: Host identifier
+        cert: Optional certificate for additional information
+
+    Returns:
+    -------
+        Result with host info dictionary or error message
+
+    """
+    # Read inventory
+    inventory_result = read_inventory(store_path)
+    if not inventory_result:
+        return Failure(f"Failed to read inventory: {inventory_result.error}")
+
+    inventory = inventory_result.unwrap()
+
+    # Find host in inventory
+    for host in inventory.hosts:
+        if host.short_name == host_id:
+            # Convert to dictionary
+            host_info = {
+                "name": host.short_name,
+                "serial": host.serial,
+                "not_before": host.not_before.isoformat(),
+                "not_after": host.not_after.isoformat(),
+                "fingerprint": host.fingerprint_sha256,
+                "renewal_count": host.renewal_count,
+                "rekey_count": host.rekey_count,
+            }
+
+            # Add additional details from certificate if available
+            if cert:
+                # Calculate days until expiry
+                now = datetime.datetime.now(datetime.UTC)
+                expiry = cert.not_valid_after
+                delta = expiry - now
+
+                host_info["days_until_expiry"] = delta.days
+
+                # Add subject information
+                subject = cert.subject
+                host_info["subject"] = {}
+
+                for attr in subject:
+                    host_info["subject"][attr.oid._name] = attr.value
+
+            return Success(host_info)
+
+    return Failure(f"Host {host_id} not found in inventory")
+
+
+def list_hosts_from_inventory(store_path: Path) -> Result[dict[str, dict], str]:
+    """List all hosts in the inventory with their details.
+
+    Args:
+    ----
+        store_path: Path to the store directory
+
+    Returns:
+    -------
+        Result with a dictionary of host information
+
+    """
+    inventory_result = read_inventory(store_path)
+    if not inventory_result:
+        return Failure(f"Failed to read inventory: {inventory_result.error}")
+
+    inventory = inventory_result.unwrap()
+    result = {}
+
+    for host in inventory.hosts:
+        result[host.short_name] = {
+            "hostname": host.short_name,
+            "valid_from": host.not_before.isoformat(),
+            "valid_until": host.not_after.isoformat(),
+            "is_valid": host.not_before <= datetime.datetime.now(datetime.UTC) <= host.not_after,
+        }
+
+    return Success(result)

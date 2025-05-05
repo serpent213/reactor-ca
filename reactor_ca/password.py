@@ -4,13 +4,13 @@ import os
 from getpass import getpass
 from pathlib import Path
 
-from reactor_ca.models import CAConfig, Store
+from reactor_ca.models import CAConfig
 from reactor_ca.result import Failure, Result, Success
 
 
 def get_password(
-    store: Store,
     min_length: int,
+    cached_password: str | None = None,
     password_file: str | None = None,
     env_var: str | None = None,
     prompt_message: str = "Enter CA password: ",
@@ -19,15 +19,15 @@ def get_password(
     """Get a password from multiple sources.
 
     The resolution order is:
-    1. Use stored password if already unlocked
+    1. Use cached password if provided
     2. Try password from file if specified
     3. Try password from environment variable if specified
     4. Prompt the user
 
     Args:
     ----
-        store: Store object that might have a cached password
         min_length: Minimum allowed password length
+        cached_password: Optional cached password to use first
         password_file: Optional path to a file containing the password
         env_var: Optional environment variable name containing the password
         prompt_message: Message to display when prompting for password
@@ -38,9 +38,9 @@ def get_password(
         Result with the password string or error message
 
     """
-    # If store is already unlocked, use the stored password
-    if store.unlocked and store.password:
-        return Success(store.password)
+    # If cached password is provided, use it
+    if cached_password:
+        return Success(cached_password)
 
     # Try to get password from file if specified
     if password_file:
@@ -91,7 +91,7 @@ def read_password_from_file(password_file: Path) -> Result[str, str]:
         if not password_file.exists():
             return Failure(f"Password file does not exist: {password_file}")
 
-        with open(password_file, encoding="locale") as f:
+        with open(password_file, encoding="utf-8") as f:
             password = f.read().strip()
             return Success(password)
     except Exception as e:
