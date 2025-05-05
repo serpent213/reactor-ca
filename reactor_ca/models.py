@@ -21,9 +21,6 @@ from cryptography.x509.oid import NameOID
 
 from reactor_ca.result import Failure, Result, Success
 
-# Types for Result
-T = TypeVar("T")
-E = TypeVar("E")
 
 # Config
 

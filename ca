@@ -3,7 +3,7 @@
 
 import sys
 
-from reactor_ca.main import cli
+from reactor_ca.cli import cli
 
 if __name__ == "__main__":
     # Handle "ca help" as "ca --help" only if it's the sole argument

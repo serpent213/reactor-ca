@@ -56,6 +56,35 @@ def create_store(config_dir: str | None = None, store_dir: str | None = None) ->
     return Store(path=str(store_path))
 
 
+def unlock(store: Store, password: str) -> Result[Store, str]:
+    """Unlock a store with the provided password.
+    
+    Args:
+    ----
+        store: Store to unlock
+        password: Password to unlock the store
+        
+    Returns:
+    -------
+        Result with updated unlocked Store or error
+    """
+    # If store is already unlocked, just return it
+    if store.unlocked and store.password:
+        return Success(store)
+    
+    # If CA exists, validate password by trying to load the CA key
+    if ca_exists(store.path):
+        key_result = read_ca_key(store.path, password)
+        if not key_result:  # Using boolean conversion
+            return Failure(f"Invalid password: {key_result.error}")
+    
+    # Update store with password and mark as unlocked
+    # Since Store isn't frozen, we can modify it directly
+    store.password = password
+    store.unlocked = True
+    return Success(store)
+
+
 def initialize_store(store_path: str) -> Result[None, str]:
     """Initialize the store directory structure.
 
@@ -428,9 +457,7 @@ def delete_host(store_path: str, host_id: str) -> Result[None, str]:
         return Failure(f"Failed to delete host {host_id}: {str(e)}")
 
 
-def change_password(
-    store_path: str, old_password: str, new_password: str
-) -> Result[None, str]:
+def change_password(store_path: str, old_password: str, new_password: str) -> Result[None, str]:
     """Change the password for all private keys in the store.
 
     Args:

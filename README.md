@@ -1,8 +1,10 @@
 # ReactorCA
 
+**Currently in ALPHA state, use at your own risk!**
+
 A Python CLI tool to manage a homelab Certificate Authority.
 
-**Currently in ALPHA state, use at your own risk!**
+Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year.
 
 ## Features
 
