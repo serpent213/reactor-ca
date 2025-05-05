@@ -17,6 +17,7 @@ from reactor_ca.defaults import (
 from reactor_ca.models import (
     AlternativeNames,
     CAConfig,
+    Config,
     DeploymentConfig,
     ExportConfig,
     HostConfig,
@@ -24,7 +25,7 @@ from reactor_ca.models import (
     SubjectIdentity,
     ValidityConfig,
 )
-from reactor_ca.paths import SCHEMAS_DIR, ensure_dirs, get_ca_config_path, get_hosts_config_path
+from reactor_ca.paths import SCHEMAS_DIR, ensure_dirs, get_ca_config_path, get_hosts_config_path, resolve_paths
 from reactor_ca.result import Failure, Result, Success
 
 CONSOLE = Console()
@@ -812,6 +813,45 @@ def validate_config_files(ca_config_path: Path, hosts_config_path: Path) -> Resu
         CONSOLE.print("✅ Hosts configuration is valid")
 
     return Success(True)
+
+
+def load_config(config_dir: str | None = None, 
+                store_dir: str | None = None,
+                root_dir: str | None = None) -> Result[Config, str]:
+    """Load all configurations and create a Config object.
+    
+    Args:
+    ----
+        config_dir: Optional path to configuration directory
+        store_dir: Optional path to store directory 
+        root_dir: Optional path to root directory
+        
+    Returns:
+    -------
+        Result with Config object containing paths and loaded configurations
+    """
+    # Resolve paths
+    config_path_obj, store_path_obj = resolve_paths(config_dir, store_dir, root_dir)
+    
+    # Load CA config
+    ca_config_result = load_ca_config(config_path_obj)
+    if not ca_config_result:  # Using boolean conversion
+        return ca_config_result
+        
+    # Load hosts config
+    hosts_config_result = load_hosts_config(config_path_obj)
+    if not hosts_config_result:  # Using boolean conversion
+        return hosts_config_result
+        
+    # Create and return Config object
+    return Success(
+        Config(
+            config_path=str(config_path_obj),
+            store_path=str(store_path_obj),
+            ca_config=ca_config_result.value,
+            hosts_config=hosts_config_result.value
+        )
+    )
 
 
 def init_config_files(config_dir: Path, store_dir: Path, force: bool = False) -> Result[None, str]:

@@ -25,7 +25,12 @@ from reactor_ca.ca import (
 )
 from reactor_ca.config import (
     init_config_files,
-    validate_config,
+    load_config,
+    validate_config_files,
+)
+from reactor_ca.paths import (
+    get_ca_config_path,
+    get_hosts_config_path,
 )
 from reactor_ca.host import (
     issue_certificate,
@@ -42,10 +47,12 @@ from reactor_ca.host import (
 )
 from reactor_ca.models import ValidityConfig, Store
 from reactor_ca.store import (
+    ca_exists,
     create_store,
     initialize_store,
+    unlock,
 )
-from reactor_ca.password import change_password as change_password_func
+from reactor_ca.password import change_password as change_password_func, get_password as get_password_func
 
 # Create console instance for rich output
 console = Console()
@@ -53,44 +60,43 @@ console = Console()
 
 @click.group()
 @click.version_option(version=__version__)
-@click.option("--config", type=click.Path(exists=False), help="Path to the configuration directory")
-@click.option("--store", type=click.Path(exists=False), help="Path to the certificate store directory")
-@click.option(
-    "--root", type=click.Path(exists=False), help="Root directory (both config and store will be subdirectories)"
-)
+@click.option("--config", type=click.Path(exists=False), help="Path to configuration directory")
+@click.option("--store", type=click.Path(exists=False), help="Path to certificate store directory")
+@click.option("--root", type=click.Path(exists=False), help="Root directory (config and store subdirectories)")
+@click.option("--password", help="CA password (WARNING: visible in command history)", envvar="REACTOR_CA_PASSWORD")
 @click.pass_context
-def cli(ctx: click.Context, config: str | None = None, store: str | None = None, root: str | None = None) -> None:
+def cli(ctx: click.Context, config: str | None = None, 
+        store: str | None = None, root: str | None = None,
+        password: str | None = None) -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
     # Create a container for our shared state
     ctx.ensure_object(dict)
-
-    # Determine store path
-    if root is not None:
-        root_path = os.path.abspath(root)
-        config_path = os.path.join(root_path, "config")
-        store_path = os.path.join(root_path, "store")
-    elif config is not None and store is not None:
-        config_path = os.path.abspath(config)
-        store_path = os.path.abspath(store)
-    elif config is not None:
-        config_path = os.path.abspath(config)
-        store_path = os.path.join(os.path.dirname(config_path), "store")
-    elif store is not None:
-        store_path = os.path.abspath(store)
-        config_path = os.path.join(os.path.dirname(store_path), "config")
-    else:
-        # Default paths in current directory
-        current_dir = os.path.abspath(".")
-        config_path = os.path.join(current_dir, "config")
-        store_path = os.path.join(current_dir, "store")
-
-    # Create store object
-    store_obj = create_store(config_path, store_path)
-
-    # Store paths in context for subcommands
-    ctx.obj["config_path"] = config_path
-    ctx.obj["store_path"] = store_path
-    ctx.obj["store_obj"] = store_obj
+    
+    # Load config using the function from config.py
+    config_result = load_config(config, store, root)
+    
+    if not config_result:  # Using boolean conversion
+        console.print(f"[bold red]Error:[/bold red] {config_result.error}")
+        ctx.exit(1)
+    
+    # Create store (using the existing Store model)
+    store_obj = Store(
+        path=config_result.value.store_path,
+        password=None,
+        unlocked=False
+    )
+    
+    # If password was provided, try to unlock the store
+    if password:
+        unlock_result = unlock(store_obj, password)
+        # We don't need to handle errors here - if unlock fails, the store
+        # will remain locked and commands will prompt for password as needed
+    
+    # Store the objects for subcommands
+    ctx.obj = {
+        "config": config_result.value,
+        "store": store_obj
+    }
 
 
 # Configuration commands
@@ -105,25 +111,29 @@ def config() -> None:
 @click.pass_context
 def config_init(ctx: click.Context, force: bool) -> None:
     """Initialize configuration files."""
-    config_path = ctx.obj["config_path"]
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
 
     # Make sure the directories exist
-    os.makedirs(config_path, exist_ok=True)
-    os.makedirs(store_path, exist_ok=True)
+    os.makedirs(config.config_path, exist_ok=True)
+    os.makedirs(config.store_path, exist_ok=True)
 
     # Initialize store
-    initialize_result = initialize_store(store_path)
+    initialize_result = initialize_store(config.store_path)
     if not initialize_result:
         console.print(f"[bold red]Error:[/bold red] {initialize_result.error}")
         ctx.exit(1)
 
+    # Convert paths to Path objects
+    config_path = Path(config.config_path)
+    store_path = Path(config.store_path)
+    
     # Initialize config files
-    ca_config_path = os.path.join(config_path, "ca.yaml")
-    hosts_config_path = os.path.join(config_path, "hosts.yaml")
-
     try:
-        init_config_files(ca_config_path, hosts_config_path, force)
+        init_result = init_config_files(config_path, store_path, force)
+        if not init_result:
+            console.print(f"[bold red]Error:[/bold red] {init_result.error}")
+            ctx.exit(1)
         console.print("✅ Configuration files initialized successfully")
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
@@ -134,29 +144,25 @@ def config_init(ctx: click.Context, force: bool) -> None:
 @click.pass_context
 def config_validate(ctx: click.Context) -> None:
     """Validate configuration files against schemas."""
-    config_path = ctx.obj["config_path"]
+    config = ctx.obj["config"]
 
-    # Validate CA config
-    ca_config_path = os.path.join(config_path, "ca.yaml")
-    valid_ca, errors_ca = validate_config(ca_config_path, "ca_config_schema.yaml")
-
-    # Validate hosts config
-    hosts_config_path = os.path.join(config_path, "hosts.yaml")
-    valid_hosts, errors_hosts = validate_config(hosts_config_path, "hosts_config_schema.yaml")
-
-    if valid_ca and valid_hosts:
-        console.print("✅ All configuration files are valid")
-    else:
-        if not valid_ca:
-            console.print("[bold red]Error:[/bold red] CA configuration validation failed:")
-            for error in errors_ca:
-                console.print(f"  - {error}")
-
-        if not valid_hosts:
-            console.print("[bold red]Error:[/bold red] Hosts configuration validation failed:")
-            for error in errors_hosts:
-                console.print(f"  - {error}")
-
+    # The configs were already validated during load_config
+    # Just display that they are valid
+    console.print("✅ All configuration files are valid")
+    
+    # For a more explicit validation:
+    # Convert path to Path objects
+    config_path = Path(config.config_path)
+    
+    # Get paths to config files
+    ca_config_path = get_ca_config_path(config_path)
+    hosts_config_path = get_hosts_config_path(config_path)
+    
+    # Validate both config files
+    result = validate_config_files(ca_config_path, hosts_config_path)
+    
+    if not result:
+        # The error messages are already printed by validate_config_files
         ctx.exit(1)
 
 
@@ -171,11 +177,33 @@ def ca() -> None:
 @click.pass_context
 def ca_issue(ctx: click.Context) -> None:
     """Create or renew a CA certificate."""
-    store_path = ctx.obj["store_path"]
-
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=not ca_exists(store.path)  # Only confirm if creating new CA
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
+    
     # Issue CA certificate
-    result = issue_ca(store_path)
-
+    # Use the store.password that's already set
+    result = issue_ca(config, store)
+    
     if result:
         info = result.unwrap()
         action = info["action"]
@@ -197,13 +225,35 @@ def ca_issue(ctx: click.Context) -> None:
 @ca.command(name="import")
 @click.option("--cert", required=True, type=click.Path(exists=True), help="Path to CA certificate file")
 @click.option("--key", required=True, type=click.Path(exists=True), help="Path to CA private key file")
+@click.option("--key-password", help="Password for the source key file")
 @click.pass_context
-def ca_import(ctx: click.Context, cert: str, key: str) -> None:
+def ca_import(ctx: click.Context, cert: str, key: str, key_password: str | None = None) -> None:
     """Import an existing CA."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password for saving imported CA: ",
+            confirm=True
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Import CA
-    result = import_ca_func(Path(cert), Path(key), store_path)
+    result = import_ca_func(Path(cert), Path(key), config, store, key_password)
 
     if result:
         info = result.unwrap()
@@ -220,10 +270,31 @@ def ca_import(ctx: click.Context, cert: str, key: str) -> None:
 @click.pass_context
 def ca_rekey(ctx: click.Context) -> None:
     """Generate a new key and renew the CA certificate."""
-    store_path = ctx.obj["store_path"]
-
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
+    
     # Rekey CA
-    result = rekey_ca(store_path)
+    result = rekey_ca(config, store)
 
     if result:
         info = result.unwrap()
@@ -240,11 +311,32 @@ def ca_rekey(ctx: click.Context) -> None:
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.pass_context
 def ca_info(ctx: click.Context, json_output: bool) -> None:
-    """Show information about the CA."""
-    store_path = ctx.obj["store_path"]
-
+    """Show information about the Certificate Authority."""
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
+    
     # Get CA info
-    result = get_ca_info(store_path)
+    result = get_ca_info(store)
 
     if result:
         info = result.unwrap()
@@ -303,7 +395,28 @@ def host() -> None:
 @click.pass_context
 def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_export: bool, deploy: bool) -> None:
     """Create or renew certificates for hosts."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -315,7 +428,7 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
 
     if all_hosts:
         # Issue certificates for all hosts
-        result = issue_all_certificates(store_path, no_export=no_export, do_deploy=deploy)
+        result = issue_all_certificates(config, store, no_export=no_export, do_deploy=deploy)
 
         if result:
             info = result.unwrap()
@@ -328,7 +441,7 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
     else:
         # Issue certificate for a single host
         assert hostname is not None  # for type checking
-        result = issue_certificate(hostname, store_path, no_export=no_export, do_deploy=deploy)
+        result = issue_certificate(hostname, config, store, no_export=no_export, do_deploy=deploy)
 
         if result:
             info = result.unwrap()
@@ -361,10 +474,31 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
 @click.pass_context
 def host_import_key(ctx: click.Context, hostname: str, key: str) -> None:
     """Import an existing key for a host."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Import host key
-    result = import_host_key_func(hostname, key, store_path)
+    result = import_host_key_func(hostname, key, config, store)
 
     if result:
         info = result.unwrap()
@@ -381,10 +515,31 @@ def host_import_key(ctx: click.Context, hostname: str, key: str) -> None:
 @click.pass_context
 def host_export_key(ctx: click.Context, hostname: str, out: str | None) -> None:
     """Export unencrypted private key for a host."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Export host key
-    result = export_host_key_unencrypted(hostname, store_path, out)
+    result = export_host_key_unencrypted(hostname, config, store, out)
 
     if result:
         info = result.unwrap()
@@ -406,7 +561,28 @@ def host_export_key(ctx: click.Context, hostname: str, out: str | None) -> None:
 @click.pass_context
 def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_export: bool, deploy: bool) -> None:
     """Generate new keys and certificates for hosts."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -418,7 +594,7 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
 
     if all_hosts:
         # Rekey all hosts
-        result = rekey_all_hosts(store_path, no_export=no_export, do_deploy=deploy)
+        result = rekey_all_hosts(config, store, no_export=no_export, do_deploy=deploy)
 
         if result:
             info = result.unwrap()
@@ -431,7 +607,7 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
     else:
         # Rekey a single host
         assert hostname is not None  # for type checking
-        result = rekey_host(hostname, store_path, no_export=no_export, do_deploy=deploy)
+        result = rekey_host(hostname, config, store, no_export=no_export, do_deploy=deploy)
 
         if result:
             info = result.unwrap()
@@ -462,10 +638,31 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
 @click.pass_context
 def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_output: bool) -> None:
     """List certificates with their expiration dates."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # List certificates
-    result = list_certificates(store_path, expired=expired, expiring_days=expiring)
+    result = list_certificates(config, store, expired=expired, expiring_days=expiring)
 
     if result:
         info = result.unwrap()
@@ -552,7 +749,28 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
 @click.pass_context
 def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> None:
     """Deploy certificates to configured destinations."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     if hostname and all_hosts:
         console.print("[bold red]Error:[/bold red] Cannot specify both hostname and --all")
@@ -564,7 +782,7 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
 
     if all_hosts:
         # Deploy all hosts
-        result = deploy_all_hosts(store_path)
+        result = deploy_all_hosts(config, store)
 
         if result:
             info = result.unwrap()
@@ -577,7 +795,7 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
     else:
         # Deploy a single host
         assert hostname is not None  # for type checking
-        result = deploy_host(hostname, store_path)
+        result = deploy_host(hostname, config, store)
 
         if result:
             info = result.unwrap()
@@ -592,10 +810,31 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
 @click.pass_context
 def host_clean(ctx: click.Context) -> None:
     """Remove host folders that are no longer in the configuration."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Clean certificates
-    result = clean_certificates(store_path)
+    result = clean_certificates(config, store)
 
     if result:
         info = result.unwrap()
@@ -623,7 +862,28 @@ def host_sign_csr(
     ctx: click.Context, csr: str, out: str, validity_days: int | None, validity_years: int | None
 ) -> None:
     """Sign a CSR and output the certificate."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Calculate validity period
     if validity_days is not None and validity_years is not None:
@@ -634,7 +894,7 @@ def host_sign_csr(
     validity = validity_config.to_days()
 
     # Process CSR
-    result = process_csr(csr, store_path, validity_days=validity, out_path=out)
+    result = process_csr(csr, config, store, validity_days=validity, out_path=out)
 
     if result:
         info = result.unwrap()
@@ -669,16 +929,34 @@ def util() -> None:
 @click.pass_context
 def util_passwd(ctx: click.Context) -> None:
     """Change password for all encrypted keys."""
-    store_path = ctx.obj["store_path"]
+    config = ctx.obj["config"]
+    store = ctx.obj["store"]
+    
+    # Ensure store is unlocked
+    if not store.unlocked:
+        # Get password
+        password_result = get_password_func(
+            min_length=config.ca_config.password.min_length,
+            password_file=config.ca_config.password.file,
+            env_var=config.ca_config.password.env_var,
+            prompt_message="Enter current CA master password: ",
+            confirm=False
+        )
+        if not password_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {password_result.error}")
+            ctx.exit(1)
+            
+        # Unlock the store
+        unlock_result = unlock(store, password_result.value)
+        if not unlock_result:  # Using boolean conversion
+            console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+            ctx.exit(1)
 
     # Get current password
     console.print("You will need to provide the current password and then the new password.")
 
-    # Get current password (let the password module handle this)
-    ca_config_path = Path(store_path) / "config" / "ca.yaml"
-
     # Change passwords (helper function will handle all UI)
-    result = change_password_func(store_path)
+    result = change_password_func(config, store)
 
     if result:
         console.print("✅ Password changed successfully for all keys")

@@ -9,7 +9,10 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reactor_ca import models
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
@@ -71,84 +74,46 @@ from reactor_ca.x509_crypto import (
 )
 
 
-def _load_configs(store_path: str) -> Result[tuple[CAConfig, dict[str, Any]], str]:
-    """Load and validate CA and hosts configurations.
+def _load_configs(config: 'models.Config') -> Result[tuple[CAConfig, dict[str, Any]], str]:
+    """Get CA and hosts configurations from the Config object.
 
     Args:
     ----
-        store_path: Path to the certificate store
+        config: Config object with loaded configurations
 
     Returns:
     -------
         Result with tuple of (CAConfig, hosts_config) or error message
     """
-    ca_config_path = Path(store_path) / "config" / "ca.yaml"
-    hosts_config_path = Path(store_path) / "config" / "hosts.yaml"
-
-    # Validate configs first
-    validation_result = validate_config_files(ca_config_path, hosts_config_path)
-    if not validation_result:
-        return Failure(validation_result.error)
-
-    # Load CA config
-    ca_config_result = load_ca_config(ca_config_path)
-    if not ca_config_result:
-        return Failure(f"Failed to load CA configuration: {ca_config_result.error}")
-
-    # Load hosts config
-    hosts_config_result = load_hosts_config(hosts_config_path)
-    if not hosts_config_result:
-        return Failure(f"Failed to load hosts configuration: {hosts_config_result.error}")
-
-    return Success((ca_config_result.unwrap(), hosts_config_result.unwrap()))
+    # Configurations are already loaded in the Config object
+    return Success((config.ca_config, config.hosts_config))
 
 
-def _get_password_from_ca_config(store_path: str, password: Optional[str] = None) -> Result[str, str]:
-    """Get password from CA config or from the provided password.
+def _get_password_from_store(store: 'models.Store', config: 'models.Config') -> Result[str, str]:
+    """Get password from Store or prompt using config parameters.
 
     Args:
     ----
-        store_path: Path to the certificate store
-        password: Optional password to use instead of config-based password
+        store: Store object that might already be unlocked
+        config: Config object with password configuration
 
     Returns:
     -------
         Result with password string or error message
     """
-    if password is not None:
-        return Success(password)
-
-    # Try to load CA config for password settings
-    ca_config_path = Path(store_path) / "config" / "ca.yaml"
-
-    try:
-        ca_config_result = load_ca_config(ca_config_path)
-        if not ca_config_result:
-            # If can't load config, use defaults
-            password_result = get_password(
-                min_length=8,
-                env_var="REACTOR_CA_PASSWORD",
-                prompt_message="Enter CA master password: ",
-                confirm=False,
-            )
-        else:
-            ca_config = ca_config_result.unwrap()
-            password_result = get_password(
-                min_length=ca_config.password.min_length,
-                password_file=ca_config.password.file if ca_config.password.file else None,
-                env_var=ca_config.password.env_var if ca_config.password.env_var else None,
-                prompt_message="Enter CA master password: ",
-                confirm=False,
-            )
-    except Exception:
-        # If can't load config, use defaults
-        password_result = get_password(
-            min_length=8,
-            env_var="REACTOR_CA_PASSWORD",
-            prompt_message="Enter CA master password: ",
-            confirm=False,
-        )
-
+    # If store is already unlocked with a password, use it
+    if store.unlocked and store.password:
+        return Success(store.password)
+        
+    # Store is not unlocked, prompt for password using config settings
+    password_result = get_password(
+        min_length=config.ca_config.password.min_length,
+        password_file=config.ca_config.password.file,
+        env_var=config.ca_config.password.env_var,
+        prompt_message="Enter CA master password: ",
+        confirm=False,
+    )
+    
     if not password_result:
         return Failure(f"Failed to get password: {password_result.error}")
 
@@ -156,15 +121,16 @@ def _get_password_from_ca_config(store_path: str, password: Optional[str] = None
 
 
 def issue_certificate(
-    hostname: str, store_path: str, password: Optional[str] = None, no_export: bool = False, do_deploy: bool = False
+    hostname: str, config: 'models.Config', store: 'models.Store', 
+    no_export: bool = False, do_deploy: bool = False
 ) -> Result[Dict[str, Any], str]:
     """Issue or renew a certificate for a host.
 
     Args:
     ----
         hostname: Hostname for the certificate
-        store_path: Path to the certificate store
-        password: Optional password for key encryption
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
         no_export: Skip exporting files if True
         do_deploy: Deploy certificates after creation if True
 
@@ -172,21 +138,19 @@ def issue_certificate(
     -------
         Result with certificate info dict or error message
     """
-    # Load and validate configurations
-    configs_result = _load_configs(store_path)
-    if not configs_result:
-        return Failure(configs_result.error)
-
-    ca_config, hosts_config = configs_result.unwrap()
-
-    # Get password
-    password_result = _get_password_from_ca_config(store_path, password)
-    if not password_result:
-        return Failure(password_result.error)
-    password = password_result.unwrap()
-
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+        
+    # Get configurations from the Config object
+    ca_config = config.ca_config 
+    hosts_config = config.hosts_config
+    
+    # Use password from store
+    password = store.password
+    
     # Load CA key and certificate
-    ca_result = load_ca_key_cert(store_path, password)
+    ca_result = load_ca_key_cert(store)
     if not ca_result:
         return Failure(f"Failed to load CA: {ca_result.error}")
     ca_key, ca_cert = ca_result.unwrap()
@@ -203,7 +167,7 @@ def issue_certificate(
 
     # Check if certificate and key exist
     key_algorithm = host_config.get("key_algorithm", "RSA2048")
-    is_new = not host_exists(store_path, hostname)
+    is_new = not host_exists(store.path, hostname)
 
     # Handle key creation or loading
     private_key = None
@@ -214,60 +178,9 @@ def issue_certificate(
         if not key_result:
             return Failure(f"Failed to generate key: {key_result.error}")
         private_key = key_result.unwrap()
-
-        # Get password if not provided
-        if password is None:
-            # Try to get from CA config first
-            try:
-                ca_config = load_ca_config(ca_config_path)
-                password_result = get_password(
-                    min_length=ca_config.password.min_length,
-                    password_file=ca_config.password.file if ca_config.password.file else None,
-                    env_var=ca_config.password.env_var if ca_config.password.env_var else None,
-                    prompt_message="Enter CA master password: ",
-                    confirm=False,
-                )
-            except Exception:
-                # If can't load config, use defaults
-                password_result = get_password(
-                    min_length=8,
-                    env_var="REACTOR_CA_PASSWORD",
-                    prompt_message="Enter CA master password: ",
-                    confirm=False,
-                )
-
-            if not password_result:
-                return Failure(f"Failed to get password: {password_result.error}")
-            password = password_result.unwrap()
     else:
-        # Use existing key
-        # Get password if not provided
-        if password is None:
-            # Try to get from CA config first
-            try:
-                ca_config = load_ca_config(ca_config_path)
-                password_result = get_password(
-                    min_length=ca_config.password.min_length,
-                    password_file=ca_config.password.file if ca_config.password.file else None,
-                    env_var=ca_config.password.env_var if ca_config.password.env_var else None,
-                    prompt_message="Enter CA master password: ",
-                    confirm=False,
-                )
-            except Exception:
-                # If can't load config, use defaults
-                password_result = get_password(
-                    min_length=8,
-                    env_var="REACTOR_CA_PASSWORD",
-                    prompt_message="Enter CA master password: ",
-                    confirm=False,
-                )
-
-            if not password_result:
-                return Failure(f"Failed to get password: {password_result.error}")
-            password = password_result.unwrap()
-
         # Load existing key
-        key_result = read_host_key(store_path, hostname, password)
+        key_result = read_host_key(store.path, hostname, password)
         if not key_result:
             return Failure(f"Failed to load host key: {key_result.error}")
 
@@ -331,7 +244,7 @@ def issue_certificate(
 
     # Save certificate and key
     cert_bytes = cert.public_bytes(Encoding.PEM)
-    cert_save_result = write_host_cert(store_path, hostname, cert_bytes)
+    cert_save_result = write_host_cert(store.path, hostname, cert_bytes)
     if not cert_save_result:
         return Failure(f"Failed to save host certificate: {cert_save_result.error}")
 
@@ -341,18 +254,18 @@ def issue_certificate(
             format=PrivateFormat.PKCS8,
             encryption_algorithm=NoEncryption(),
         )
-        key_save_result = write_host_key(store_path, hostname, key_bytes, password)
+        key_save_result = write_host_key(store.path, hostname, key_bytes, password)
         if not key_save_result:
             return Failure(f"Failed to save host key: {key_save_result.error}")
 
     # Update inventory
-    inventory_result = read_inventory(Path(store_path))
+    inventory_result = read_inventory(Path(store.path))
     if not inventory_result:
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
     inventory = inventory_result.unwrap()
     update_result = update_inventory_with_host_cert(
-        Path(store_path), hostname, cert, inventory, rekeyed=False, renewal_count_increment=0 if is_new else 1
+        Path(store.path), hostname, cert, inventory, rekeyed=False, renewal_count_increment=0 if is_new else 1
     )
     if not update_result:
         return Failure(f"Failed to update inventory: {update_result.error}")
@@ -389,8 +302,8 @@ def issue_certificate(
         "action": "created" if is_new else "renewed",
         "hostname": hostname,
         "common_name": common_name,
-        "cert_path": str(get_host_cert_path(Path(store_path), hostname)),
-        "key_path": str(get_host_key_path(Path(store_path), hostname)),
+        "cert_path": str(get_host_cert_path(Path(store.path), hostname)),
+        "key_path": str(get_host_key_path(Path(store.path), hostname)),
         "validity_days": validity_days,
         "is_new": is_new,
     }
@@ -404,14 +317,15 @@ def issue_certificate(
 
 
 def issue_all_certificates(
-    store_path: str, password: Optional[str] = None, no_export: bool = False, do_deploy: bool = False
+    config: 'models.Config', store: 'models.Store', 
+    no_export: bool = False, do_deploy: bool = False
 ) -> Result[Dict[str, Any], str]:
     """Issue or renew certificates for all hosts in configuration.
 
     Args:
     ----
-        store_path: Path to the certificate store
-        password: Optional password for key encryption
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
         no_export: Skip exporting files if True
         do_deploy: Deploy certificates after creation if True
 
@@ -419,15 +333,14 @@ def issue_all_certificates(
     -------
         Result with certificate info dict or error message
     """
-    # Load hosts configuration
-    hosts_config_path = Path(store_path) / "config" / "hosts.yaml"
-
-    try:
-        hosts_config = load_hosts_config(hosts_config_path)
-    except Exception as e:
-        return Failure(f"Failed to load hosts configuration: {str(e)}")
-
-    hosts = [host.get("name") for host in hosts_config.get("hosts", [])]
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+    
+    # Get hosts from configuration
+    hosts_config = config.hosts_config
+    hosts = list(hosts_config.keys())
+    
     if not hosts:
         return Failure("No hosts found in configuration")
 
@@ -436,7 +349,7 @@ def issue_all_certificates(
     results = {}
 
     for hostname in hosts:
-        cert_result = issue_certificate(hostname, store_path, password, no_export, do_deploy)
+        cert_result = issue_certificate(hostname, config, store, no_export, do_deploy)
 
         if cert_result:
             success_count += 1
@@ -457,15 +370,16 @@ def issue_all_certificates(
 
 
 def rekey_host(
-    hostname: str, store_path: str, password: Optional[str] = None, no_export: bool = False, do_deploy: bool = False
+    hostname: str, config: 'models.Config', store: 'models.Store',
+    no_export: bool = False, do_deploy: bool = False
 ) -> Result[Dict[str, Any], str]:
     """Generate a new key and certificate for a host.
 
     Args:
     ----
         hostname: Hostname for the certificate
-        store_path: Path to the certificate store
-        password: Optional password for key encryption
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
         no_export: Skip exporting files if True
         do_deploy: Deploy certificates after creation if True
 
@@ -473,21 +387,19 @@ def rekey_host(
     -------
         Result with certificate info dict or error message
     """
-    # Load and validate configurations
-    configs_result = _load_configs(store_path)
-    if not configs_result:
-        return Failure(configs_result.error)
-
-    ca_config, hosts_config = configs_result.unwrap()
-
-    # Get password
-    password_result = _get_password_from_ca_config(store_path, password)
-    if not password_result:
-        return Failure(password_result.error)
-    password = password_result.unwrap()
-
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+        
+    # Get configurations from the Config object
+    ca_config = config.ca_config 
+    hosts_config = config.hosts_config
+    
+    # Use password from store
+    password = store.password
+    
     # Load CA key and certificate
-    ca_result = load_ca_key_cert(store_path, password)
+    ca_result = load_ca_key_cert(store)
     if not ca_result:
         return Failure(f"Failed to load CA: {ca_result.error}")
     ca_key, ca_cert = ca_result.unwrap()
@@ -559,7 +471,7 @@ def rekey_host(
 
     # Save certificate and key
     cert_bytes = cert.public_bytes(Encoding.PEM)
-    cert_save_result = write_host_cert(store_path, hostname, cert_bytes)
+    cert_save_result = write_host_cert(store.path, hostname, cert_bytes)
     if not cert_save_result:
         return Failure(f"Failed to save host certificate: {cert_save_result.error}")
 
@@ -568,18 +480,18 @@ def rekey_host(
         format=PrivateFormat.PKCS8,
         encryption_algorithm=NoEncryption(),
     )
-    key_save_result = write_host_key(store_path, hostname, key_bytes, password)
+    key_save_result = write_host_key(store.path, hostname, key_bytes, password)
     if not key_save_result:
         return Failure(f"Failed to save host key: {key_save_result.error}")
 
     # Update inventory
-    inventory_result = read_inventory(Path(store_path))
+    inventory_result = read_inventory(Path(store.path))
     if not inventory_result:
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
     inventory = inventory_result.unwrap()
     update_result = update_inventory_with_host_cert(
-        Path(store_path), hostname, cert, inventory, rekeyed=True, renewal_count_increment=1
+        Path(store.path), hostname, cert, inventory, rekeyed=True, renewal_count_increment=1
     )
     if not update_result:
         return Failure(f"Failed to update inventory: {update_result.error}")
@@ -616,8 +528,8 @@ def rekey_host(
         "action": "rekeyed",
         "hostname": hostname,
         "common_name": common_name,
-        "cert_path": str(get_host_cert_path(Path(store_path), hostname)),
-        "key_path": str(get_host_key_path(Path(store_path), hostname)),
+        "cert_path": str(get_host_cert_path(Path(store.path), hostname)),
+        "key_path": str(get_host_key_path(Path(store.path), hostname)),
         "validity_days": validity_days,
     }
 
@@ -630,14 +542,15 @@ def rekey_host(
 
 
 def rekey_all_hosts(
-    store_path: str, password: Optional[str] = None, no_export: bool = False, do_deploy: bool = False
+    config: 'models.Config', store: 'models.Store',
+    no_export: bool = False, do_deploy: bool = False
 ) -> Result[Dict[str, Any], str]:
     """Rekey all hosts in configuration.
 
     Args:
     ----
-        store_path: Path to the certificate store
-        password: Optional password for key encryption
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
         no_export: Skip exporting files if True
         do_deploy: Deploy certificates after creation if True
 
@@ -645,15 +558,14 @@ def rekey_all_hosts(
     -------
         Result with certificate info dict or error message
     """
-    # Load hosts configuration
-    hosts_config_path = Path(store_path) / "config" / "hosts.yaml"
-
-    try:
-        hosts_config = load_hosts_config(hosts_config_path)
-    except Exception as e:
-        return Failure(f"Failed to load hosts configuration: {str(e)}")
-
-    hosts = [host.get("name") for host in hosts_config.get("hosts", [])]
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+    
+    # Get hosts from configuration
+    hosts_config = config.hosts_config
+    hosts = list(hosts_config.keys())
+    
     if not hosts:
         return Failure("No hosts found in configuration")
 
@@ -662,7 +574,7 @@ def rekey_all_hosts(
     results = {}
 
     for hostname in hosts:
-        rekey_result = rekey_host(hostname, store_path, password, no_export, do_deploy)
+        rekey_result = rekey_host(hostname, config, store, no_export, do_deploy)
 
         if rekey_result:
             success_count += 1
@@ -683,7 +595,8 @@ def rekey_all_hosts(
 
 
 def import_host_key(
-    hostname: str, key_path: str, store_path: str, password: Optional[str] = None
+    hostname: str, key_path: str, config: 'models.Config', store: 'models.Store', 
+    src_password: Optional[str] = None
 ) -> Result[Dict[str, Any], str]:
     """Import an existing private key for a host.
 
@@ -691,29 +604,31 @@ def import_host_key(
     ----
         hostname: Hostname for the key
         key_path: Path to the key file to import
-        store_path: Path to the certificate store
-        password: Optional password for decrypting the source key
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
+        src_password: Optional password for decrypting the source key
 
     Returns:
     -------
         Result with key info dict or error message
     """
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+    
     # Check if source key file exists
     src_key_path = Path(key_path)
     if not src_key_path.exists():
         return Failure(f"Key file not found: {key_path}")
 
     # Check if host already has a key
-    if host_exists(store_path, hostname):
+    if host_exists(store.path, hostname):
         return Failure(
             f"Certificate or key for {hostname} already exists. Remove it first or use a different hostname."
         )
 
-    # Get password using our helper function
-    password_result = _get_password_from_ca_config(store_path, password)
-    if not password_result:
-        return Failure(password_result.error)
-    store_password = password_result.unwrap()
+    # Use password from store
+    store_password = store.password
 
     # Load the key
     try:
@@ -751,7 +666,7 @@ def import_host_key(
         format=PrivateFormat.PKCS8,
         encryption_algorithm=NoEncryption(),
     )
-    key_save_result = write_host_key(store_path, hostname, key_bytes, store_password)
+    key_save_result = write_host_key(store.path, hostname, key_bytes, store_password)
     if not key_save_result:
         return Failure(f"Failed to save host key: {key_save_result.error}")
 
@@ -759,95 +674,86 @@ def import_host_key(
         {
             "action": "imported_key",
             "hostname": hostname,
-            "key_path": str(get_host_key_path(Path(store_path), hostname)),
+            "key_path": str(get_host_key_path(Path(store.path), hostname)),
             "source_path": str(src_key_path),
         }
     )
 
 
 def export_host_key_unencrypted(
-    hostname: str, store_path: str, out_path: Optional[str] = None, password: Optional[str] = None
+    hostname: str, store: 'models.Store', out_path: Optional[str] = None
 ) -> Result[Dict[str, Any], str]:
     """Export an unencrypted private key for a host.
 
     Args:
     ----
         hostname: Hostname for the key
-        store_path: Path to the certificate store
+        store: Store object (already unlocked with password)
         out_path: Path to save the unencrypted key (if None, return key data in result)
-        password: Optional password for decrypting the key
 
     Returns:
     -------
         Result with key info dict or error message
     """
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+    
     # Check if host key exists
-    if not host_exists(store_path, hostname):
+    if not host_exists(store.path, hostname):
         return Failure(f"Host {hostname} not found in store")
 
-    # Get password using our helper function
-    password_result = _get_password_from_ca_config(store_path, password)
-    if not password_result:
-        return Failure(password_result.error)
-    password = password_result.unwrap()
-
     # Use the exported function from export_deploy module
-    return export_host_key_unencrypted_from_store(hostname, store_path, out_path, password)
+    return export_host_key_unencrypted_from_store(hostname, store.path, out_path, store.password)
 
 
-def deploy_host(hostname: str, store_path: str) -> Result[Dict[str, Any], str]:
+def deploy_host(hostname: str, config: 'models.Config', store: 'models.Store') -> Result[Dict[str, Any], str]:
     """Run the deployment script for a host.
 
     Args:
     ----
         hostname: Hostname to deploy
-        store_path: Path to the certificate store
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
 
     Returns:
     -------
         Result with deployment info dict or error message
     """
-    # Load configurations using our helper function
-    configs_result = _load_configs(store_path)
-    if not configs_result:
-        return Failure(configs_result.error)
-
-    _, hosts_config = configs_result.unwrap()
+    # Get configurations directly from Config object
+    hosts_config = config.hosts_config
 
     # Use the function from export_deploy module
-    return export_deploy_host(hostname, store_path, hosts_config)
+    return export_deploy_host(hostname, store.path, hosts_config)
 
 
-def deploy_all_hosts(store_path: str) -> Result[Dict[str, Any], str]:
+def deploy_all_hosts(config: 'models.Config', store: 'models.Store') -> Result[Dict[str, Any], str]:
     """Deploy all host certificates.
 
     Args:
     ----
-        store_path: Path to the certificate store
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
 
     Returns:
     -------
         Result with deployment info dict or error message
     """
-    # Load configurations using our helper function
-    configs_result = _load_configs(store_path)
-    if not configs_result:
-        return Failure(configs_result.error)
-
-    _, hosts_config = configs_result.unwrap()
+    # Get configurations directly from Config object
+    hosts_config = config.hosts_config
 
     # Use the function from export_deploy module
-    return export_deploy_all_hosts(store_path, hosts_config)
+    return export_deploy_all_hosts(store.path, hosts_config)
 
 
 def list_certificates(
-    store_path: str, expired: bool = False, expiring_days: Optional[int] = None
+    store: 'models.Store', expired: bool = False, expiring_days: Optional[int] = None
 ) -> Result[Dict[str, Any], str]:
     """List certificates with their expiration dates.
 
     Args:
     ----
-        store_path: Path to the certificate store
+        store: Store object containing path information
         expired: Only include expired certificates if True
         expiring_days: Only include certificates expiring within this many days
 
@@ -856,7 +762,7 @@ def list_certificates(
         Result with certificate info dict or error message
     """
     # Get inventory information
-    inventory_result = read_inventory(Path(store_path))
+    inventory_result = read_inventory(Path(store.path))
     if not inventory_result:
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
@@ -1002,8 +908,8 @@ def get_host_info(hostname: str, store_path: str) -> Result[Dict[str, Any], str]
 
 def process_csr(
     csr_path: str,
-    store_path: str,
-    password: Optional[str] = None,
+    config: 'models.Config',
+    store: 'models.Store',
     validity_days: int = 365,
     out_path: Optional[str] = None,
 ) -> Result[Dict[str, Any], str]:
@@ -1012,8 +918,8 @@ def process_csr(
     Args:
     ----
         csr_path: Path to the CSR file
-        store_path: Path to the certificate store
-        password: Optional password for key decryption
+        config: Config object with loaded configurations
+        store: Store object (already unlocked with password)
         validity_days: Number of days the certificate should be valid
         out_path: Optional path to save the signed certificate to
 
@@ -1021,6 +927,10 @@ def process_csr(
     -------
         Result with CSR processing info dict or error message
     """
+    # Make sure store is unlocked
+    if not store.unlocked or not store.password:
+        return Failure("Store must be unlocked and have a password set")
+        
     # Load CSR
     try:
         with open(csr_path, "rb") as f:
@@ -1045,25 +955,17 @@ def process_csr(
     if not hostname:
         return Failure("Could not extract hostname from CSR")
 
-    # Get password using our helper function
-    password_result = _get_password_from_ca_config(store_path, password)
-    if not password_result:
-        return Failure(password_result.error)
-    password = password_result.unwrap()
+    # Use password from store
+    password = store.password
 
     # Load CA key and certificate
-    ca_result = load_ca_key_cert(store_path, password)
+    ca_result = load_ca_key_cert(store)
     if not ca_result:
         return Failure(f"Failed to load CA: {ca_result.error}")
     ca_key, ca_cert = ca_result.unwrap()
 
-    # Load CA config to get hash algorithm
-    configs_result = _load_configs(store_path)
-    hash_algorithm = "SHA256"  # Default
-
-    if configs_result:
-        ca_config, _ = configs_result.unwrap()
-        hash_algorithm = ca_config.hash_algorithm
+    # Get hash algorithm from config
+    hash_algorithm = config.ca_config.hash_algorithm
 
     # Extract SANs from CSR
     alt_names = AlternativeNames()

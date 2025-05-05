@@ -418,6 +418,8 @@ class Config:
 
     config_path: str
     store_path: str
+    ca_config: CAConfig
+    hosts_config: dict[str, HostConfig]
 
 
 @dataclass
