@@ -151,12 +151,9 @@ def config_validate(ctx: click.Context) -> None:
     console.print("✅ All configuration files are valid")
     
     # For a more explicit validation:
-    # Convert path to Path objects
-    config_path = Path(config.config_path)
-    
     # Get paths to config files
-    ca_config_path = get_ca_config_path(config_path)
-    hosts_config_path = get_hosts_config_path(config_path)
+    ca_config_path = get_ca_config_path(config)
+    hosts_config_path = get_hosts_config_path(config)
     
     # Validate both config files
     result = validate_config_files(ca_config_path, hosts_config_path)
