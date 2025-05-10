@@ -1,6 +1,6 @@
 """Certificate export and deployment operations.
 
-This module handles exporting certificates and private keys, 
+This module handles exporting certificates and private keys,
 as well as running deployment commands for certificates.
 """
 
@@ -8,14 +8,14 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 from rich.console import Console
 
-from reactor_ca.result import Failure, Result, Success
+from reactor_ca.result import Failure, Result, Success, is_failure, is_success
 from reactor_ca.store import read_host_key
 from reactor_ca.x509_crypto import deserialize_private_key
 
@@ -116,8 +116,8 @@ def export_host_key_unencrypted(key: PrivateKeyTypes, export_path: Path) -> Resu
 
 
 def export_host_key_unencrypted_from_store(
-    hostname: str, store_path: str, out_path: Optional[str] = None, password: Optional[str] = None
-) -> Result[Dict[str, Any], str]:
+    hostname: str, store_path: str, password: str, out_path: str | None = None
+) -> Result[dict[str, Any], str]:
     """Export an unencrypted private key for a host from the store.
 
     Args:
@@ -130,24 +130,28 @@ def export_host_key_unencrypted_from_store(
     Returns:
     -------
         Result with key info dict or error message
+
     """
     # Load host key
     key_result = read_host_key(store_path, hostname, password)
-    if not key_result:
+    if is_failure(key_result):
         return Failure(f"Failed to load host key: {key_result.error}")
 
-    key_data = key_result.unwrap()
+    # Safe to unwrap because we checked for failure
+    key_data = cast(Success[bytes], key_result).value
+    # Safely deserialize the private key
     private_key_result = deserialize_private_key(key_data, password.encode() if password else None)
-    if not private_key_result:
+    if is_failure(private_key_result):
         return Failure(f"Failed to deserialize private key: {private_key_result.error}")
 
-    private_key = private_key_result.unwrap()
+    # Safe to unwrap because we checked for failure
+    private_key = cast(Success[PrivateKeyTypes], private_key_result).value
 
     # Export unencrypted key
     if out_path:
         export_path = Path(out_path)
         export_result = export_host_key_unencrypted(private_key, export_path)
-        if not export_result:
+        if is_failure(export_result):
             return Failure(f"Failed to export key: {export_result.error}")
 
         return Success({"action": "exported_key", "hostname": hostname, "export_path": str(export_path)})
@@ -234,7 +238,7 @@ def run_deploy_command(command: str, hostname: str) -> Result[str, str]:
         return Failure(f"Failed to run deployment command: {str(e)}")
 
 
-def deploy_host(hostname: str, store_path: str, hosts_config: Dict[str, Any]) -> Result[Dict[str, Any], str]:
+def deploy_host(hostname: str, store_path: str, hosts_config: dict[str, Any]) -> Result[dict[str, Any], str]:
     """Run the deployment script for a host.
 
     Args:
@@ -246,6 +250,7 @@ def deploy_host(hostname: str, store_path: str, hosts_config: Dict[str, Any]) ->
     Returns:
     -------
         Result with deployment info dict or error message
+
     """
     # Find host config
     host_config = None
@@ -264,15 +269,20 @@ def deploy_host(hostname: str, store_path: str, hosts_config: Dict[str, Any]) ->
     # Run deployment command
     deploy_command = host_config["deploy"]["command"]
     deploy_result = run_deploy_command(deploy_command, hostname)
-    if not deploy_result:
+    if is_failure(deploy_result):
         return Failure(f"Deployment failed: {deploy_result.error}")
 
     return Success(
-        {"action": "deployed", "hostname": hostname, "command": deploy_command, "output": deploy_result.unwrap()}
+        {
+            "action": "deployed",
+            "hostname": hostname,
+            "command": deploy_command,
+            "output": cast(Success[str], deploy_result).value,
+        }
     )
 
 
-def deploy_all_hosts(store_path: str, hosts_config: Dict[str, Any]) -> Result[Dict[str, Any], str]:
+def deploy_all_hosts(store_path: str, hosts_config: dict[str, Any]) -> Result[dict[str, Any], str]:
     """Deploy all host certificates.
 
     Args:
@@ -283,6 +293,7 @@ def deploy_all_hosts(store_path: str, hosts_config: Dict[str, Any]) -> Result[Di
     Returns:
     -------
         Result with deployment info dict or error message
+
     """
     hosts = [host.get("name") for host in hosts_config.get("hosts", [])]
     if not hosts:
@@ -295,12 +306,12 @@ def deploy_all_hosts(store_path: str, hosts_config: Dict[str, Any]) -> Result[Di
     for hostname in hosts:
         deploy_result = deploy_host(hostname, store_path, hosts_config)
 
-        if deploy_result:
+        if is_success(deploy_result):
             success_count += 1
-            results[hostname] = deploy_result.unwrap()
+            results[hostname] = cast(Success[dict[str, Any]], deploy_result).value
         else:
             error_count += 1
-            results[hostname] = {"error": deploy_result.error}
+            results[hostname] = {"error": cast(Failure[str], deploy_result).error}
 
     return Success(
         {

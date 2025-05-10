@@ -5,9 +5,8 @@ in the ReactorCA tool. It relies on the core modules for implementation details.
 """
 
 import datetime
-import json
 from pathlib import Path
-from typing import Any, Optional, Dict, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cryptography import x509
 
@@ -15,22 +14,18 @@ if TYPE_CHECKING:
     from reactor_ca import models
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
-from reactor_ca.config import load_ca_config, validate_config
 from reactor_ca.inventory import read_inventory, update_inventory_with_ca_cert
-from reactor_ca.models import CAConfig, Store, SubjectIdentity
-from reactor_ca.password import get_password, verify_password
-from reactor_ca.result import Result, Success, Failure
+from reactor_ca.models import CACertificateParams, SubjectIdentity
+from reactor_ca.result import Failure, Result, Success
 from reactor_ca.store import ca_exists, read_ca_cert, read_ca_key, write_ca_cert, write_ca_key
 from reactor_ca.x509_crypto import (
-    generate_key,
-    get_hash_algorithm,
     create_ca_certificate,
-    verify_key_algorithm,
     deserialize_certificate,
     deserialize_private_key,
-    create_ca_inventory_entry,
+    generate_key,
+    verify_key_algorithm,
 )
 
 # Constants for expiration warnings
@@ -38,7 +33,7 @@ EXPIRY_CRITICAL = 30  # days
 EXPIRY_WARNING = 90  # days
 
 
-def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str, Any], str]:
+def issue_ca(config: "models.Config", store: "models.Store") -> Result[dict[str, Any], str]:
     """Issue a CA certificate. Creates one if it doesn't exist, renews if it does.
 
     Args:
@@ -65,12 +60,12 @@ def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
         # Make sure we have a password
         if not store.password or not store.unlocked:
             return Failure("Store must be unlocked and have a password set")
-            
+
         password = store.password
 
         # Generate key
         key_result = generate_key(key_algorithm)
-        if not key_result:
+        if isinstance(key_result, Failure):
             return Failure(f"Failed to generate key: {key_result.error}")
         private_key = key_result.unwrap()
 
@@ -88,38 +83,41 @@ def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
             email=ca_config.email,
         )
 
-        cert_result = create_ca_certificate(
-            private_key=private_key,
+        # Create CA certificate params
+        ca_params = CACertificateParams(
             subject_identity=subject_identity,
+            private_key=private_key,
             validity_days=validity_days,
             hash_algorithm=ca_config.hash_algorithm,
         )
 
-        if not cert_result:
+        cert_result = create_ca_certificate(ca_params)
+
+        if isinstance(cert_result, Failure):
             return Failure(f"Failed to create CA certificate: {cert_result.error}")
         cert = cert_result.unwrap()
 
         # Save key and certificate
         key_bytes_result = private_key.private_bytes(
-            encoding=x509.serialization.Encoding.PEM,
-            format=x509.serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=x509.serialization.NoEncryption(),
+            encoding=Encoding.PEM,
+            format=PrivateFormat.PKCS8,
+            encryption_algorithm=NoEncryption(),
         )
         key_save_result = write_ca_key(store.path, key_bytes_result, password)
-        if not key_save_result:
+        if isinstance(key_save_result, Failure):
             return Failure(f"Failed to save CA key: {key_save_result.error}")
 
-        cert_bytes = cert.public_bytes(x509.serialization.Encoding.PEM)
+        cert_bytes = cert.public_bytes(Encoding.PEM)
         cert_save_result = write_ca_cert(store.path, cert_bytes)
-        if not cert_save_result:
+        if isinstance(cert_save_result, Failure):
             return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
         # Update inventory
         inventory_result = read_inventory(Path(store.path))
-        if inventory_result:
+        if isinstance(inventory_result, Success):
             inventory = inventory_result.unwrap()
             update_result = update_inventory_with_ca_cert(Path(store.path), cert, inventory)
-            if not update_result:
+            if isinstance(update_result, Failure):
                 return Failure(f"Failed to update inventory: {update_result.error}")
 
         return Success(
@@ -136,24 +134,24 @@ def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
         # Make sure we have a password
         if not store.password or not store.unlocked:
             return Failure("Store must be unlocked and have a password set")
-            
+
         password = store.password
 
         # Load the CA key
         ca_key_result = read_ca_key(store.path, password)
-        if not ca_key_result:
+        if isinstance(ca_key_result, Failure):
             return Failure(f"Failed to load CA key: {ca_key_result.error}")
 
         key_data = ca_key_result.unwrap()
         private_key_result = deserialize_private_key(key_data, password.encode() if password else None)
-        if not private_key_result:
+        if isinstance(private_key_result, Failure):
             return Failure(f"Failed to deserialize private key: {private_key_result.error}")
 
         private_key = private_key_result.unwrap()
 
         # Verify that the existing key matches the algorithm in the config
         key_algorithm_result = verify_key_algorithm(private_key, key_algorithm)
-        if not key_algorithm_result:
+        if isinstance(key_algorithm_result, Failure):
             return Failure(f"Key algorithm mismatch: {key_algorithm_result.error}")
 
         # Generate new certificate with existing key
@@ -170,29 +168,32 @@ def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
             email=ca_config.email,
         )
 
-        cert_result = create_ca_certificate(
-            private_key=private_key,
+        # Create CA certificate params
+        ca_params = CACertificateParams(
             subject_identity=subject_identity,
+            private_key=private_key,
             validity_days=validity_days,
             hash_algorithm=ca_config.hash_algorithm,
         )
 
-        if not cert_result:
+        cert_result = create_ca_certificate(ca_params)
+
+        if isinstance(cert_result, Failure):
             return Failure(f"Failed to create CA certificate: {cert_result.error}")
         cert = cert_result.unwrap()
 
         # Save the new certificate
-        cert_bytes = cert.public_bytes(x509.serialization.Encoding.PEM)
+        cert_bytes = cert.public_bytes(Encoding.PEM)
         cert_save_result = write_ca_cert(store.path, cert_bytes)
-        if not cert_save_result:
+        if isinstance(cert_save_result, Failure):
             return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
         # Update inventory
         inventory_result = read_inventory(Path(store.path))
-        if inventory_result:
+        if isinstance(inventory_result, Success):
             inventory = inventory_result.unwrap()
             update_result = update_inventory_with_ca_cert(Path(store.path), cert, inventory)
-            if not update_result:
+            if isinstance(update_result, Failure):
                 return Failure(f"Failed to update inventory: {update_result.error}")
 
         return Success(
@@ -205,7 +206,7 @@ def issue_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
         )
 
 
-def rekey_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str, Any], str]:
+def rekey_ca(config: "models.Config", store: "models.Store") -> Result[dict[str, Any], str]:
     """Generate a new key and renew the CA certificate.
 
     Args:
@@ -221,20 +222,20 @@ def rekey_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
     # Check if CA exists
     if not ca_exists(store.path):
         return Failure("CA certificate or key not found. Please initialize the CA first.")
-        
+
     # Make sure we have a password
     if not store.password or not store.unlocked:
         return Failure("Store must be unlocked and have a password set")
-        
+
     password = store.password
-        
+
     # Get CA config directly from the Config object
     ca_config = config.ca_config
 
     # Generate a new key
     key_algorithm = ca_config.key_algorithm
     key_result = generate_key(key_algorithm)
-    if not key_result:
+    if isinstance(key_result, Failure):
         return Failure(f"Failed to generate key: {key_result.error}")
     new_ca_key = key_result.unwrap()
 
@@ -252,38 +253,41 @@ def rekey_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
         email=ca_config.email,
     )
 
-    cert_result = create_ca_certificate(
-        private_key=new_ca_key,
+    # Create CA certificate params
+    ca_params = CACertificateParams(
         subject_identity=subject_identity,
+        private_key=new_ca_key,
         validity_days=validity_days,
         hash_algorithm=ca_config.hash_algorithm,
     )
 
-    if not cert_result:
+    cert_result = create_ca_certificate(ca_params)
+
+    if isinstance(cert_result, Failure):
         return Failure(f"Failed to create CA certificate: {cert_result.error}")
     cert = cert_result.unwrap()
 
     # Save the new certificate and key
     key_bytes_result = new_ca_key.private_bytes(
-        encoding=x509.serialization.Encoding.PEM,
-        format=x509.serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=x509.serialization.NoEncryption(),
+        encoding=Encoding.PEM,
+        format=PrivateFormat.PKCS8,
+        encryption_algorithm=NoEncryption(),
     )
     key_save_result = write_ca_key(store.path, key_bytes_result, password)
-    if not key_save_result:
+    if isinstance(key_save_result, Failure):
         return Failure(f"Failed to save CA key: {key_save_result.error}")
 
-    cert_bytes = cert.public_bytes(x509.serialization.Encoding.PEM)
+    cert_bytes = cert.public_bytes(Encoding.PEM)
     cert_save_result = write_ca_cert(store.path, cert_bytes)
-    if not cert_save_result:
+    if isinstance(cert_save_result, Failure):
         return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
     # Update inventory
     inventory_result = read_inventory(Path(store.path))
-    if inventory_result:
+    if isinstance(inventory_result, Success):
         inventory = inventory_result.unwrap()
         update_result = update_inventory_with_ca_cert(Path(store.path), cert, inventory)
-        if not update_result:
+        if isinstance(update_result, Failure):
             return Failure(f"Failed to update inventory: {update_result.error}")
 
     return Success(
@@ -298,9 +302,12 @@ def rekey_ca(config: 'models.Config', store: 'models.Store') -> Result[Dict[str,
 
 
 def import_ca(
-    cert_path: Path, key_path: Path, config: 'models.Config', store: 'models.Store', 
-    src_password: Optional[str] = None
-) -> Result[Dict[str, Any], str]:
+    cert_path: Path,
+    key_path: Path,
+    config: "models.Config",
+    store: "models.Store",
+    src_password: str | None = None,
+) -> Result[dict[str, Any], str]:
     """Import an existing CA certificate and key.
 
     Args:
@@ -326,11 +333,11 @@ def import_ca(
 
     if not key_path.exists():
         return Failure(f"Key file not found: {key_path}")
-        
+
     # Make sure we have a password in the store for saving
     if not store.password or not store.unlocked:
         return Failure("Store must be unlocked and have a password set for saving imported CA")
-        
+
     dest_password = store.password
 
     # Load the certificate
@@ -339,7 +346,7 @@ def import_ca(
             cert_data = f.read()
 
         cert_result = deserialize_certificate(cert_data)
-        if not cert_result:
+        if isinstance(cert_result, Failure):
             return Failure(f"Failed to load certificate: {cert_result.error}")
         cert = cert_result.unwrap()
     except Exception as e:
@@ -355,11 +362,11 @@ def import_ca(
     # Try to load it without password first
     try:
         private_key_result = deserialize_private_key(key_data, None)
-        if not private_key_result:
+        if isinstance(private_key_result, Failure):
             # Need a password for the source key
             if src_password:
                 private_key_result = deserialize_private_key(key_data, src_password.encode())
-                if not private_key_result:
+                if isinstance(private_key_result, Failure):
                     return Failure(f"Failed to decrypt key with provided password: {private_key_result.error}")
             else:
                 return Failure("Key is password-protected. Please provide a source key password.")
@@ -372,34 +379,32 @@ def import_ca(
     public_key_cert = cert.public_key()
     public_key = private_key.public_key()
 
-    if public_key_cert.public_bytes(
-        x509.serialization.Encoding.PEM, x509.serialization.PublicFormat.SubjectPublicKeyInfo
-    ) != public_key.public_bytes(
-        x509.serialization.Encoding.PEM, x509.serialization.PublicFormat.SubjectPublicKeyInfo
+    if public_key_cert.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo) != public_key.public_bytes(
+        Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
     ):
         return Failure("Certificate and key do not match")
 
     # Save certificate and key
-    cert_bytes = cert.public_bytes(x509.serialization.Encoding.PEM)
+    cert_bytes = cert.public_bytes(Encoding.PEM)
     cert_save_result = write_ca_cert(store.path, cert_bytes)
-    if not cert_save_result:
+    if isinstance(cert_save_result, Failure):
         return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
     key_bytes = private_key.private_bytes(
-        encoding=x509.serialization.Encoding.PEM,
-        format=x509.serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=x509.serialization.NoEncryption(),
+        encoding=Encoding.PEM,
+        format=PrivateFormat.PKCS8,
+        encryption_algorithm=NoEncryption(),
     )
     key_save_result = write_ca_key(store.path, key_bytes, dest_password)
-    if not key_save_result:
+    if isinstance(key_save_result, Failure):
         return Failure(f"Failed to save CA key: {key_save_result.error}")
 
     # Update inventory
     inventory_result = read_inventory(Path(store.path))
-    if inventory_result:
+    if isinstance(inventory_result, Success):
         inventory = inventory_result.unwrap()
         update_result = update_inventory_with_ca_cert(Path(store.path), cert, inventory)
-        if not update_result:
+        if isinstance(update_result, Failure):
             return Failure(f"Failed to update inventory: {update_result.error}")
 
     # Extract metadata for return info
@@ -407,7 +412,7 @@ def import_ca(
     common_name = ""
     for attr in subject:
         if attr.oid.dotted_string == "2.5.4.3":  # Common Name
-            common_name = attr.value
+            common_name = str(attr.value) if attr.value is not None else ""
 
     return Success(
         {
@@ -421,7 +426,7 @@ def import_ca(
     )
 
 
-def get_ca_info(store: 'models.Store') -> Result[Dict[str, Any], str]:
+def get_ca_info(store: "models.Store") -> Result[dict[str, Any], str]:
     """Get information about the CA certificate.
 
     Args:
@@ -439,12 +444,12 @@ def get_ca_info(store: 'models.Store') -> Result[Dict[str, Any], str]:
 
     # Load the certificate
     cert_result = read_ca_cert(store.path)
-    if not cert_result:
+    if isinstance(cert_result, Failure):
         return Failure(f"Failed to load CA certificate: {cert_result.error}")
 
     cert_data = cert_result.unwrap()
     cert_deserialize_result = deserialize_certificate(cert_data)
-    if not cert_deserialize_result:
+    if isinstance(cert_deserialize_result, Failure):
         return Failure(f"Failed to deserialize certificate: {cert_deserialize_result.error}")
 
     cert = cert_deserialize_result.unwrap()
@@ -460,7 +465,7 @@ def get_ca_info(store: 'models.Store') -> Result[Dict[str, Any], str]:
 
     # Build CA info dictionary
     fingerprint_result = cert.fingerprint(hashes.SHA256())
-    fingerprint = "SHA256:" + fingerprint_result.hex()
+    fingerprint = "SHA256:" + fingerprint_result.hex() if isinstance(fingerprint_result, bytes) else ""
 
     ca_info = {
         "subject": subject_info,
@@ -477,12 +482,12 @@ def get_ca_info(store: 'models.Store') -> Result[Dict[str, Any], str]:
     now = datetime.datetime.now(datetime.UTC)
     expiry_date = cert.not_valid_after.replace(tzinfo=datetime.UTC)
     days_remaining = (expiry_date - now).days
-    ca_info["days_remaining"] = days_remaining
+    ca_info["days_remaining"] = str(days_remaining)
 
     return Success(ca_info)
 
 
-def load_ca_key_cert(store: 'models.Store') -> Result[Tuple[PrivateKeyTypes, x509.Certificate], str]:
+def load_ca_key_cert(store: "models.Store") -> Result[tuple[PrivateKeyTypes, x509.Certificate], str]:
     """Load the CA key and certificate.
 
     Args:
@@ -501,29 +506,29 @@ def load_ca_key_cert(store: 'models.Store') -> Result[Tuple[PrivateKeyTypes, x50
     # Make sure store is unlocked with password
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
-        
+
     password = store.password
 
     # Load CA certificate
     cert_result = read_ca_cert(store.path)
-    if not cert_result:
+    if isinstance(cert_result, Failure):
         return Failure(f"Failed to load CA certificate: {cert_result.error}")
 
     cert_data = cert_result.unwrap()
     cert_deserialize_result = deserialize_certificate(cert_data)
-    if not cert_deserialize_result:
+    if isinstance(cert_deserialize_result, Failure):
         return Failure(f"Failed to deserialize certificate: {cert_deserialize_result.error}")
 
     cert = cert_deserialize_result.unwrap()
 
     # Load CA key
     key_result = read_ca_key(store.path, password)
-    if not key_result:
+    if isinstance(key_result, Failure):
         return Failure(f"Failed to load CA key: {key_result.error}")
 
     key_data = key_result.unwrap()
     key_deserialize_result = deserialize_private_key(key_data, password.encode() if password else None)
-    if not key_deserialize_result:
+    if isinstance(key_deserialize_result, Failure):
         return Failure(f"Failed to deserialize private key: {key_deserialize_result.error}")
 
     private_key = key_deserialize_result.unwrap()

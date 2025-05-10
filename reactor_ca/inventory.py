@@ -9,16 +9,14 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ruamel.yaml import YAML
-
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
+from ruamel.yaml import YAML
 
 from reactor_ca.models import (
     CAInventoryEntry,
+    Config,
     Inventory,
     InventoryEntry,
-    Store,
 )
 from reactor_ca.paths import get_inventory_path
 from reactor_ca.result import Failure, Result, Success
@@ -44,7 +42,9 @@ def read_inventory(store_path: Path) -> Result[Inventory, str]:
         Result with Inventory or error message
 
     """
-    inventory_path = get_inventory_path(store_path)
+    # Create a temporary Config object with the store path
+    config = Config(config_path="", store_path=str(store_path), ca_config=None, hosts_config={})  # type: ignore
+    inventory_path = get_inventory_path(config)
 
     if not inventory_path.exists():
         # Create empty inventory structure
@@ -127,7 +127,9 @@ def write_inventory(store_path: Path, inventory: Inventory) -> Result[None, str]
         Result with None for success or error message
 
     """
-    inventory_path = get_inventory_path(store_path)
+    # Create a temporary Config object with the store path
+    config = Config(config_path="", store_path=str(store_path), ca_config=None, hosts_config={})  # type: ignore
+    inventory_path = get_inventory_path(config)
 
     try:
         # Ensure parent directory exists
@@ -253,7 +255,7 @@ def delete_host_from_inventory(store_path: Path, host_id: str) -> Result[None, s
 
     """
     inventory_result = read_inventory(store_path)
-    if not inventory_result:
+    if isinstance(inventory_result, Failure):
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
     inventory = inventory_result.unwrap()
@@ -265,7 +267,9 @@ def delete_host_from_inventory(store_path: Path, host_id: str) -> Result[None, s
     return write_inventory(store_path, inventory)
 
 
-def get_host_info(store_path: Path, host_id: str, cert: x509.Certificate = None) -> Result[dict[str, Any], str]:
+def get_host_info(
+    store_path: Path, host_id: str, cert: x509.Certificate | None = None
+) -> Result[dict[str, Any], str]:
     """Get certificate information for a host.
 
     Args:
@@ -281,7 +285,7 @@ def get_host_info(store_path: Path, host_id: str, cert: x509.Certificate = None)
     """
     # Read inventory
     inventory_result = read_inventory(store_path)
-    if not inventory_result:
+    if isinstance(inventory_result, Failure):
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
     inventory = inventory_result.unwrap()
@@ -313,8 +317,11 @@ def get_host_info(store_path: Path, host_id: str, cert: x509.Certificate = None)
                 subject = cert.subject
                 host_info["subject"] = {}
 
+                # Convert the subject attributes to a dictionary
+                subject_dict = {}
                 for attr in subject:
-                    host_info["subject"][attr.oid._name] = attr.value
+                    subject_dict[attr.oid._name] = str(attr.value)
+                host_info["subject"] = subject_dict
 
             return Success(host_info)
 
@@ -334,7 +341,7 @@ def list_hosts_from_inventory(store_path: Path) -> Result[dict[str, dict], str]:
 
     """
     inventory_result = read_inventory(store_path)
-    if not inventory_result:
+    if isinstance(inventory_result, Failure):
         return Failure(f"Failed to read inventory: {inventory_result.error}")
 
     inventory = inventory_result.unwrap()

@@ -8,9 +8,7 @@ the actual functionality.
 
 import json
 import os
-import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
 
 import click
 from rich.console import Console
@@ -18,41 +16,52 @@ from rich.table import Table
 
 from reactor_ca import __version__
 from reactor_ca.ca import (
+    get_ca_info,
     issue_ca,
     rekey_ca,
+)
+from reactor_ca.ca import (
     import_ca as import_ca_func,
-    get_ca_info,
 )
 from reactor_ca.config import (
     init_config_files,
     load_config,
     validate_config_files,
 )
+from reactor_ca.host import (
+    clean_certificates,
+    deploy_all_hosts,
+    deploy_host,
+    issue_all_certificates,
+    issue_certificate,
+    list_certificates,
+    process_csr,
+    rekey_all_hosts,
+    rekey_host,
+)
+from reactor_ca.host import (
+    export_host_key_unencrypted_wrapper as export_host_key_unencrypted,
+)
+from reactor_ca.host import (
+    import_host_key as import_host_key_func,
+)
+from reactor_ca.models import Store, ValidityConfig
+from reactor_ca.password import get_password as get_password_func
 from reactor_ca.paths import (
     get_ca_config_path,
     get_hosts_config_path,
 )
-from reactor_ca.host import (
-    issue_certificate,
-    issue_all_certificates,
-    rekey_host,
-    rekey_all_hosts,
-    import_host_key as import_host_key_func,
-    export_host_key_unencrypted,
-    deploy_host,
-    deploy_all_hosts,
-    list_certificates,
-    clean_certificates,
-    process_csr,
-)
-from reactor_ca.models import ValidityConfig, Store
+from reactor_ca.result import Failure, Success
 from reactor_ca.store import (
     ca_exists,
-    create_store,
     initialize_store,
     unlock,
 )
-from reactor_ca.password import change_password as change_password_func, get_password as get_password_func
+from reactor_ca.store import change_password as change_password_func
+
+# Constants for certificate expiration warnings
+WARNING_DAYS = 90
+CRITICAL_DAYS = 30
 
 # Create console instance for rich output
 console = Console()
@@ -60,43 +69,35 @@ console = Console()
 
 @click.group()
 @click.version_option(version=__version__)
-@click.option("--config", type=click.Path(exists=False), help="Path to configuration directory")
-@click.option("--store", type=click.Path(exists=False), help="Path to certificate store directory")
-@click.option("--root", type=click.Path(exists=False), help="Root directory (config and store subdirectories)")
-@click.option("--password", help="CA password (WARNING: visible in command history)", envvar="REACTOR_CA_PASSWORD")
+@click.option("root_path", "--root", type=click.Path(exists=False), help="Root directory (with config and store subdirectories)")
+@click.option("config_path", "--config", type=click.Path(exists=False), help="Path to configuration directory")
+@click.option("store_path", "--store", type=click.Path(exists=False), help="Path to certificate store directory")
 @click.pass_context
-def cli(ctx: click.Context, config: str | None = None, 
-        store: str | None = None, root: str | None = None,
-        password: str | None = None) -> None:
+def cli(
+    ctx: click.Context,
+    root_path: str | None = None,
+    config_path: str | None = None,
+    store_path: str | None = None,
+) -> None:
     """ReactorCA - A CLI tool to manage a homelab Certificate Authority."""
-    # Create a container for our shared state
     ctx.ensure_object(dict)
-    
-    # Load config using the function from config.py
-    config_result = load_config(config, store, root)
-    
-    if not config_result:  # Using boolean conversion
-        console.print(f"[bold red]Error:[/bold red] {config_result.error}")
+
+    app_config = load_config(root_path, config_path, store_path)
+
+    if isinstance(app_config, Failure):
+        console.print(f"[bold red]Error:[/bold red] {app_config.error}")
         ctx.exit(1)
-    
-    # Create store (using the existing Store model)
-    store_obj = Store(
-        path=config_result.value.store_path,
-        password=None,
-        unlocked=False
-    )
-    
+
+    store_obj = Store(path=app_config.value.store_path, password=None, unlocked=False)
+
     # If password was provided, try to unlock the store
     if password:
-        unlock_result = unlock(store_obj, password)
+        unlock(store_obj, password)
         # We don't need to handle errors here - if unlock fails, the store
         # will remain locked and commands will prompt for password as needed
-    
+
     # Store the objects for subcommands
-    ctx.obj = {
-        "config": config_result.value,
-        "store": store_obj
-    }
+    ctx.obj = {"config": config_result.value, "store": store_obj}
 
 
 # Configuration commands
@@ -112,7 +113,7 @@ def config() -> None:
 def config_init(ctx: click.Context, force: bool) -> None:
     """Initialize configuration files."""
     config = ctx.obj["config"]
-    store = ctx.obj["store"]
+    ctx.obj["store"]
 
     # Make sure the directories exist
     os.makedirs(config.config_path, exist_ok=True)
@@ -120,18 +121,18 @@ def config_init(ctx: click.Context, force: bool) -> None:
 
     # Initialize store
     initialize_result = initialize_store(config.store_path)
-    if not initialize_result:
+    if isinstance(initialize_result, Failure):
         console.print(f"[bold red]Error:[/bold red] {initialize_result.error}")
         ctx.exit(1)
 
     # Convert paths to Path objects
     config_path = Path(config.config_path)
     store_path = Path(config.store_path)
-    
+
     # Initialize config files
     try:
         init_result = init_config_files(config_path, store_path, force)
-        if not init_result:
+        if isinstance(init_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {init_result.error}")
             ctx.exit(1)
         console.print("✅ Configuration files initialized successfully")
@@ -149,16 +150,16 @@ def config_validate(ctx: click.Context) -> None:
     # The configs were already validated during load_config
     # Just display that they are valid
     console.print("✅ All configuration files are valid")
-    
+
     # For a more explicit validation:
     # Get paths to config files
     ca_config_path = get_ca_config_path(config)
     hosts_config_path = get_hosts_config_path(config)
-    
+
     # Validate both config files
     result = validate_config_files(ca_config_path, hosts_config_path)
-    
-    if not result:
+
+    if isinstance(result, Failure):
         # The error messages are already printed by validate_config_files
         ctx.exit(1)
 
@@ -176,7 +177,7 @@ def ca_issue(ctx: click.Context) -> None:
     """Create or renew a CA certificate."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -185,23 +186,23 @@ def ca_issue(ctx: click.Context) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=not ca_exists(store.path)  # Only confirm if creating new CA
+            confirm=not ca_exists(store.path),  # Only confirm if creating new CA
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
-    
+
     # Issue CA certificate
     # Use the store.password that's already set
     result = issue_ca(config, store)
-    
-    if result:
+
+    if isinstance(result, Success):
         info = result.unwrap()
         action = info["action"]
 
@@ -215,7 +216,9 @@ def ca_issue(ctx: click.Context) -> None:
 
         console.print("📋 Inventory updated")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -228,7 +231,7 @@ def ca_import(ctx: click.Context, cert: str, key: str, key_password: str | None 
     """Import an existing CA."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -237,29 +240,31 @@ def ca_import(ctx: click.Context, cert: str, key: str, key_password: str | None 
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password for saving imported CA: ",
-            confirm=True
+            confirm=True,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # Import CA
     result = import_ca_func(Path(cert), Path(key), config, store, key_password)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         console.print("✅ CA imported successfully")
         console.print(f"   Certificate: [bold]{info['cert_path']}[/bold]")
         console.print(f"   Private key (encrypted): [bold]{info['key_path']}[/bold]")
         console.print("📋 Inventory updated")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -269,7 +274,7 @@ def ca_rekey(ctx: click.Context) -> None:
     """Generate a new key and renew the CA certificate."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -278,29 +283,31 @@ def ca_rekey(ctx: click.Context) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
-    
+
     # Rekey CA
     result = rekey_ca(config, store)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         console.print("✅ CA rekeyed successfully")
         console.print(f"   Certificate: [bold]{info['cert_path']}[/bold]")
         console.print(f"   Private key (encrypted): [bold]{info['key_path']}[/bold]")
         console.print("📋 Inventory updated")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -311,7 +318,7 @@ def ca_info(ctx: click.Context, json_output: bool) -> None:
     """Show information about the Certificate Authority."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -320,22 +327,22 @@ def ca_info(ctx: click.Context, json_output: bool) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
-    
+
     # Get CA info
     result = get_ca_info(store)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
 
         if json_output:
@@ -363,9 +370,9 @@ def ca_info(ctx: click.Context, json_output: bool) -> None:
             days_remaining = info["days_remaining"]
             if days_remaining < 0:
                 console.print(f"Days Remaining: [bold red]{days_remaining} (expired)[/bold red]")
-            elif days_remaining < 30:
+            elif days_remaining < CRITICAL_DAYS:
                 console.print(f"Days Remaining: [bold red]{days_remaining}[/bold red]")
-            elif days_remaining < 90:
+            elif days_remaining < WARNING_DAYS:
                 console.print(f"Days Remaining: [bold yellow]{days_remaining}[/bold yellow]")
             else:
                 console.print(f"Days Remaining: {days_remaining}")
@@ -373,7 +380,9 @@ def ca_info(ctx: click.Context, json_output: bool) -> None:
             console.print(f"Fingerprint: {info['fingerprint']}")
             console.print(f"Public Key Type: {info['public_key']['type']}")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -394,7 +403,7 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
     """Create or renew certificates for hosts."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -403,15 +412,15 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
@@ -427,20 +436,22 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
         # Issue certificates for all hosts
         result = issue_all_certificates(config, store, no_export=no_export, do_deploy=deploy)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             console.print(f"\n✅ Successfully processed {info['success']} certificates")
             if info["error"] > 0:
                 console.print(f"❌ Failed to process {info['error']} certificates")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
     else:
         # Issue certificate for a single host
         assert hostname is not None  # for type checking
         result = issue_certificate(hostname, config, store, no_export=no_export, do_deploy=deploy)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             action = "created" if info["is_new"] else "renewed"
 
@@ -457,11 +468,13 @@ def host_issue(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
                     console.print(f"✅ Certificate chain exported to [bold]{export_info['chain']}[/bold]")
 
             if "deploy" in info:
-                console.print(f"✅ Deployment command executed successfully")
+                console.print("✅ Deployment command executed successfully")
 
             console.print("📋 Inventory updated")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
 
 
@@ -473,7 +486,7 @@ def host_import_key(ctx: click.Context, hostname: str, key: str) -> None:
     """Import an existing key for a host."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -482,27 +495,29 @@ def host_import_key(ctx: click.Context, hostname: str, key: str) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # Import host key
     result = import_host_key_func(hostname, key, config, store)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         console.print(f"✅ Key imported successfully for [bold]{hostname}[/bold]")
         console.print(f"   Private key (encrypted): [bold]{info['key_path']}[/bold]")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -514,7 +529,7 @@ def host_export_key(ctx: click.Context, hostname: str, out: str | None) -> None:
     """Export unencrypted private key for a host."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -523,22 +538,22 @@ def host_export_key(ctx: click.Context, hostname: str, out: str | None) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # Export host key
-    result = export_host_key_unencrypted(hostname, config, store, out)
+    result = export_host_key_unencrypted(hostname, store, out)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         if "export_path" in info:
             console.print(f"✅ Unencrypted key exported to [bold]{info['export_path']}[/bold]")
@@ -546,7 +561,10 @@ def host_export_key(ctx: click.Context, hostname: str, out: str | None) -> None:
             # Just print the key data to stdout
             console.print(info["key_data"])
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        if isinstance(result, Failure):
+            console.print(f"[bold red]Error:[/bold red] {result.error}")
+        else:
+            console.print("[bold red]Error:[/bold red] Unknown error")
         ctx.exit(1)
 
 
@@ -560,7 +578,7 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
     """Generate new keys and certificates for hosts."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -569,15 +587,15 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
@@ -593,20 +611,22 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
         # Rekey all hosts
         result = rekey_all_hosts(config, store, no_export=no_export, do_deploy=deploy)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             console.print(f"\n✅ Successfully rekeyed {info['success']} certificates")
             if info["error"] > 0:
                 console.print(f"❌ Failed to rekey {info['error']} certificates")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
     else:
         # Rekey a single host
         assert hostname is not None  # for type checking
         result = rekey_host(hostname, config, store, no_export=no_export, do_deploy=deploy)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             console.print(f"✅ Certificate and key rekeyed successfully for [bold]{hostname}[/bold]")
             console.print(f"   Certificate: [bold]{info['cert_path']}[/bold]")
@@ -620,11 +640,13 @@ def host_rekey(ctx: click.Context, hostname: str | None, all_hosts: bool, no_exp
                     console.print(f"✅ Certificate chain exported to [bold]{export_info['chain']}[/bold]")
 
             if "deploy" in info:
-                console.print(f"✅ Deployment command executed successfully")
+                console.print("✅ Deployment command executed successfully")
 
             console.print("📋 Inventory updated")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
 
 
@@ -637,7 +659,7 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
     """List certificates with their expiration dates."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -646,22 +668,22 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # List certificates
-    result = list_certificates(config, store, expired=expired, expiring_days=expiring)
+    result = list_certificates(store, expired=expired, expiring_days=expiring)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
 
         if json_output:
@@ -683,9 +705,9 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
             days_formatted = ""
             if days_remaining < 0:
                 days_formatted = f"[bold red]{days_remaining} (expired)[/bold red]"
-            elif days_remaining < 30:
+            elif days_remaining < CRITICAL_DAYS:
                 days_formatted = f"[bold red]{days_remaining}[/bold red]"
-            elif days_remaining < 90:
+            elif days_remaining < WARNING_DAYS:
                 days_formatted = f"[bold yellow]{days_remaining}[/bold yellow]"
             else:
                 days_formatted = str(days_remaining)
@@ -717,9 +739,9 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
                 days_str = ""
                 if days < 0:
                     days_str = f"[bold red]{days} (expired)[/bold red]"
-                elif days < 30:
+                elif days < CRITICAL_DAYS:
                     days_str = f"[bold red]{days}[/bold red]"
-                elif days < 90:
+                elif days < WARNING_DAYS:
                     days_str = f"[bold yellow]{days}[/bold yellow]"
                 else:
                     days_str = str(days)
@@ -736,7 +758,9 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
             console.print("\n")
             console.print(host_table)
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -748,7 +772,7 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
     """Deploy certificates to configured destinations."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -757,15 +781,15 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
@@ -781,25 +805,29 @@ def host_deploy(ctx: click.Context, hostname: str | None, all_hosts: bool) -> No
         # Deploy all hosts
         result = deploy_all_hosts(config, store)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             console.print(f"\n✅ Successfully deployed {info['success']} certificates")
             if info["error"] > 0:
                 console.print(f"❌ Failed to deploy {info['error']} certificates")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
     else:
         # Deploy a single host
         assert hostname is not None  # for type checking
         result = deploy_host(hostname, config, store)
 
-        if result:
+        if isinstance(result, Success):
             info = result.unwrap()
             console.print(f"✅ Deployment completed successfully for [bold]{hostname}[/bold]")
             console.print(f"   Command: {info['command']}")
         else:
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+            console.print(
+                f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+            )
             ctx.exit(1)
 
 
@@ -809,7 +837,7 @@ def host_clean(ctx: click.Context) -> None:
     """Remove host folders that are no longer in the configuration."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -818,22 +846,22 @@ def host_clean(ctx: click.Context) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # Clean certificates
-    result = clean_certificates(config, store)
+    result = clean_certificates(store.path)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         removed_hosts = info["removed"]
 
@@ -845,7 +873,9 @@ def host_clean(ctx: click.Context) -> None:
                 console.print(f"   - [bold]{hostname}[/bold]")
             console.print("📋 Inventory updated")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -861,7 +891,7 @@ def host_sign_csr(
     """Sign a CSR and output the certificate."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -870,15 +900,15 @@ def host_sign_csr(
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
@@ -893,7 +923,7 @@ def host_sign_csr(
     # Process CSR
     result = process_csr(csr, config, store, validity_days=validity, out_path=out)
 
-    if result:
+    if isinstance(result, Success):
         info = result.unwrap()
         hostname = info["hostname"]
         console.print(f"✅ Successfully signed CSR for [bold]{hostname}[/bold]")
@@ -911,7 +941,9 @@ def host_sign_csr(
             for san_type, values in info["sans"].items():
                 console.print(f"     {san_type}: {', '.join(values)}")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 
@@ -928,7 +960,7 @@ def util_passwd(ctx: click.Context) -> None:
     """Change password for all encrypted keys."""
     config = ctx.obj["config"]
     store = ctx.obj["store"]
-    
+
     # Ensure store is unlocked
     if not store.unlocked:
         # Get password
@@ -937,28 +969,44 @@ def util_passwd(ctx: click.Context) -> None:
             password_file=config.ca_config.password.file,
             env_var=config.ca_config.password.env_var,
             prompt_message="Enter current CA master password: ",
-            confirm=False
+            confirm=False,
         )
-        if not password_result:  # Using boolean conversion
+        if isinstance(password_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {password_result.error}")
             ctx.exit(1)
-            
+
         # Unlock the store
-        unlock_result = unlock(store, password_result.value)
-        if not unlock_result:  # Using boolean conversion
+        unlock_result = unlock(store, password_result.unwrap())
+        if isinstance(unlock_result, Failure):
             console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
             ctx.exit(1)
 
     # Get current password
     console.print("You will need to provide the current password and then the new password.")
 
+    # Get new password
+    new_password_result = get_password_func(
+        min_length=config.ca_config.password.min_length,
+        password_file=config.ca_config.password.file,
+        env_var=config.ca_config.password.env_var,
+        prompt_message="Enter new CA master password: ",
+        confirm=True,
+    )
+    if isinstance(new_password_result, Failure):
+        console.print(f"[bold red]Error:[/bold red] {new_password_result.error}")
+        ctx.exit(1)
+
+    new_password = new_password_result.unwrap()
+
     # Change passwords (helper function will handle all UI)
-    result = change_password_func(config, store)
+    result = change_password_func(store, store.password or "", new_password)
 
     if result:
         console.print("✅ Password changed successfully for all keys")
     else:
-        console.print(f"[bold red]Error:[/bold red] {result.error}")
+        console.print(
+            f"[bold red]Error:[/bold red] {result.error if isinstance(result, Failure) else 'Unknown error'}"
+        )
         ctx.exit(1)
 
 

@@ -4,12 +4,14 @@ import datetime
 import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Any, TypeVar, cast
+from pathlib import Path
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.x509 import GeneralName, ObjectIdentifier
 from cryptography.x509.general_name import (
     DirectoryName,
@@ -19,8 +21,8 @@ from cryptography.x509.general_name import (
 )
 from cryptography.x509.oid import NameOID
 
+from reactor_ca.paths import get_host_cert_path, get_host_dir, get_host_key_path
 from reactor_ca.result import Failure, Result, Success
-
 
 # Config
 
@@ -505,6 +507,37 @@ class Store:
     path: str
     password: str | None = None
     unlocked: bool = False
+
+    def get_host_dir(self: "Store", hostname: str) -> Path:
+        """Get directory for a specific host."""
+        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
+        return get_host_dir(config, hostname)
+
+    def get_host_cert_path(self: "Store", hostname: str) -> Path:
+        """Get certificate path for a specific host."""
+        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
+        return get_host_cert_path(config, hostname)
+
+    def get_host_key_path(self: "Store", hostname: str) -> Path:
+        """Get key path for a specific host."""
+        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
+        return get_host_key_path(config, hostname)
+
+    @property
+    def is_unlocked(self: "Store") -> bool:
+        """Check if the store is unlocked."""
+        return self.unlocked
+
+    def unlock(self: "Store") -> bool:
+        """Unlock the store."""
+        return self.unlocked
+
+    def load_host_key(self: "Store", hostname: str) -> PrivateKeyTypes:
+        """Load a host's private key."""
+        key_path = self.get_host_key_path(hostname)
+        with open(key_path, "rb") as f:
+            key_data = f.read()
+            return load_pem_private_key(key_data, None if not self.password else self.password.encode("utf-8"))
 
 
 # Certificates

@@ -145,7 +145,9 @@ def load_ca_config(config_dir: Path) -> Result[CAConfig, str]:
         Result with CAConfig object or error message
 
     """
-    ca_config_path = get_ca_config_path(config_dir)
+    # Create a temporary Config object
+    temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
+    ca_config_path = get_ca_config_path(temp_config)
 
     # Validate first
     validation_result = validate_yaml(ca_config_path, "ca_config_schema.yaml")
@@ -209,7 +211,9 @@ def load_hosts_config(config_dir: Path) -> Result[dict[str, HostConfig], str]:
         Result with dictionary mapping host names to HostConfig objects or error message
 
     """
-    hosts_config_path = get_hosts_config_path(config_dir)
+    # Create a temporary Config object
+    temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
+    hosts_config_path = get_hosts_config_path(temp_config)
 
     # Validate first
     validation_result = validate_yaml(hosts_config_path, "hosts_config_schema.yaml")
@@ -568,15 +572,17 @@ def create_default_config(config_dir: Path, store_dir: Path) -> Result[None, str
     """
     try:
         # Create necessary directories
-        ensure_dirs(config_dir, store_dir)
+        # Create a temporary Config object
+        temp_config = Config(config_path=str(config_dir), store_path=str(store_dir), ca_config=None, hosts_config={})  # type: ignore
+        ensure_dirs(temp_config)
 
         # Get default configurations
         ca_config = get_default_ca_config()
         hosts_config = get_default_hosts_config()
 
         # Write configuration files
-        ca_config_path = get_ca_config_path(config_dir)
-        hosts_config_path = get_hosts_config_path(config_dir)
+        ca_config_path = get_ca_config_path(temp_config)
+        hosts_config_path = get_hosts_config_path(temp_config)
 
         ca_result = write_config_file(ca_config, ca_config_path, "ca")
         if isinstance(ca_result, Failure):
@@ -675,8 +681,10 @@ def save_ca_config(ca_config: CAConfig, config_dir: Path) -> Result[None, str]:
             }
         }
 
+        # Create a temporary Config object
+        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
         # Write config to file
-        ca_config_path = get_ca_config_path(config_dir)
+        ca_config_path = get_ca_config_path(temp_config)
         return write_config_file(config_dict, ca_config_path, "ca")
     except Exception as e:
         return Failure(f"Error saving CA configuration: {str(e)}")
@@ -702,8 +710,10 @@ def save_hosts_config(hosts_dict: dict[str, HostConfig], config_dir: Path) -> Re
             host_data = _host_config_to_dict(host_config)
             hosts_data[host_name] = host_data
 
+        # Create a temporary Config object
+        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
         # Write hosts config to file
-        hosts_config_path = get_hosts_config_path(config_dir)
+        hosts_config_path = get_hosts_config_path(temp_config)
         return write_config_file({"hosts": hosts_data}, hosts_config_path, "hosts")
     except Exception as e:
         return Failure(f"Error saving hosts configuration: {str(e)}")
@@ -746,7 +756,7 @@ def _host_config_to_dict(host_config: HostConfig) -> dict[str, Any]:
     # Add alternative names if present
     if host_config.alternative_names:
         alt_names_dict: dict[str, list[str]] = {}
-        host_data["alternative_names"] = alt_names_dict
+        host_data["alternative_names"] = alt_names_dict  # type: ignore
 
         # Add all supported SAN types
         if host_config.alternative_names.dns:
@@ -815,41 +825,49 @@ def validate_config_files(ca_config_path: Path, hosts_config_path: Path) -> Resu
     return Success(True)
 
 
-def load_config(config_dir: str | None = None, 
-                store_dir: str | None = None,
-                root_dir: str | None = None) -> Result[Config, str]:
+def load_config(
+    config_dir: str | None = None, store_dir: str | None = None, root_dir: str | None = None
+) -> Result[Config, str]:
     """Load all configurations and create a Config object.
-    
+
     Args:
     ----
         config_dir: Optional path to configuration directory
-        store_dir: Optional path to store directory 
+        store_dir: Optional path to store directory
         root_dir: Optional path to root directory
-        
+
     Returns:
     -------
         Result with Config object containing paths and loaded configurations
+
     """
     # Resolve paths
     config_path_obj, store_path_obj = resolve_paths(config_dir, store_dir, root_dir)
-    
+
     # Load CA config
     ca_config_result = load_ca_config(config_path_obj)
-    if not ca_config_result:  # Using boolean conversion
-        return ca_config_result
-        
+    if isinstance(ca_config_result, Failure):
+        return Failure(ca_config_result.error)
+
     # Load hosts config
     hosts_config_result = load_hosts_config(config_path_obj)
-    if not hosts_config_result:  # Using boolean conversion
-        return hosts_config_result
-        
+    if isinstance(hosts_config_result, Failure):
+        return Failure(hosts_config_result.error)
+
     # Create and return Config object
+    ca_config = ca_config_result.unwrap() if isinstance(ca_config_result, Success) else None
+    hosts_config = hosts_config_result.unwrap() if isinstance(hosts_config_result, Success) else {}
+
+    # Check if we have valid config data
+    if ca_config is None:
+        return Failure("Failed to load CA configuration")
+
     return Success(
         Config(
             config_path=str(config_path_obj),
             store_path=str(store_path_obj),
-            ca_config=ca_config_result.value,
-            hosts_config=hosts_config_result.value
+            ca_config=ca_config,
+            hosts_config=hosts_config,
         )
     )
 
@@ -869,9 +887,24 @@ def init_config_files(config_dir: Path, store_dir: Path, force: bool = False) ->
 
     """
     try:
+        # Create a temporary Config object with dummy values that will be replaced
+        dummy_ca_config = CAConfig(
+            common_name="",
+            organization="",
+            organization_unit="",
+            country="",
+            state="",
+            locality="",
+            email="",
+            validity=ValidityConfig(),
+            password=PasswordConfig(min_length=0),
+            key_algorithm="",
+            hash_algorithm="",
+        )
+        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=dummy_ca_config, hosts_config={})
         # Get paths
-        ca_config_path = get_ca_config_path(config_dir)
-        hosts_config_path = get_hosts_config_path(config_dir)
+        ca_config_path = get_ca_config_path(temp_config)
+        hosts_config_path = get_hosts_config_path(temp_config)
 
         # Create CA config if needed
         if not ca_config_path.exists() or force:

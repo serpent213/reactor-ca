@@ -743,7 +743,27 @@ def _sign_certificate(
             return Failure(f"Cannot sign with {type(private_key).__name__} as it is not supported for signing")
 
         # Sign the certificate
-        cert = cert_builder.sign(private_key, hash_algo)
+        # When signing with a hash algorithm, we need to select the specific type
+        # that matches the expected type for the sign method
+        if isinstance(hash_algo, hashes.SHA256):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA384):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA512):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA224):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA3_224):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA3_256):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA3_384):
+            cert = cert_builder.sign(private_key, hash_algo)
+        elif isinstance(hash_algo, hashes.SHA3_512):
+            cert = cert_builder.sign(private_key, hash_algo)
+        else:
+            # Default to SHA256 if we get an unexpected hash algorithm
+            cert = cert_builder.sign(private_key, hashes.SHA256())
         return Success(cert)
     except Exception as e:
         return Failure(f"Error signing certificate: {str(e)}")

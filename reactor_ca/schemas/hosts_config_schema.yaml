@@ -17,7 +17,7 @@ host:
   hash_algorithm: enum('SHA256', 'SHA384', 'SHA512', required=False)
 
 alternative_names_schema:
-  dns: list(regex(r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,63}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,63}[a-zA-Z0-9]))*$'), required=False)
+  dns: list(regex(r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$'), required=False)
   ip: list(ip(), required=False)
   email: list(regex(r'^[^@]+@[^@]+\.[^@]+$'), required=False)
   uri: list(regex(r'^[a-zA-Z][a-zA-Z0-9+\.-]*://.*$'), required=False)

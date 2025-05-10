@@ -45,7 +45,7 @@ def get_password(
     # Try to get password from file if specified
     if password_file:
         file_result = read_password_from_file(Path(password_file))
-        if file_result:
+        if isinstance(file_result, Success):
             password = file_result.unwrap()
             if len(password) >= min_length:
                 return Success(password)

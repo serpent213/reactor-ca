@@ -17,8 +17,9 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID
 
 from reactor_ca.config import Config
-from reactor_ca.main import cli
-from reactor_ca.store import get_store
+from reactor_ca.cli import cli
+from reactor_ca.paths import resolve_paths
+from reactor_ca.store import create_store, initialize_store
 
 
 @lru_cache(maxsize=32)
@@ -71,9 +72,15 @@ def temp_dir():
     os.environ["REACTOR_CA_ROOT"] = temp_dir
 
     # Initialize store with this temp dir
-    config = Config.create(root_dir=temp_dir)
-    store = get_store(config)
-    store.init()
+    config_path_obj, store_path_obj = resolve_paths(None, None, temp_dir)
+    config = Config(
+        config_path=str(config_path_obj),
+        store_path=str(store_path_obj),
+        ca_config=None,  # type: ignore
+        hosts_config={},  # type: ignore
+    )
+    store = create_store(config_dir=str(config_path_obj), store_dir=str(store_path_obj))
+    initialize_store(store.path)
 
     yield temp_dir
 
