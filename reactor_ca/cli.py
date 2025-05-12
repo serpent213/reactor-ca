@@ -12,14 +12,14 @@ from pathlib import Path
 
 import click
 from rich.console import Console
-from rich.table import Table
 
 from reactor_ca import __version__
-from reactor_ca.cli_ca import get_ca_info, import_ca, issue_ca, rekey_ca
+from reactor_ca.cli_ca import get_ca_info, get_ca_info_dict, import_ca, issue_ca, rekey_ca
 from reactor_ca.cli_host import (
     clean_certificates,
     deploy_all_hosts,
     deploy_host,
+    get_certificates_list_dict,
     issue_all_certificates,
     issue_certificate,
     list_certificates,
@@ -32,11 +32,10 @@ from reactor_ca.cli_host import import_host_key as import_host_key_func
 from reactor_ca.config import create as create_config
 from reactor_ca.config import init as init_config
 from reactor_ca.config import validate as validate_config
-from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
 from reactor_ca.models import Config, Store, ValidityConfig
 from reactor_ca.password import get_password
 from reactor_ca.paths import get_log_path, resolve_paths
-from reactor_ca.result import Failure, Success
+from reactor_ca.result import Failure, Result, Success
 from reactor_ca.store import change_password, unlock
 from reactor_ca.store import create as create_store
 from reactor_ca.store import init as init_store
@@ -49,6 +48,7 @@ def init_config_and_store(ctx: click.Context, mode: str, ca_init: bool = False) 
     ----
         ctx: Click context containing path information
         mode: One of 'config', 'store', or 'unlock'
+        ca_init: Whether this is a CA initialization operation (requires password confirmation)
 
     Returns:
     -------
@@ -299,10 +299,10 @@ def ca_info(ctx: click.Context, json_output: bool) -> None:
             ctx.exit(1)
     else:
         # Display formatted CA info
-        result = get_ca_info(ctx, store)
+        display_result: Result[None, str] = get_ca_info(ctx, store)
 
-        if isinstance(result, Failure):
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+        if isinstance(display_result, Failure):
+            console.print(f"[bold red]Error:[/bold red] {display_result.error}")
             ctx.exit(1)
 
 
@@ -344,7 +344,7 @@ def host_issue(
     if all_hosts:
         # Issue certificates for all hosts
         result = issue_all_certificates(ctx, config, store, no_export=no_export, do_deploy=deploy)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -352,7 +352,7 @@ def host_issue(
         # Issue certificate for a single host
         assert hostname is not None  # for type checking
         result = issue_certificate(ctx, hostname, config, store, no_export=no_export, do_deploy=deploy)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -372,10 +372,10 @@ def host_import_key(ctx: click.Context, host_id: str, key: str) -> None:
     # Initialize config and store with unlock
     config, store = init_config_and_store(ctx, "unlock")
     assert store is not None  # for type checking
-    
+
     # Import host key
     result = import_host_key_func(ctx, host_id, key, config, store)
-    
+
     if isinstance(result, Failure):
         console = ctx.obj["console"]
         console.print(f"[bold red]Error:[/bold red] {result.error}")
@@ -391,10 +391,10 @@ def host_export_key(ctx: click.Context, host_id: str, out: str | None = None) ->
     # Initialize config and store with unlock
     _, store = init_config_and_store(ctx, "unlock")
     assert store is not None  # for type checking
-    
+
     # Export host key
     result = export_host_key_unencrypted(ctx, host_id, store, out)
-    
+
     if isinstance(result, Failure):
         console = ctx.obj["console"]
         console.print(f"[bold red]Error:[/bold red] {result.error}")
@@ -431,7 +431,7 @@ def host_rekey(
     if all_hosts:
         # Rekey all hosts
         result = rekey_all_hosts(ctx, config, store, no_export=no_export, do_deploy=deploy)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -439,7 +439,7 @@ def host_rekey(
         # Rekey a single host
         assert host_id is not None  # for type checking
         result = rekey_host(ctx, host_id, config, store, no_export=no_export, do_deploy=deploy)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -460,7 +460,7 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
     if json_output:
         # If JSON output is requested, get the data structure and print as JSON
         result = get_certificates_list_dict(store, expired=expired, expiring_days=expiring)
-        
+
         if isinstance(result, Success):
             console.print(json.dumps(result.unwrap(), indent=2))
         else:
@@ -468,10 +468,10 @@ def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_outp
             ctx.exit(1)
     else:
         # Otherwise display formatted table output
-        result = list_certificates(ctx, store, expired=expired, expiring_days=expiring)
-        
-        if isinstance(result, Failure):
-            console.print(f"[bold red]Error:[/bold red] {result.error}")
+        display_result: Result[None, str] = list_certificates(ctx, store, expired=expired, expiring_days=expiring)
+
+        if isinstance(display_result, Failure):
+            console.print(f"[bold red]Error:[/bold red] {display_result.error}")
             ctx.exit(1)
 
 
@@ -497,7 +497,7 @@ def host_deploy(ctx: click.Context, host_id: str | None, all_hosts: bool) -> Non
     if all_hosts:
         # Deploy all hosts
         result = deploy_all_hosts(ctx, config, store)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -505,7 +505,7 @@ def host_deploy(ctx: click.Context, host_id: str | None, all_hosts: bool) -> Non
         # Deploy a single host
         assert host_id is not None  # for type checking
         result = deploy_host(ctx, host_id, config, store)
-        
+
         if isinstance(result, Failure):
             console.print(f"[bold red]Error:[/bold red] {result.error}")
             ctx.exit(1)
@@ -518,10 +518,10 @@ def host_clean(ctx: click.Context) -> None:
     # Initialize config and store with unlock (we need config to identify configured hosts)
     config, store = init_config_and_store(ctx, "unlock")
     assert store is not None  # for type checking
-    
+
     # Clean certificates
     result = clean_certificates(ctx, config, store)
-    
+
     if isinstance(result, Failure):
         console = ctx.obj["console"]
         console.print(f"[bold red]Error:[/bold red] {result.error}")
@@ -561,7 +561,7 @@ def host_sign_csr(
 
     # Process CSR
     result = process_csr(ctx, csr, config, store, validity_days=validity, out_path=out)
-    
+
     if isinstance(result, Failure):
         console.print(f"[bold red]Error:[/bold red] {result.error}")
         ctx.exit(1)

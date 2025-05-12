@@ -41,7 +41,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("dns")
     @classmethod
-    def validate_dns(cls, v):
+    def validate_dns(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate DNS names have proper format."""
         if not v:
             return v
@@ -56,7 +56,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("ip")
     @classmethod
-    def validate_ip(cls, v):
+    def validate_ip(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate IP addresses are valid."""
         if not v:
             return v
@@ -64,13 +64,13 @@ class AlternativeNames(BaseModel):
         for ip in v:
             try:
                 ipaddress.ip_address(ip)
-            except ValueError:
-                raise ValueError(f"Invalid IP address: {ip}")
+            except ValueError as err:
+                raise ValueError(f"Invalid IP address: {ip}") from err
         return v
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, v):
+    def validate_email(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate email addresses have proper format."""
         if not v:
             return v
@@ -82,7 +82,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("uri")
     @classmethod
-    def validate_uri(cls, v):
+    def validate_uri(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate URIs have proper format."""
         if not v:
             return v
@@ -94,7 +94,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("directory_name")
     @classmethod
-    def validate_directory_name(cls, v):
+    def validate_directory_name(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate directory names have proper format."""
         if not v:
             return v
@@ -106,7 +106,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("registered_id")
     @classmethod
-    def validate_registered_id(cls, v):
+    def validate_registered_id(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate registered IDs have proper format."""
         if not v:
             return v
@@ -118,7 +118,7 @@ class AlternativeNames(BaseModel):
 
     @field_validator("other_name")
     @classmethod
-    def validate_other_name(cls, v):
+    def validate_other_name(cls: type["AlternativeNames"], v: list[str] | None) -> list[str] | None:
         """Validate other names have proper format."""
         if not v:
             return v
@@ -128,20 +128,20 @@ class AlternativeNames(BaseModel):
                 raise ValueError(f"Invalid other name format: {other}")
         return v
 
-    def is_empty(self) -> bool:
+    def is_empty(self: "AlternativeNames") -> bool:
         """Check if there are any SANs defined."""
         return not any(
             [self.dns, self.ip, self.email, self.uri, self.directory_name, self.registered_id, self.other_name]
         )
 
-    def to_dns_names(self) -> Result[list[x509.DNSName], str]:
+    def to_dns_names(self: "AlternativeNames") -> Result[list[x509.DNSName], str]:
         """Convert DNS names to appropriate SAN format."""
         try:
             return Success([x509.DNSName(name) for name in self.dns])
         except Exception as err:
             return Failure(f"Error converting DNS names: {str(err)}")
 
-    def to_ip_addresses(self) -> Result[list[x509.IPAddress], str]:
+    def to_ip_addresses(self: "AlternativeNames") -> Result[list[x509.IPAddress], str]:
         """Convert IP addresses to appropriate SAN format."""
         result = []
 
@@ -157,7 +157,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting IP addresses: {str(err)}")
 
-    def to_email_addresses(self) -> Result[list[x509.RFC822Name], str]:
+    def to_email_addresses(self: "AlternativeNames") -> Result[list[x509.RFC822Name], str]:
         """Convert email addresses to appropriate SAN format."""
         result = []
 
@@ -173,7 +173,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting email addresses: {str(err)}")
 
-    def to_uri_addresses(self) -> Result[list[x509.UniformResourceIdentifier], str]:
+    def to_uri_addresses(self: "AlternativeNames") -> Result[list[x509.UniformResourceIdentifier], str]:
         """Convert URIs to appropriate SAN format."""
         result = []
 
@@ -190,7 +190,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting URIs: {str(err)}")
 
-    def to_directory_names(self) -> Result[list[x509.DirectoryName], str]:
+    def to_directory_names(self: "AlternativeNames") -> Result[list[x509.DirectoryName], str]:
         """Convert directory names to appropriate SAN format."""
         result = []
 
@@ -230,7 +230,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting directory names: {str(err)}")
 
-    def to_registered_ids(self) -> Result[list[x509.RegisteredID], str]:
+    def to_registered_ids(self: "AlternativeNames") -> Result[list[x509.RegisteredID], str]:
         """Convert OID strings to appropriate SAN format."""
         result = []
 
@@ -246,7 +246,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting OIDs: {str(err)}")
 
-    def to_other_names(self) -> Result[list[x509.OtherName], str]:
+    def to_other_names(self: "AlternativeNames") -> Result[list[x509.OtherName], str]:
         """Convert other name strings to appropriate SAN format."""
         result = []
 
@@ -273,7 +273,7 @@ class AlternativeNames(BaseModel):
         except Exception as err:
             return Failure(f"Error converting other names: {str(err)}")
 
-    def to_general_names(self) -> Result[list[GeneralName], str]:
+    def to_general_names(self: "AlternativeNames") -> Result[list[GeneralName], str]:
         """Convert all Subject Alternative Name types to a list of GeneralName objects."""
         result: list[GeneralName] = []
 
@@ -336,13 +336,13 @@ class ValidityConfig(BaseModel):
     years: int | None = Field(None, gt=0, description="Validity period in years")
 
     @model_validator(mode="after")
-    def validate_validity_period(self) -> "ValidityConfig":
+    def validate_validity_period(self: "ValidityConfig") -> "ValidityConfig":
         """Ensure exactly one of days or years is specified."""
         if (self.days is None and self.years is None) or (self.days is not None and self.years is not None):
             raise ValueError("Exactly one of 'days' or 'years' must be specified")
         return self
 
-    def to_days(self) -> Result[int, str]:
+    def to_days(self: "ValidityConfig") -> Result[int, str]:
         """Convert validity configuration to days."""
         if self.days is not None:
             return Success(self.days)
@@ -488,7 +488,7 @@ class SubjectIdentity(BaseModel):
     locality: str | None = None
     email: str | None = None
 
-    def to_x509_name(self) -> x509.Name:
+    def to_x509_name(self: "SubjectIdentity") -> x509.Name:
         """Convert subject identity to x509.Name object."""
         subject_attributes = []
 
@@ -512,7 +512,7 @@ class SubjectIdentity(BaseModel):
         return x509.Name(subject_attributes)
 
     @classmethod
-    def from_x509_name(cls, name: x509.Name) -> Result["SubjectIdentity", str]:
+    def from_x509_name(cls: type["SubjectIdentity"], name: x509.Name) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an x509.Name object."""
         try:
             # Helper function to safely extract attributes from the name
@@ -540,13 +540,13 @@ class SubjectIdentity(BaseModel):
             return Failure(f"Error extracting subject identity: {str(err)}")
 
     @classmethod
-    def from_certificate(cls, cert: x509.Certificate) -> Result["SubjectIdentity", str]:
+    def from_certificate(cls: type["SubjectIdentity"], cert: x509.Certificate) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an X.509 certificate."""
         return cls.from_x509_name(cert.subject)
 
     @classmethod
     def from_config(
-        cls,
+        cls: type["SubjectIdentity"],
         ca_config: CAConfig,
         host_config: HostConfig | None = None,
     ) -> Result["SubjectIdentity", str]:
@@ -593,7 +593,7 @@ class CACertificateParams(BaseModel):
 
     @classmethod
     def from_ca_config(
-        cls,
+        cls: type["CACertificateParams"],
         ca_config: CAConfig,
         private_key: PrivateKeyTypes,
     ) -> Result["CACertificateParams", str]:
@@ -646,7 +646,7 @@ class CertificateParams(BaseModel):
 
     @classmethod
     def from_host_config(
-        cls,
+        cls: type["CertificateParams"],
         host_config: HostConfig,
         ca: CA,
         private_key: PrivateKeyTypes | None = None,
@@ -700,7 +700,7 @@ class CSRInfo(BaseModel):
     public_key: Any
 
     @classmethod
-    def from_csr(cls, csr: x509.CertificateSigningRequest) -> Result["CSRInfo", str]:
+    def from_csr(cls: type["CSRInfo"], csr: x509.CertificateSigningRequest) -> Result["CSRInfo", str]:
         """Create CSRInfo from a Certificate Signing Request."""
         try:
             # Extract hostname from subject common name

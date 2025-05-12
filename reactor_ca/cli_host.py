@@ -5,7 +5,6 @@ in the ReactorCA tool. It relies on the core modules for implementation details.
 """
 
 import datetime
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,38 +14,57 @@ if TYPE_CHECKING:
 from click import Context
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 from cryptography.x509.general_name import DirectoryName, UniformResourceIdentifier
 from cryptography.x509.oid import NameOID
 from rich.table import Table
 
-from reactor_ca.export_deploy import deploy, export_cert, export_cert_chain, export_unencrypted_key
+from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
+from reactor_ca.export_deploy import (
+    deploy as run_deploy_command,
+)
+from reactor_ca.export_deploy import (
+    export_cert as export_host_cert,
+)
+from reactor_ca.export_deploy import (
+    export_cert_chain as export_host_chain,
+)
+from reactor_ca.export_deploy import (
+    export_unencrypted_key,
+)
 from reactor_ca.models import (
     CA,
     AlternativeNames,
     CAConfig,
     CertificateParams,
-    HostConfig,
     SubjectIdentity,
-    ValidityConfig,
 )
 from reactor_ca.password import get_password
-from reactor_ca.paths import resolve_paths
+from reactor_ca.paths import get_store_host_cert_path, get_store_host_key_path
 from reactor_ca.result import Failure, Result, Success
-from reactor_ca.store import delete_host, host_exists, read_host_cert, read_host_key, write_host_cert, write_host_key
+from reactor_ca.store import (
+    delete_host,
+    host_exists,
+    read_ca_cert,
+    read_ca_key,
+    read_host_cert,
+    read_host_key,
+    write_host_cert,
+    write_host_key,
+)
 from reactor_ca.store import list_hosts as store_list_hosts
 from reactor_ca.x509_crypto import (
     create_certificate,
     deserialize_certificate,
     deserialize_private_key,
+    ensure_key_algorithm,
     generate_key,
 )
 
 
 def _load_configs(
     config: "models.Config",
-) -> Result[tuple[CAConfig, dict[str, Any]], str]:
+) -> Result[tuple[CAConfig, dict[str, "models.HostConfig"]], str]:
     """Get CA and hosts configurations from the Config object.
 
     Args:
@@ -59,6 +77,12 @@ def _load_configs(
 
     """
     # Configurations are already loaded in the Config object
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
+
+    if config.hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     return Success((config.ca_config, config.hosts_config))
 
 
@@ -78,6 +102,10 @@ def _get_password_from_store(store: "models.Store", config: "models.Config") -> 
     # If store is already unlocked with a password, use it
     if store.unlocked and store.password:
         return Success(store.password)
+
+    # Check if CA config exists
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
 
     # Store is not unlocked, prompt for password using config settings
     password_result = get_password(
@@ -123,18 +151,20 @@ def issue_certificate(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
 
     # Get configurations from the Config object
     hosts_config = config.hosts_config
-    
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     # Find host config in the dictionary
     if hostname not in hosts_config:
         return Failure(f"Host {hostname} not found in hosts configuration")
-    
+
     host_config = hosts_config[hostname]
 
     # Check if certificate and key exist
@@ -147,7 +177,7 @@ def issue_certificate(
     if isinstance(cert_result, Failure):
         return Failure(f"Failed to load CA certificate: {cert_result.error}")
     ca_cert = cert_result.unwrap()
-    
+
     # Load the CA key
     key_result = read_ca_key(store)
     if isinstance(key_result, Failure):
@@ -172,7 +202,7 @@ def issue_certificate(
         private_key = key_result.unwrap()
 
         # Verify key algorithm
-        key_algorithm_result = verify_key_algorithm(private_key, key_algorithm)
+        key_algorithm_result = ensure_key_algorithm(private_key, key_algorithm)
         if isinstance(key_algorithm_result, Failure):
             return Failure("Key algorithm mismatch. To use a new algorithm, please use rekey_host instead.")
 
@@ -180,7 +210,11 @@ def issue_certificate(
     validity_days_result = host_config.validity.to_days()
     if isinstance(validity_days_result, Failure):
         return validity_days_result
-    validity_days = validity_days_result.unwrap()
+    validity_days_result.unwrap()
+
+    # Check if CA config exists
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
 
     # Create CA object
     ca_obj = CA(
@@ -191,9 +225,7 @@ def issue_certificate(
 
     # Create certificate parameters
     cert_params_result = CertificateParams.from_host_config(
-        host_config=host_config, 
-        ca=ca_obj,
-        private_key=private_key
+        host_config=host_config, ca=ca_obj, private_key=private_key
     )
     if isinstance(cert_params_result, Failure):
         return cert_params_result
@@ -233,7 +265,13 @@ def issue_certificate(
     if do_deploy and host_config.deploy is not None:
         deploy_command = host_config.deploy.command
         if deploy_command:
-            deploy_result = run_deploy_command(deploy_command, hostname)
+            # Get host key for deployment
+            key_result = read_host_key(store, hostname)
+            if isinstance(key_result, Failure):
+                return Failure(f"Failed to load host key for deployment: {key_result.error}")
+            private_key = key_result.unwrap()
+
+            deploy_result = run_deploy_command(deploy_command, cert, private_key)
             if isinstance(deploy_result, Success):
                 console.print("✅ Deployment command executed successfully")
 
@@ -270,13 +308,16 @@ def issue_all_certificates(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
 
     # Get hosts from configuration
     hosts_config = config.hosts_config
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     hosts = list(hosts_config.keys())
 
     if not hosts:
@@ -293,7 +334,10 @@ def issue_all_certificates(
             success_count += 1
         else:
             error_count += 1
-            console.print(f"[bold red]Error:[/bold red] {cert_result.error if isinstance(cert_result, Failure) else 'Unknown error'}")
+            console.print(
+                "[bold red]Error:[/bold red] "
+                f"{cert_result.error if isinstance(cert_result, Failure) else 'Unknown error'}"
+            )
 
     # Print summary
     console.print(f"\n✅ Successfully processed {success_count} certificates")
@@ -328,18 +372,20 @@ def rekey_host(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
 
     # Get configurations from the Config object
     hosts_config = config.hosts_config
-    
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     # Find host config in the dictionary
     if host_id not in hosts_config:
         return Failure(f"Host {host_id} not found in hosts configuration")
-    
+
     host_config = hosts_config[host_id]
 
     # Load the CA certificate
@@ -347,7 +393,7 @@ def rekey_host(
     if isinstance(cert_result, Failure):
         return Failure(f"Failed to load CA certificate: {cert_result.error}")
     ca_cert = cert_result.unwrap()
-    
+
     # Load the CA key
     key_result = read_ca_key(store)
     if isinstance(key_result, Failure):
@@ -366,7 +412,11 @@ def rekey_host(
     validity_days_result = host_config.validity.to_days()
     if isinstance(validity_days_result, Failure):
         return validity_days_result
-    validity_days = validity_days_result.unwrap()
+    validity_days_result.unwrap()
+
+    # Check if CA config exists
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
 
     # Create CA object
     ca_obj = CA(
@@ -377,9 +427,7 @@ def rekey_host(
 
     # Create certificate parameters
     cert_params_result = CertificateParams.from_host_config(
-        host_config=host_config, 
-        ca=ca_obj,
-        private_key=private_key
+        host_config=host_config, ca=ca_obj, private_key=private_key
     )
     if isinstance(cert_params_result, Failure):
         return cert_params_result
@@ -404,13 +452,13 @@ def rekey_host(
     if not no_export and host_config.export is not None:
         if host_config.export.cert is not None:
             cert_path = Path(host_config.export.cert)
-            cert_export_result = export_cert(cert, cert_path)
+            cert_export_result = export_host_cert(cert, cert_path)
             if isinstance(cert_export_result, Success):
                 console.print(f"✅ Certificate exported to [bold]{cert_path}[/bold]")
 
         if host_config.export.chain is not None:
             chain_path = Path(host_config.export.chain)
-            chain_export_result = export_cert_chain(cert, ca_cert, chain_path)
+            chain_export_result = export_host_chain(cert, ca_cert, chain_path)
             if isinstance(chain_export_result, Success):
                 console.print(f"✅ Certificate chain exported to [bold]{chain_path}[/bold]")
 
@@ -418,7 +466,7 @@ def rekey_host(
     if do_deploy and host_config.deploy is not None:
         deploy_command = host_config.deploy.command
         if deploy_command:
-            deploy_result = deploy(deploy_command, cert, private_key)
+            deploy_result = run_deploy_command(deploy_command, cert, private_key)
             if isinstance(deploy_result, Success):
                 console.print("✅ Deployment command executed successfully")
 
@@ -453,13 +501,16 @@ def rekey_all_hosts(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
 
     # Get hosts from configuration
     hosts_config = config.hosts_config
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     host_ids = list(hosts_config.keys())
 
     if not host_ids:
@@ -476,7 +527,10 @@ def rekey_all_hosts(
             success_count += 1
         else:
             error_count += 1
-            console.print(f"[bold red]Error:[/bold red] {rekey_result.error if isinstance(rekey_result, Failure) else 'Unknown error'}")
+            console.print(
+                "[bold red]Error:[/bold red] "
+                f"{rekey_result.error if isinstance(rekey_result, Failure) else 'Unknown error'}"
+            )
 
     # Print summary
     console.print(f"\n✅ Successfully rekeyed {success_count} certificates")
@@ -511,7 +565,7 @@ def import_host_key(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
@@ -537,7 +591,7 @@ def import_host_key(
         if isinstance(private_key_result, Failure):
             # If deserialization fails, assume it's password-protected
             if src_password:
-                private_key_result = deserialize_private_key(key_data, src_password.encode())
+                private_key_result = deserialize_private_key(key_data, src_password)
                 if isinstance(private_key_result, Failure):
                     return Failure(f"Failed to decrypt key with provided password: {private_key_result.error}")
             else:
@@ -555,7 +609,7 @@ def import_host_key(
                 if src_password is None:
                     return Failure("Source password cannot be None")
 
-                private_key_result = deserialize_private_key(key_data, src_password.encode())
+                private_key_result = deserialize_private_key(key_data, src_password)
                 if isinstance(private_key_result, Failure):
                     return Failure(f"Failed to deserialize private key: {private_key_result.error}")
     except Exception as e:
@@ -576,10 +630,7 @@ def import_host_key(
 
 
 def export_host_key_unencrypted_wrapper(
-    ctx: Context,
-    host_id: str, 
-    store: "models.Store", 
-    out_path: str | None = None
+    ctx: Context, host_id: str, store: "models.Store", out_path: str | None = None
 ) -> Result[None, str]:
     """Export an unencrypted private key for a host.
 
@@ -596,7 +647,7 @@ def export_host_key_unencrypted_wrapper(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
@@ -609,9 +660,9 @@ def export_host_key_unencrypted_wrapper(
     key_result = read_host_key(store, host_id)
     if isinstance(key_result, Failure):
         return Failure(f"Failed to load host key: {key_result.error}")
-    
+
     private_key = key_result.unwrap()
-    
+
     # Export the unencrypted key
     if out_path:
         # Export to file
@@ -619,7 +670,7 @@ def export_host_key_unencrypted_wrapper(
         export_result = export_unencrypted_key(private_key, out_file_path)
         if isinstance(export_result, Failure):
             return Failure(f"Failed to export unencrypted key: {export_result.error}")
-            
+
         console.print(f"✅ Unencrypted key exported to [bold]{out_file_path}[/bold]")
     else:
         # Print to console
@@ -629,16 +680,11 @@ def export_host_key_unencrypted_wrapper(
             encryption_algorithm=NoEncryption(),
         )
         console.print(key_bytes.decode("utf-8"))
-        
+
     return Success(None)
 
 
-def deploy_host(
-    ctx: Context,
-    host_id: str, 
-    config: "models.Config", 
-    store: "models.Store"
-) -> Result[None, str]:
+def deploy_host(ctx: Context, host_id: str, config: "models.Config", store: "models.Store") -> Result[None, str]:
     """Run the deployment script for a host.
 
     Args:
@@ -654,54 +700,52 @@ def deploy_host(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
-        
+
     # Get configurations from the Config object
     hosts_config = config.hosts_config
-    
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     # Find host config in the dictionary
     if host_id not in hosts_config:
         return Failure(f"Host {host_id} not found in hosts configuration")
-    
+
     host_config = hosts_config[host_id]
-    
+
     # Check if deployment command is configured
     if host_config.deploy is None or not host_config.deploy.command:
         return Failure(f"No deployment command configured for host {host_id}")
-    
+
     deploy_command = host_config.deploy.command
-    
+
     # Load host certificate and key
     cert_result = read_host_cert(store, host_id)
     if isinstance(cert_result, Failure):
         return Failure(f"Failed to load host certificate: {cert_result.error}")
     cert = cert_result.unwrap()
-    
+
     key_result = read_host_key(store, host_id)
     if isinstance(key_result, Failure):
         return Failure(f"Failed to load host key: {key_result.error}")
     private_key = key_result.unwrap()
-    
+
     # Run deployment command
     console.print(f"Running deployment command for [bold]{host_id}[/bold]...")
-    deploy_result = deploy(deploy_command, cert, private_key)
+    deploy_result = run_deploy_command(deploy_command, cert, private_key)
     if isinstance(deploy_result, Failure):
         return Failure(f"Deployment failed: {deploy_result.error}")
-    
+
     console.print(f"✅ Deployment completed successfully for [bold]{host_id}[/bold]")
     console.print(f"   Command: {deploy_command}")
-    
+
     return Success(None)
 
 
-def deploy_all_hosts(
-    ctx: Context,
-    config: "models.Config", 
-    store: "models.Store"
-) -> Result[None, str]:
+def deploy_all_hosts(ctx: Context, config: "models.Config", store: "models.Store") -> Result[None, str]:
     """Deploy all host certificates.
 
     Args:
@@ -716,45 +760,51 @@ def deploy_all_hosts(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
 
     # Get configurations from Config object
     hosts_config = config.hosts_config
+    if hosts_config is None:
+        return Failure("Hosts configuration is not loaded")
+
     host_ids = list(hosts_config.keys())
-    
+
     if not host_ids:
         return Failure("No hosts found in configuration")
-    
+
     console.print(f"Deploying {len(host_ids)} hosts...")
-    
+
     success_count = 0
     error_count = 0
-    
+
     for host_id in host_ids:
         console.print(f"\nProcessing host: [bold]{host_id}[/bold]")
-        
+
         # Skip hosts without deployment configuration
         host_config = hosts_config[host_id]
         if host_config.deploy is None or not host_config.deploy.command:
             console.print(f"[yellow]Skipping {host_id} - no deployment command configured[/yellow]")
             continue
-            
+
         deploy_result = deploy_host(ctx, host_id, config, store)
-        
+
         if isinstance(deploy_result, Success):
             success_count += 1
         else:
             error_count += 1
-            console.print(f"[bold red]Error:[/bold red] {deploy_result.error if isinstance(deploy_result, Failure) else 'Unknown error'}")
-    
+            console.print(
+                "[bold red]Error:[/bold red] "
+                f"{deploy_result.error if isinstance(deploy_result, Failure) else 'Unknown error'}"
+            )
+
     # Print summary
     console.print(f"\n✅ Successfully deployed {success_count} certificates")
     if error_count > 0:
         console.print(f"❌ Failed to deploy {error_count} certificates")
-    
+
     return Success(None)
 
 
@@ -777,7 +827,7 @@ def get_certificates_list_dict(
     # Make sure store is unlocked
     if not store.unlocked:
         return Failure("Store must be unlocked")
-    
+
     # Load CA certificate
     ca_cert_result = read_ca_cert(store)
     if isinstance(ca_cert_result, Failure):
@@ -788,11 +838,11 @@ def get_certificates_list_dict(
     ca_not_before = ca_cert.not_valid_before
     ca_not_after = ca_cert.not_valid_after
     ca_serial = format(ca_cert.serial_number, "x")
-    
+
     # Calculate days until CA expiration
     now = datetime.datetime.now(datetime.UTC)
     ca_days_remaining = (ca_not_after.replace(tzinfo=datetime.UTC) - now).days
-    
+
     # Prepare CA info for result
     ca_info = {
         "serial": ca_serial,
@@ -800,67 +850,66 @@ def get_certificates_list_dict(
         "not_after": ca_not_after.isoformat(),
         "days_remaining": ca_days_remaining,
     }
-    
+
     # List host directories
     hosts_list_result = store_list_hosts(store)
     if isinstance(hosts_list_result, Failure):
         return Failure(f"Failed to list hosts: {hosts_list_result.error}")
     host_ids = hosts_list_result.unwrap()
-    
+
     # Build filtered host list
     filtered_hosts = []
-    
+
     for host_id in host_ids:
         # Get host certificate
         cert_result = read_host_cert(store, host_id)
         if isinstance(cert_result, Failure):
             # Skip hosts with certificate read errors
             continue
-            
+
         cert = cert_result.unwrap()
         not_before = cert.not_valid_before
         not_after = cert.not_valid_after
         serial = format(cert.serial_number, "x")
-        
+
         # Calculate days until expiration
         days_remaining = (not_after.replace(tzinfo=datetime.UTC) - now).days
-        
+
         # Apply filters
         if expired and days_remaining >= 0:
             continue
-            
+
         if expiring_days is not None and days_remaining > expiring_days:
             continue
-            
+
         # Create fingerprint
         fingerprint = cert.fingerprint(hashes.SHA256()).hex()
         fingerprint = f"SHA256:{fingerprint}"
-            
+
         host_info = {
             "host_id": host_id,
             "serial": serial,
             "not_before": not_before.isoformat(),
             "not_after": not_after.isoformat(),
             "days_remaining": days_remaining,
-            "fingerprint": fingerprint
+            "fingerprint": fingerprint,
         }
-        
+
         filtered_hosts.append(host_info)
-    
+
     # Return full data structure
-    return Success({
-        "ca": ca_info,
-        "hosts": filtered_hosts,
-        "total": len(filtered_hosts),
-        "filters": {"expired": expired, "expiring_days": expiring_days},
-    })
+    return Success(
+        {
+            "ca": ca_info,
+            "hosts": filtered_hosts,
+            "total": len(filtered_hosts),
+            "filters": {"expired": expired, "expiring_days": expiring_days},
+        }
+    )
 
 
 def list_certificates(
-    ctx: Context,
-    store: "models.Store", 
-    expired: bool = False, 
-    expiring_days: int | None = None
+    ctx: Context, store: "models.Store", expired: bool = False, expiring_days: int | None = None
 ) -> Result[None, str]:
     """List certificates with their expiration dates.
 
@@ -877,22 +926,22 @@ def list_certificates(
 
     """
     console = ctx.obj["console"]
-    
-    # Get certificates list as dictionary 
+
+    # Get certificates list as dictionary
     result = get_certificates_list_dict(store, expired, expiring_days)
     if isinstance(result, Failure):
         return result
-    
+
     data = result.unwrap()
     ca_info = data["ca"]
     hosts = data["hosts"]
-    
+
     # Display CA information
     ca_table = Table(title="CA Certificate")
     ca_table.add_column("Serial")
     ca_table.add_column("Expiration Date")
     ca_table.add_column("Days Remaining")
-    
+
     # Format CA days remaining with color
     ca_days_remaining = ca_info["days_remaining"]
     days_formatted = ""
@@ -904,20 +953,16 @@ def list_certificates(
         days_formatted = f"[bold yellow]{ca_days_remaining}[/bold yellow]"
     else:
         days_formatted = str(ca_days_remaining)
-        
-    ca_table.add_row(
-        ca_info["serial"],
-        ca_info["not_after"],
-        days_formatted
-    )
-    
+
+    ca_table.add_row(ca_info["serial"], ca_info["not_after"], days_formatted)
+
     console.print(ca_table)
-    
+
     # Check if we have any hosts
     if not hosts:
         console.print("\nNo host certificates match the criteria")
         return Success(None)
-        
+
     # Host table
     host_table = Table(title="Host Certificates")
     host_table.add_column("Host ID")
@@ -925,10 +970,10 @@ def list_certificates(
     host_table.add_column("Expiration Date")
     host_table.add_column("Days Remaining")
     host_table.add_column("Fingerprint")
-    
+
     # Sort hosts by name
     sorted_hosts = sorted(hosts, key=lambda x: x["host_id"])
-    
+
     for host in sorted_hosts:
         # Format days remaining with color
         days = host["days_remaining"]
@@ -941,26 +986,16 @@ def list_certificates(
             days_str = f"[bold yellow]{days}[/bold yellow]"
         else:
             days_str = str(days)
-            
-        host_table.add_row(
-            host["host_id"],
-            host["serial"],
-            host["not_after"],
-            days_str,
-            host["fingerprint"]
-        )
-        
+
+        host_table.add_row(host["host_id"], host["serial"], host["not_after"], days_str, host["fingerprint"])
+
     console.print("\n")
     console.print(host_table)
-    
+
     return Success(None)
 
 
-def clean_certificates(
-    ctx: Context,
-    config: "models.Config",
-    store: "models.Store"
-) -> Result[None, str]:
+def clean_certificates(ctx: Context, config: "models.Config", store: "models.Store") -> Result[None, str]:
     """Remove host folders that are no longer in the configuration.
 
     Args:
@@ -975,16 +1010,16 @@ def clean_certificates(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked:
         return Failure("Store must be unlocked")
-    
+
     # Get configured hosts from config
     hosts_config = config.hosts_config
     configured_hosts = list(hosts_config.keys()) if hosts_config else []
-    
-    # Get existing host directories 
+
+    # Get existing host directories
     existing_hosts_result = store_list_hosts(store)
     if isinstance(existing_hosts_result, Failure):
         return Failure(f"Failed to list hosts: {existing_hosts_result.error}")
@@ -1018,13 +1053,13 @@ def clean_certificates(
     return Success(None)
 
 
-def get_host_info(hostname: str, store_path: str) -> Result[dict[str, Any], str]:
+def get_host_info(hostname: str, store: "models.Store") -> Result[dict[str, Any], str]:
     """Get detailed information about a host certificate.
 
     Args:
     ----
         hostname: Hostname to get info for
-        store_path: Path to the certificate store
+        store: Store object containing certificate information
 
     Returns:
     -------
@@ -1032,27 +1067,47 @@ def get_host_info(hostname: str, store_path: str) -> Result[dict[str, Any], str]
 
     """
     # Check if host exists
-    if not host_exists(store_path, hostname):
+    if not host_exists(store, hostname):
         return Failure(f"Host {hostname} not found in store")
 
     # Get host certificate
-    cert_result = read_host_cert(store_path, hostname)
+    cert_result = read_host_cert(store, hostname)
     if isinstance(cert_result, Failure):
         return Failure(f"Failed to load host certificate: {cert_result.error}")
 
-    cert_data = cert_result.unwrap()
-    cert_deserialize_result = deserialize_certificate(cert_data)
-    if isinstance(cert_deserialize_result, Failure):
-        return Failure(f"Failed to deserialize certificate: {cert_deserialize_result.error}")
+    cert = cert_result.unwrap()
+    if isinstance(cert, bytes):
+        cert_deserialize_result = deserialize_certificate(cert)
+        if isinstance(cert_deserialize_result, Failure):
+            return Failure(f"Failed to deserialize certificate: {cert_deserialize_result.error}")
+        cert = cert_deserialize_result.unwrap()
 
-    cert = cert_deserialize_result.unwrap()
+    # Extract information directly from the certificate
+    now = datetime.datetime.now(datetime.UTC)
+    expiry_date = cert.not_valid_after.replace(tzinfo=datetime.UTC)
+    days_remaining = (expiry_date - now).days
 
-    # Get host info from inventory
-    host_info_result = inventory_get_host_info(Path(store_path), hostname, cert)
-    if isinstance(host_info_result, Failure):
-        return Failure(f"Failed to get host info from inventory: {host_info_result.error}")
+    subject = cert.subject
+    subject_info = {}
 
-    host_info = host_info_result.unwrap()
+    for attr in subject:
+        attr_name = attr.oid._name
+        attr_value = attr.value
+        subject_info[attr_name] = attr_value
+
+    serial = format(cert.serial_number, "x")
+    fingerprint = cert.fingerprint(hashes.SHA256()).hex()
+    fingerprint = f"SHA256:{fingerprint}"
+
+    host_info = {
+        "host_id": hostname,
+        "serial": serial,
+        "subject": subject_info,
+        "not_before": cert.not_valid_before.isoformat(),
+        "not_after": cert.not_valid_after.isoformat(),
+        "days_remaining": days_remaining,
+        "fingerprint": fingerprint,
+    }
 
     return Success(host_info)
 
@@ -1082,7 +1137,7 @@ def process_csr(
 
     """
     console = ctx.obj["console"]
-    
+
     # Make sure store is unlocked
     if not store.unlocked or not store.password:
         return Failure("Store must be unlocked and have a password set")
@@ -1116,7 +1171,7 @@ def process_csr(
     if isinstance(cert_result, Failure):
         return Failure(f"Failed to load CA certificate: {cert_result.error}")
     ca_cert = cert_result.unwrap()
-    
+
     # Load the CA key
     key_result = read_ca_key(store)
     if isinstance(key_result, Failure):
@@ -1124,6 +1179,9 @@ def process_csr(
     ca_key = key_result.unwrap()
 
     # Get hash algorithm from config
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
+
     hash_algorithm = config.ca_config.hash_algorithm
 
     # Extract SANs from CSR
@@ -1190,6 +1248,10 @@ def process_csr(
         elif attr.oid == NameOID.EMAIL_ADDRESS:
             subject_identity.email = attr_value
 
+    # Check if CA config exists
+    if config.ca_config is None:
+        return Failure("CA configuration is not loaded")
+
     # Create CA object
     ca_obj = CA(
         ca_config=config.ca_config,
@@ -1219,7 +1281,7 @@ def process_csr(
         try:
             # Ensure parent directory exists
             out_file_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Save the certificate
             with open(out_file_path, "wb") as f:
                 f.write(cert.public_bytes(Encoding.PEM))

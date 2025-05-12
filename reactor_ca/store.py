@@ -496,7 +496,7 @@ def change_password(store: Store, new_password: str) -> Result[Store, str]:
 
     try:
         # Process each key file
-        for key_path, current_host_id in key_files:
+        for _, current_host_id in key_files:
             # Read the key (automatically decrypted with store.password)
             if current_host_id is None:
                 # CA key

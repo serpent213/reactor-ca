@@ -1,12 +1,15 @@
 """Configuration operations for ReactorCA."""
 
 import json
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 from rich.console import Console
 from ruamel.yaml import YAML
+from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.representer import Representer
 
 from reactor_ca.defaults import (
     get_default_ca_config,
@@ -31,7 +34,19 @@ yaml.indent(mapping=2, sequence=4, offset=2)
 
 
 # Add custom representers for enum types
-def enum_representer(dumper, data):
+def enum_representer(dumper: Representer, data: Enum) -> ScalarNode:
+    """Convert enum to string YAML representation.
+
+    Args:
+    ----
+        dumper: YAML dumper
+        data: Enum data to convert
+
+    Returns:
+    -------
+        YAML scalar node
+
+    """
     return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
 
 

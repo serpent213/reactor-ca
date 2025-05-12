@@ -12,7 +12,9 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from rich.console import Console
 
-from reactor_ca.store import Store
+from reactor_ca.paths import get_store_host_cert_path, get_store_host_key_path
+from reactor_ca.result import Failure
+from reactor_ca.store import Store, read_host_key
 
 # Constants for expiration warnings
 EXPIRY_CRITICAL = 30  # days
@@ -107,7 +109,8 @@ def run_deploy_command(store: "Store", hostname: str, command: str) -> bool:
         modified_command = command
 
         # Get standard paths for this host
-        _host_dir, cert_path, key_path = get_host_paths(store, hostname)
+        cert_path = get_store_host_cert_path(store, hostname)
+        key_path = get_store_host_key_path(store, hostname)
 
         # Replace ${cert} with certificate path if it exists
         if "${cert}" in command and cert_path.exists():
@@ -116,14 +119,17 @@ def run_deploy_command(store: "Store", hostname: str, command: str) -> bool:
         # Handle ${private_key} if it exists in the command
         if "${private_key}" in command and key_path.exists():
             # Get password
-            if not store.is_unlocked:
-                if not store.unlock():
-                    console.print("[bold red]Error:[/bold red] Cannot decrypt private key - no password provided")
-                    return False
+            if not store.unlocked:
+                console.print("[bold red]Error:[/bold red] Cannot decrypt private key - store is not unlocked")
+                return False
 
             try:
                 # Load the private key
-                private_key = store.load_host_key(hostname)
+                key_result = read_host_key(store, hostname)
+                if isinstance(key_result, Failure):
+                    console.print(f"[bold red]Error:[/bold red] Failed to load private key: {key_result.error}")
+                    return False
+                private_key = key_result.unwrap()
                 if not private_key:
                     console.print(f"[bold red]Error:[/bold red] Failed to load private key for {hostname}")
                     return False

@@ -10,7 +10,7 @@ from typing import Any
 
 from click import Context
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import PublicFormat
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
 from reactor_ca.models import CACertificateParams, Config, Store
@@ -31,6 +31,7 @@ def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
 
     Args:
     ----
+        ctx: Click context
         config: Config object with loaded configurations
         store: Store object (already unlocked)
 
@@ -249,8 +250,8 @@ def import_ca(
     public_key_cert = cert.public_key()
     public_key = private_key.public_key()
 
-    if public_key_cert.public_bytes(PublicFormat.SubjectPublicKeyInfo) != public_key.public_bytes(
-        PublicFormat.SubjectPublicKeyInfo
+    if public_key_cert.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo) != public_key.public_bytes(
+        Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
     ):
         return Failure("Certificate and key do not match")
 
