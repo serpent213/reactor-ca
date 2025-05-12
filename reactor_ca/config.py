@@ -29,11 +29,19 @@ from reactor_ca.paths import (
     get_hosts_config_path,
 )
 from reactor_ca.result import Failure, Result, Success
+from reactor_ca.types import KeyAlgorithm, HashAlgorithm
 
 CONSOLE = Console()
 yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
+
+# Add custom representers for enum types
+def enum_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', str(data.value))
+
+yaml.representer.add_representer(KeyAlgorithm, enum_representer)
+yaml.representer.add_representer(HashAlgorithm, enum_representer)
 
 
 def create(config_path: Path) -> Result[Config, str]:

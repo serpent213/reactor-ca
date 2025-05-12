@@ -26,9 +26,7 @@ from reactor_ca.x509_crypto import (create_ca_certificate,
                                     ensure_key_algorithm, generate_key)
 
 
-def issue_ca(
-    ctx: Context, config: "Config", store: "Store"
-) -> Result[None, str]:
+def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str]:
     """Issue a CA certificate. Creates one if it doesn't exist, renews if it does.
 
     Args:
@@ -99,9 +97,7 @@ def issue_ca(
     return Success(None)
 
 
-def rekey_ca(
-    config: "Config", store: "Store"
-) -> Result[dict[str, Any], str]:
+def rekey_ca(config: "Config", store: "Store") -> Result[dict[str, Any], str]:
     """Generate a new key and renew the CA certificate.
 
     Args:

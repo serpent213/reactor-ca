@@ -16,17 +16,18 @@ from rich.table import Table
 
 from reactor_ca import __version__
 from reactor_ca.cli_ca import get_ca_info, import_ca, issue_ca, rekey_ca
-from reactor_ca.config import create as create_config
-from reactor_ca.config import init as init_config
-from reactor_ca.config import validate as validate_config
-from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
-from reactor_ca.cli_host import clean_certificates, deploy_all_hosts, deploy_host
+from reactor_ca.cli_host import (clean_certificates, deploy_all_hosts,
+                                 deploy_host)
 from reactor_ca.cli_host import \
     export_host_key_unencrypted_wrapper as export_host_key_unencrypted
 from reactor_ca.cli_host import import_host_key as import_host_key_func
 from reactor_ca.cli_host import (issue_all_certificates, issue_certificate,
-                             list_certificates, process_csr, rekey_all_hosts,
-                             rekey_host)
+                                 list_certificates, process_csr,
+                                 rekey_all_hosts, rekey_host)
+from reactor_ca.config import create as create_config
+from reactor_ca.config import init as init_config
+from reactor_ca.config import validate as validate_config
+from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
 from reactor_ca.models import Config, Store, ValidityConfig
 from reactor_ca.password import get_password
 from reactor_ca.paths import get_log_path, resolve_paths
@@ -37,7 +38,9 @@ from reactor_ca.store import init as init_store
 from reactor_ca.store import unlock
 
 
-def init_config_and_store(ctx: click.Context, mode: str) -> tuple[Config, Store | None]:
+def init_config_and_store(
+    ctx: click.Context, mode: str, ca_init: bool = False
+) -> tuple[Config, Store | None]:
     """Initialize config and store based on the requested mode, initialize logger.
 
     Args:
@@ -91,18 +94,23 @@ def init_config_and_store(ctx: click.Context, mode: str) -> tuple[Config, Store 
                 password_file=config.ca_config.password.file,
                 env_var=config.ca_config.password.env_var,
                 prompt_message="Enter CA master password: ",
-                confirm=False,
+                confirm=ca_init,
             )
             if isinstance(password_result, Failure):
                 console.print(f"[bold red]Error:[/bold red] {password_result.error}")
                 ctx.exit(1)
+            password = password_result.unwrap()
 
             # Unlock the store
-            unlock_result = unlock(store, password_result.unwrap())
-            if isinstance(unlock_result, Failure):
-                console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
-                ctx.exit(1)
-            store = unlock_result.value
+            if ca_init:
+                store.unlocked = True
+                store.password = password
+            else:
+                unlock_result = unlock(store, password)
+                if isinstance(unlock_result, Failure):
+                    console.print(f"[bold red]Error:[/bold red] {unlock_result.error}")
+                    ctx.exit(1)
+                store = unlock_result.value
 
     return config, store
 
@@ -211,7 +219,7 @@ def ca(ctx: click.Context) -> None:
 def ca_issue(ctx: click.Context) -> None:
     """Create or renew a CA certificate."""
     console = ctx.obj["console"]
-    config, store = init_config_and_store(ctx, "unlock")
+    config, store = init_config_and_store(ctx, "unlock", ca_init=True)
     assert store is not None
 
     # Issue CA certificate
@@ -241,10 +249,9 @@ def ca_import(
     ctx: click.Context, cert: str, key: str, key_password: str | None = None
 ) -> None:
     """Import an existing CA."""
-    # Initialize config and store with unlock
-    config, store = init_config_and_store(ctx, "unlock")
-    assert store is not None  # for type checking
     console = ctx.obj["console"]
+    config, store = init_config_and_store(ctx, "unlock", ca_init=True)
+    assert store is not None  # for type checking
 
     # Import CA
     result = import_ca(Path(cert), Path(key), config, store, key_password)
