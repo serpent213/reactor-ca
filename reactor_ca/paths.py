@@ -1,194 +1,541 @@
 """Path management for ReactorCA."""
 
-import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import overload
 
-if TYPE_CHECKING:
-    from reactor_ca.models import Config
-
-# Environment variable names
-ENV_ROOT_DIR = "REACTOR_CA_ROOT"
-ENV_CONFIG_DIR = "REACTOR_CA_CONFIG_DIR"
-ENV_STORE_DIR = "REACTOR_CA_STORE_DIR"
+from reactor_ca.defaults import DEFAULT_DIR_ROOT, DEFAULT_SUBDIR_CONFIG, DEFAULT_SUBDIR_STORE
+from reactor_ca.models import Config, Store
 
 # Schema directory is always relative to the code, not user configuration
 SCHEMAS_DIR = Path(__file__).parent / "schemas"
 
 
 def resolve_paths(
-    config_dir: str | None = None, store_dir: str | None = None, root_dir: str | None = None
+    root_dir: Path | None = None,
+    config_dir: Path | None = None,
+    store_dir: Path | None = None,
 ) -> tuple[Path, Path]:
     """Resolve configuration and store paths.
 
     The resolution order is:
     1. Explicitly provided arguments
-    2. Environment variables
-    3. Default values (current directory with standard subdirectories)
+    2. Default values (current directory with standard subdirectories)
 
     Args:
     ----
+        root_dir: Optional root directory (used if config_dir or store_dir not provided)
         config_dir: Optional path to configuration directory
         store_dir: Optional path to store directory
-        root_dir: Optional root directory (used if config_dir or store_dir not provided)
 
     Returns:
     -------
         Tuple of (config_dir, store_dir) as Path objects
 
     """
-    # Resolve root directory
-    root = Path(root_dir) if root_dir else Path(os.environ.get(ENV_ROOT_DIR, "."))
-
-    # Resolve config and store directories
-    config = Path(config_dir) if config_dir else Path(os.environ.get(ENV_CONFIG_DIR, root / "config"))
-    store = Path(store_dir) if store_dir else Path(os.environ.get(ENV_STORE_DIR, root / "store"))
-
+    root = root_dir if root_dir else DEFAULT_DIR_ROOT
+    config = config_dir if config_dir else Path(root) / DEFAULT_SUBDIR_CONFIG
+    store = store_dir if store_dir else Path(root) / DEFAULT_SUBDIR_STORE
     return config, store
 
 
-# Config
+# Helper functions for path construction
 
 
-def get_ca_config_path(config: "Config") -> Path:
+def _get_store_path(store_or_path: Path | Store) -> Path:
+    """Extract store path from Path or Store object.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    Returns:
+    -------
+        Store path as a Path object
+
+    """
+    if isinstance(store_or_path, Path):
+        return store_or_path
+    elif isinstance(store_or_path, Store):
+        return store_or_path.path
+    else:
+        raise TypeError(f"Expected Path or Store, got {type(store_or_path)}")
+
+
+def _get_config_path(config_or_path: Path | Config) -> Path:
+    """Extract config path from Path or Config object.
+
+    Args:
+    ----
+        config_or_path: Path object or Config object
+
+    Returns:
+    -------
+        Config path as a Path object
+
+    """
+    if isinstance(config_or_path, Path):
+        return config_or_path
+    elif isinstance(config_or_path, Config):
+        return config_or_path.config_path
+    else:
+        raise TypeError(f"Expected Path or Config, got {type(config_or_path)}")
+
+
+# Config directory functions
+
+
+@overload
+def get_ca_config_path(config_or_path: Config) -> Path:
+    ...
+
+
+@overload
+def get_ca_config_path(config_or_path: Path) -> Path:
+    ...
+
+
+def get_ca_config_path(config_or_path: Path | Config) -> Path:
     """Get the CA config file path.
 
     Args:
     ----
-        config: Config object containing path information
+        config_or_path: Path object or Config object
 
     """
-    return Path(config.config_path) / "ca.yaml"
+    return _get_config_path(config_or_path) / "ca.yaml"
 
 
-def get_hosts_config_path(config: "Config") -> Path:
+@overload
+def get_hosts_config_path(config_or_path: Config) -> Path:
+    ...
+
+
+@overload
+def get_hosts_config_path(config_or_path: Path) -> Path:
+    ...
+
+
+def get_hosts_config_path(config_or_path: Path | Config) -> Path:
     """Get the hosts config file path.
 
     Args:
     ----
-        config: Config object containing path information
+        config_or_path: Path object or Config object
 
     """
-    return Path(config.config_path) / "hosts.yaml"
+    return _get_config_path(config_or_path) / "hosts.yaml"
 
 
-def ensure_dirs(config: "Config") -> None:
-    """Create all necessary directories.
+# Store directory functions
+
+
+@overload
+def get_ca_dir(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_ca_dir(store_or_path: Path) -> Path:
+    ...
+
+
+def get_ca_dir(store_or_path: Path | Store) -> Path:
+    """Get the CA directory for a Store.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    config_dir = Path(config.config_path)
-    store_dir = Path(config.store_path)
-
-    config_dir.mkdir(parents=True, exist_ok=True)
-    store_dir.mkdir(parents=True, exist_ok=True)
-    get_ca_dir(config).mkdir(parents=True, exist_ok=True)
-    get_hosts_dir(config).mkdir(parents=True, exist_ok=True)
+    return _get_store_path(store_or_path) / "ca"
 
 
-# Store
+@overload
+def get_hosts_dir(store_or_path: Store) -> Path:
+    ...
 
 
-def get_ca_dir(config: "Config") -> Path:
-    """Get the CA directory.
+@overload
+def get_hosts_dir(store_or_path: Path) -> Path:
+    ...
+
+
+def get_hosts_dir(store_or_path: Path | Store) -> Path:
+    """Get the hosts directory for a Store.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    return Path(config.store_path) / "ca"
+    return _get_store_path(store_or_path) / "hosts"
 
 
-def get_hosts_dir(config: "Config") -> Path:
-    """Get the hosts directory.
-
-    Args:
-    ----
-        config: Config object containing path information
-
-    """
-    return Path(config.store_path) / "hosts"
+@overload
+def get_inventory_path(store_or_path: Store) -> Path:
+    ...
 
 
-def get_inventory_path(config: "Config") -> Path:
+@overload
+def get_inventory_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_inventory_path(store_or_path: Path | Store) -> Path:
     """Get the inventory file path.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    return Path(config.store_path) / "inventory.yaml"
+    return _get_store_path(store_or_path) / "inventory.yaml"
 
 
-def get_ca_cert_path(config: "Config") -> Path:
+@overload
+def get_ca_cert_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_ca_cert_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_ca_cert_path(store_or_path: Path | Store) -> Path:
     """Get the CA certificate file path.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    return get_ca_dir(config) / "ca.crt"
+    return get_ca_dir(store_or_path) / "ca.crt"
 
 
-def get_ca_key_path(config: "Config") -> Path:
+@overload
+def get_ca_key_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_ca_key_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_ca_key_path(store_or_path: Path | Store) -> Path:
     """Get the CA key file path.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    return get_ca_dir(config) / "ca.key.enc"
+    return get_ca_dir(store_or_path) / "ca.key.enc"
 
 
-def get_ca_crl_path(config: "Config") -> Path:
+@overload
+def get_ca_crl_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_ca_crl_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_ca_crl_path(store_or_path: Path | Store) -> Path:
     """Get the CA CRL file path.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
 
     """
-    return get_ca_dir(config) / "ca.crl"
+    return get_ca_dir(store_or_path) / "ca.crl"
 
 
-def get_host_dir(config: "Config", hostname: str) -> Path:
+@overload
+def get_host_dir(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_host_dir(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_host_dir(store_or_path: Path | Store, hostname: str) -> Path:
     """Get directory for a specific host.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
         hostname: The name of the host
 
     """
-    return get_hosts_dir(config) / hostname
+    return get_hosts_dir(store_or_path) / hostname
 
 
-def get_host_cert_path(config: "Config", hostname: str) -> Path:
+@overload
+def get_host_cert_path(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_host_cert_path(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_host_cert_path(store_or_path: Path | Store, hostname: str) -> Path:
     """Get certificate path for a specific host.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
         hostname: The name of the host
 
     """
-    return get_host_dir(config, hostname) / "cert.crt"
+    return get_host_dir(store_or_path, hostname) / "cert.crt"
 
 
-def get_host_key_path(config: "Config", hostname: str) -> Path:
+@overload
+def get_host_key_path(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_host_key_path(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_host_key_path(store_or_path: Path | Store, hostname: str) -> Path:
     """Get key path for a specific host.
 
     Args:
     ----
-        config: Config object containing path information
+        store_or_path: Path object or Store object
         hostname: The name of the host
 
     """
-    return get_host_dir(config, hostname) / "cert.key.enc"
+    return get_host_dir(store_or_path, hostname) / "cert.key.enc"
+
+
+# Store directory functions
+
+
+@overload
+def get_store_ca_dir(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_ca_dir(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_ca_dir(store_or_path: Path | Store) -> Path:
+    """Get the CA directory for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return _get_store_path(store_or_path) / "ca"
+
+
+@overload
+def get_store_hosts_dir(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_hosts_dir(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_hosts_dir(store_or_path: Path | Store) -> Path:
+    """Get the hosts directory for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return _get_store_path(store_or_path) / "hosts"
+
+
+@overload
+def get_store_inventory_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_inventory_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_inventory_path(store_or_path: Path | Store) -> Path:
+    """Get the inventory file path for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return _get_store_path(store_or_path) / "inventory.yaml"
+
+
+@overload
+def get_store_ca_cert_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_ca_cert_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_ca_cert_path(store_or_path: Path | Store) -> Path:
+    """Get the CA certificate file path for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return get_store_ca_dir(store_or_path) / "ca.crt"
+
+
+@overload
+def get_store_ca_key_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_ca_key_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_ca_key_path(store_or_path: Path | Store) -> Path:
+    """Get the CA key file path for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return get_store_ca_dir(store_or_path) / "ca.key.enc"
+
+
+@overload
+def get_store_ca_crl_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_store_ca_crl_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_store_ca_crl_path(store_or_path: Path | Store) -> Path:
+    """Get the CA CRL file path for a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    """
+    return get_store_ca_dir(store_or_path) / "ca.crl"
+
+
+@overload
+def get_store_host_dir(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_store_host_dir(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_store_host_dir(store_or_path: Path | Store, hostname: str) -> Path:
+    """Get directory for a specific host in a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+        hostname: The name of the host
+
+    """
+    return get_store_hosts_dir(store_or_path) / hostname
+
+
+@overload
+def get_store_host_cert_path(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_store_host_cert_path(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_store_host_cert_path(store_or_path: Path | Store, hostname: str) -> Path:
+    """Get certificate path for a specific host in a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+        hostname: The name of the host
+
+    """
+    return get_store_host_dir(store_or_path, hostname) / "cert.crt"
+
+
+@overload
+def get_store_host_key_path(store_or_path: Store, hostname: str) -> Path:
+    ...
+
+
+@overload
+def get_store_host_key_path(store_or_path: Path, hostname: str) -> Path:
+    ...
+
+
+def get_store_host_key_path(store_or_path: Path | Store, hostname: str) -> Path:
+    """Get key path for a specific host in a Store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+        hostname: The name of the host
+
+    """
+    return get_store_host_dir(store_or_path, hostname) / "cert.key.enc"
+
+
+@overload
+def get_log_path(store_or_path: Store) -> Path:
+    ...
+
+
+@overload
+def get_log_path(store_or_path: Path) -> Path:
+    ...
+
+
+def get_log_path(store_or_path: Path | Store) -> Path:
+    """Get the log file path in the store.
+
+    Args:
+    ----
+        store_or_path: Path object or Store object
+
+    Returns:
+    -------
+        Path to the log file
+
+    """
+    return _get_store_path(store_or_path) / "ca.log"

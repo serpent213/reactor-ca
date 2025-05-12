@@ -44,7 +44,7 @@ def get_password(
 
     # Try to get password from file if specified
     if password_file:
-        file_result = read_password_from_file(Path(password_file))
+        file_result = _read_password_from_file(Path(password_file))
         if isinstance(file_result, Success):
             password = file_result.unwrap()
             if len(password) >= min_length:
@@ -75,7 +75,7 @@ def get_password(
         return Failure(f"Failed to get password: {str(e)}")
 
 
-def read_password_from_file(password_file: Path) -> Result[str, str]:
+def _read_password_from_file(password_file: Path) -> Result[str, str]:
     """Read password from a file.
 
     Args:

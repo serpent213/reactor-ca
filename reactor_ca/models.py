@@ -1,6 +1,5 @@
 """Data models and transformations for ReactorCA."""
 
-import datetime
 import ipaddress
 import re
 from dataclasses import dataclass, field
@@ -9,19 +8,20 @@ from typing import Any, cast
 from urllib.parse import urlparse
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.x509 import GeneralName, ObjectIdentifier
-from cryptography.x509.general_name import (
-    DirectoryName,
-    OtherName,
-    RegisteredID,
-    UniformResourceIdentifier,
-)
+from cryptography.x509.general_name import DirectoryName, OtherName, RegisteredID, UniformResourceIdentifier
 from cryptography.x509.oid import NameOID
 
-from reactor_ca.paths import get_host_cert_path, get_host_dir, get_host_key_path
+from reactor_ca.defaults import (
+    DEFAULT_CA_HASH_ALGORITHM,
+    DEFAULT_CA_KEY_ALGORITHM,
+    DEFAULT_CA_VALIDITY_DAYS,
+    DEFAULT_HOST_HASH_ALGORITHM,
+    DEFAULT_HOST_KEY_ALGORITHM,
+    DEFAULT_HOST_VALIDITY_DAYS,
+    DEFAULT_PASSWORD_MIN_LENGTH,
+)
 from reactor_ca.result import Failure, Result, Success
 
 # Config
@@ -339,15 +339,13 @@ class ValidityConfig:
     days: int | None = None
     years: int | None = None
 
-    def to_days(self: "ValidityConfig") -> int:
+    def to_days(self: "ValidityConfig") -> Result[int, str]:
         """Convert validity configuration to days."""
         if self.days is not None:
-            return self.days
-        elif self.years is not None:
-            return self.years * 365
-        else:
-            # Default to 1 year if neither is specified
-            return 365
+            return Success(self.days)
+        if self.years is not None:
+            return Success(self.years * 365)
+        return Failure("No validity specified")
 
 
 @dataclass
@@ -370,8 +368,8 @@ class PasswordConfig:
     """Configuration for CA password handling."""
 
     min_length: int
-    file: str = ""
-    env_var: str = "REACTOR_CA_PASSWORD"
+    file: str | None = None
+    env_var: str | None = None
 
 
 @dataclass
@@ -379,23 +377,23 @@ class CAConfig:
     """Configuration for the Certificate Authority."""
 
     common_name: str
-    organization: str
-    organization_unit: str
-    country: str
-    state: str
-    locality: str
-    email: str
-    validity: ValidityConfig
-    password: PasswordConfig
-    key_algorithm: str
-    hash_algorithm: str
+    organization: str | None = None
+    organization_unit: str | None = None
+    country: str | None = None
+    state: str | None = None
+    locality: str | None = None
+    email: str | None = None
+    validity: ValidityConfig = field(default_factory=lambda: ValidityConfig(days=DEFAULT_CA_VALIDITY_DAYS))
+    password: PasswordConfig = field(default_factory=lambda: PasswordConfig(min_length=DEFAULT_PASSWORD_MIN_LENGTH))
+    key_algorithm: str = DEFAULT_CA_KEY_ALGORITHM
+    hash_algorithm: str = DEFAULT_CA_HASH_ALGORITHM
 
 
 @dataclass
 class HostConfig:
     """Configuration for a host certificate."""
 
-    name: str
+    host_id: str
     common_name: str
     organization: str | None = None
     organization_unit: str | None = None
@@ -404,11 +402,11 @@ class HostConfig:
     locality: str | None = None
     email: str | None = None
     alternative_names: AlternativeNames | None = None
-    validity: ValidityConfig = field(default_factory=ValidityConfig)
+    validity: ValidityConfig = field(default_factory=lambda: ValidityConfig(days=DEFAULT_HOST_VALIDITY_DAYS))
+    key_algorithm: str = DEFAULT_HOST_KEY_ALGORITHM
+    hash_algorithm: str = DEFAULT_HOST_HASH_ALGORITHM
     export: ExportConfig | None = None
     deploy: DeploymentConfig | None = None
-    key_algorithm: str | None = None
-    hash_algorithm: str | None = None
 
 
 # Core Runtime Entities
@@ -418,17 +416,15 @@ class HostConfig:
 class Config:
     """Represents the runtime configuration."""
 
-    config_path: str
-    store_path: str
-    ca_config: CAConfig
-    hosts_config: dict[str, HostConfig]
+    config_path: Path
+    ca_config: CAConfig | None = None
+    hosts_config: dict[str, HostConfig] | None = None
 
 
 @dataclass
 class CA:
     """Represents the runtime Certificate Authority."""
 
-    config: Config
     ca_config: CAConfig
     cert: x509.Certificate
     key: PrivateKeyTypes
@@ -450,46 +446,17 @@ class Host:
 class CAInventoryEntry:
     """CA entry in the certificate inventory."""
 
-    serial: str
-    not_before: datetime.datetime
-    not_after: datetime.datetime
-    fingerprint_sha256: str
     renewal_count: int = 0
     rekey_count: int = 0
-
-    @classmethod
-    def from_certificate(cls: type["CAInventoryEntry"], cert: x509.Certificate) -> "CAInventoryEntry":
-        """Create CAInventoryEntry from an X.509 CA certificate."""
-        return cls(
-            serial=format(cert.serial_number, "x"),
-            not_before=cert.not_valid_before,
-            not_after=cert.not_valid_after,
-            fingerprint_sha256="SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-        )
 
 
 @dataclass
 class InventoryEntry:
     """Entry in the certificate inventory."""
 
-    short_name: str
-    serial: str
-    not_before: datetime.datetime
-    not_after: datetime.datetime
-    fingerprint_sha256: str
+    host_id: str
     renewal_count: int = 0
     rekey_count: int = 0
-
-    @classmethod
-    def from_certificate(cls: type["InventoryEntry"], short_name: str, cert: x509.Certificate) -> "InventoryEntry":
-        """Create InventoryEntry from an X.509 certificate."""
-        return cls(
-            short_name=short_name,
-            serial=format(cert.serial_number, "x"),
-            not_before=cert.not_valid_before,
-            not_after=cert.not_valid_after,
-            fingerprint_sha256="SHA256:" + cert.fingerprint(hashes.SHA256()).hex(),
-        )
 
 
 @dataclass
@@ -504,40 +471,9 @@ class Inventory:
 class Store:
     """Top-level store entity."""
 
-    path: str
+    path: Path
     password: str | None = None
     unlocked: bool = False
-
-    def get_host_dir(self: "Store", hostname: str) -> Path:
-        """Get directory for a specific host."""
-        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
-        return get_host_dir(config, hostname)
-
-    def get_host_cert_path(self: "Store", hostname: str) -> Path:
-        """Get certificate path for a specific host."""
-        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
-        return get_host_cert_path(config, hostname)
-
-    def get_host_key_path(self: "Store", hostname: str) -> Path:
-        """Get key path for a specific host."""
-        config = Config(config_path="", store_path=self.path, ca_config=None, hosts_config={})  # type: ignore
-        return get_host_key_path(config, hostname)
-
-    @property
-    def is_unlocked(self: "Store") -> bool:
-        """Check if the store is unlocked."""
-        return self.unlocked
-
-    def unlock(self: "Store") -> bool:
-        """Unlock the store."""
-        return self.unlocked
-
-    def load_host_key(self: "Store", hostname: str) -> PrivateKeyTypes:
-        """Load a host's private key."""
-        key_path = self.get_host_key_path(hostname)
-        with open(key_path, "rb") as f:
-            key_data = f.read()
-            return load_pem_private_key(key_data, None if not self.password else self.password.encode("utf-8"))
 
 
 # Certificates
@@ -548,12 +484,12 @@ class SubjectIdentity:
     """Container for certificate subject identity (X.509 name) information."""
 
     common_name: str
-    organization: str = ""
-    organization_unit: str = ""
-    country: str = ""
-    state: str = ""
-    locality: str = ""
-    email: str = ""
+    organization: str | None = None
+    organization_unit: str | None = None
+    country: str | None = None
+    state: str | None = None
+    locality: str | None = None
+    email: str | None = None
 
     def to_x509_name(self: "SubjectIdentity") -> x509.Name:
         """Convert subject identity to x509.Name object."""
@@ -612,39 +548,35 @@ class SubjectIdentity:
         return cls.from_x509_name(cert.subject)
 
     @classmethod
-    def create_from_config(
-        cls: type["SubjectIdentity"], hostname: str, ca_config: CAConfig, host_config: HostConfig | None = None
+    def from_config(
+        cls: type["SubjectIdentity"],
+        ca_config: CAConfig,
+        host_config: HostConfig | None = None,
     ) -> Result["SubjectIdentity", str]:
-        """Create a SubjectIdentity from CA config and optional host config.
+        """Create a SubjectIdentity from CA config with fields optionally overridden by a host config.
 
         Args:
         ----
-            hostname: The hostname to use as common name
             ca_config: The CA configuration containing default values
             host_config: Optional host configuration that can override CA defaults
 
         Returns:
         -------
-            Result containing SubjectIdentity with fields from host_config or CA config or an error
+            Result containing SubjectIdentity with fields from host config or CA config or an error
 
         """
         try:
-            if not hostname:
-                return Failure("Hostname/common name is required")
-
             return Success(
                 cls(
-                    common_name=hostname,
-                    organization=host_config.organization
-                    if host_config and host_config.organization
-                    else ca_config.organization,
-                    organization_unit=host_config.organization_unit
-                    if host_config and host_config.organization_unit
-                    else ca_config.organization_unit,
-                    country=host_config.country if host_config and host_config.country else ca_config.country,
-                    state=host_config.state if host_config and host_config.state else ca_config.state,
-                    locality=host_config.locality if host_config and host_config.locality else ca_config.locality,
-                    email=host_config.email if host_config and host_config.email else ca_config.email,
+                    common_name=host_config.common_name if host_config else ca_config.common_name,
+                    organization=(host_config and host_config.organization) or ca_config.organization or None,
+                    organization_unit=(host_config and host_config.organization_unit)
+                    or ca_config.organization_unit
+                    or None,
+                    country=(host_config and host_config.country) or ca_config.country or None,
+                    state=(host_config and host_config.state) or ca_config.state or None,
+                    locality=(host_config and host_config.locality) or ca_config.locality or None,
+                    email=(host_config and host_config.email) or ca_config.email or None,
                 )
             )
         except Exception as err:
@@ -663,14 +595,16 @@ class CACertificateParams:
 
     @classmethod
     def from_ca_config(
-        cls: type["CACertificateParams"], ca_config: CAConfig, private_key: PrivateKeyTypes | None = None
+        cls: type["CACertificateParams"],
+        ca_config: CAConfig,
+        private_key: PrivateKeyTypes,
     ) -> Result["CACertificateParams", str]:
         """Create CACertificateParams from a CA configuration.
 
         Args:
         ----
             ca_config: CA configuration with subject details and validity
-            private_key: Optional private key to use. If None, one will be generated.
+            private_key: Private key to use
 
         Returns:
         -------
@@ -678,19 +612,15 @@ class CACertificateParams:
 
         """
         try:
-            # Create subject identity from CA config
-            subject_identity = SubjectIdentity(
-                common_name=ca_config.common_name,
-                organization=ca_config.organization,
-                organization_unit=ca_config.organization_unit,
-                country=ca_config.country,
-                state=ca_config.state,
-                locality=ca_config.locality,
-                email=ca_config.email,
-            )
+            subject_identity_result = SubjectIdentity.from_config(ca_config=ca_config)
+            if isinstance(subject_identity_result, Failure):
+                return subject_identity_result
+            subject_identity = subject_identity_result.unwrap()
 
-            # Calculate validity days from config
-            validity_days = ca_config.validity.to_days() if ca_config.validity else None
+            validity_days_result = ca_config.validity.to_days()
+            if isinstance(validity_days_result, Failure):
+                return validity_days_result
+            validity_days = validity_days_result.unwrap()
 
             return Success(
                 cls(
@@ -717,7 +647,10 @@ class CertificateParams:
 
     @classmethod
     def from_host_config(
-        cls: type["CertificateParams"], host_config: HostConfig, ca: CA, private_key: PrivateKeyTypes | None = None
+        cls: type["CertificateParams"],
+        host_config: HostConfig,
+        ca: CA,
+        private_key: PrivateKeyTypes | None = None,
     ) -> Result["CertificateParams", str]:
         """Create CertificateParams from a host configuration.
 
@@ -732,20 +665,17 @@ class CertificateParams:
             Result containing CertificateParams object with values from host config or an error
 
         """
-        # Create subject identity from CA config and host config
-        subject_identity_result = SubjectIdentity.create_from_config(
-            hostname=host_config.common_name, ca_config=ca.ca_config, host_config=host_config
-        )
-
-        if isinstance(subject_identity_result, Failure):
-            return subject_identity_result
-
-        subject_identity = subject_identity_result.unwrap()
-
-        # Calculate validity days from config
-        validity_days = host_config.validity.to_days() if host_config.validity else None
-
         try:
+            subject_identity_result = SubjectIdentity.from_config(ca_config=ca.ca_config, host_config=host_config)
+            if isinstance(subject_identity_result, Failure):
+                return subject_identity_result
+            subject_identity = subject_identity_result.unwrap()
+
+            validity_days_result = host_config.validity.to_days()
+            if isinstance(validity_days_result, Failure):
+                return validity_days_result
+            validity_days = validity_days_result.unwrap()
+
             return Success(
                 cls(
                     subject_identity=subject_identity,

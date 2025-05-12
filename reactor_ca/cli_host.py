@@ -13,36 +13,18 @@ if TYPE_CHECKING:
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
-from cryptography.hazmat.primitives.serialization import (
-    Encoding,
-    NoEncryption,
-    PrivateFormat,
-    load_pem_private_key,
-)
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, load_pem_private_key
 from cryptography.x509.general_name import DirectoryName, UniformResourceIdentifier
 from cryptography.x509.oid import NameOID
 
-from reactor_ca.ca import load_ca_key_cert
-from reactor_ca.config import load_config
-from reactor_ca.export_deploy import (
-    deploy_all_hosts as export_deploy_all_hosts,
-)
-from reactor_ca.export_deploy import (
-    deploy_host as export_deploy_host,
-)
-from reactor_ca.export_deploy import (
-    export_host_cert,
-    export_host_chain,
-    export_host_key_unencrypted_from_store,
-    run_deploy_command,
-)
-from reactor_ca.inventory import (
-    get_host_info as inventory_get_host_info,
-)
-from reactor_ca.inventory import (
-    read_inventory,
-    update_inventory_with_host_cert,
-)
+# from reactor_ca.export_deploy import deploy_all_hosts as export_deploy_all_hosts
+# from reactor_ca.export_deploy import deploy_host as export_deploy_host
+# from reactor_ca.export_deploy import (
+#     export_host_cert,
+#     export_host_chain,
+#     export_host_key_unencrypted_from_store,
+#     run_deploy_command,
+# )
 from reactor_ca.models import (
     CA,
     AlternativeNames,
@@ -55,27 +37,20 @@ from reactor_ca.models import (
 from reactor_ca.password import get_password
 from reactor_ca.paths import resolve_paths
 from reactor_ca.result import Failure, Result, Success
-from reactor_ca.store import (
-    delete_host,
-    host_exists,
-    read_host_cert,
-    read_host_key,
-    write_host_cert,
-    write_host_key,
-)
-from reactor_ca.store import (
-    list_hosts as store_list_hosts,
-)
+from reactor_ca.store import delete_host, host_exists, read_host_cert, read_host_key, write_host_cert, write_host_key
+from reactor_ca.store import list_hosts as store_list_hosts
 from reactor_ca.x509_crypto import (
     create_certificate,
     deserialize_certificate,
     deserialize_private_key,
     generate_key,
-    verify_key_algorithm,
+    ensure_key_algorithm,
 )
 
 
-def _load_configs(config: "models.Config") -> Result[tuple[CAConfig, dict[str, Any]], str]:
+def _load_configs(
+    config: "models.Config",
+) -> Result[tuple[CAConfig, dict[str, Any]], str]:
     """Get CA and hosts configurations from the Config object.
 
     Args:
@@ -128,7 +103,11 @@ def _get_password_from_store(store: "models.Store", config: "models.Config") -> 
 
 
 def issue_certificate(
-    hostname: str, config: "models.Config", store: "models.Store", no_export: bool = False, do_deploy: bool = False
+    hostname: str,
+    config: "models.Config",
+    store: "models.Store",
+    no_export: bool = False,
+    do_deploy: bool = False,
 ) -> Result[dict[str, Any], str]:
     """Issue or renew a certificate for a host.
 
@@ -301,7 +280,12 @@ def issue_certificate(
 
     inventory = inventory_result.unwrap()
     update_result = update_inventory_with_host_cert(
-        Path(store.path), hostname, cert, inventory, rekeyed=False, renewal_count_increment=0 if is_new else 1
+        Path(store.path),
+        hostname,
+        cert,
+        inventory,
+        rekeyed=False,
+        renewal_count_increment=0 if is_new else 1,
     )
     if isinstance(update_result, Failure):
         return Failure(f"Failed to update inventory: {update_result.error}")
@@ -353,7 +337,10 @@ def issue_certificate(
 
 
 def issue_all_certificates(
-    config: "models.Config", store: "models.Store", no_export: bool = False, do_deploy: bool = False
+    config: "models.Config",
+    store: "models.Store",
+    no_export: bool = False,
+    do_deploy: bool = False,
 ) -> Result[dict[str, Any], str]:
     """Issue or renew certificates for all hosts in configuration.
 
@@ -409,7 +396,11 @@ def issue_all_certificates(
 
 
 def rekey_host(
-    hostname: str, config: "models.Config", store: "models.Store", no_export: bool = False, do_deploy: bool = False
+    hostname: str,
+    config: "models.Config",
+    store: "models.Store",
+    no_export: bool = False,
+    do_deploy: bool = False,
 ) -> Result[dict[str, Any], str]:
     """Generate a new key and certificate for a host.
 
@@ -552,7 +543,12 @@ def rekey_host(
 
     inventory = inventory_result.unwrap()
     update_result = update_inventory_with_host_cert(
-        Path(store.path), hostname, cert, inventory, rekeyed=True, renewal_count_increment=1
+        Path(store.path),
+        hostname,
+        cert,
+        inventory,
+        rekeyed=True,
+        renewal_count_increment=1,
     )
     if isinstance(update_result, Failure):
         return Failure(f"Failed to update inventory: {update_result.error}")
@@ -603,7 +599,10 @@ def rekey_host(
 
 
 def rekey_all_hosts(
-    config: "models.Config", store: "models.Store", no_export: bool = False, do_deploy: bool = False
+    config: "models.Config",
+    store: "models.Store",
+    no_export: bool = False,
+    do_deploy: bool = False,
 ) -> Result[dict[str, Any], str]:
     """Rekey all hosts in configuration.
 
@@ -659,7 +658,11 @@ def rekey_all_hosts(
 
 
 def import_host_key(
-    hostname: str, key_path: str, config: "models.Config", store: "models.Store", src_password: str | None = None
+    hostname: str,
+    key_path: str,
+    config: "models.Config",
+    store: "models.Store",
+    src_password: str | None = None,
 ) -> Result[dict[str, Any], str]:
     """Import an existing private key for a host.
 
@@ -871,7 +874,7 @@ def list_certificates(
             continue
 
         host_info = {
-            "name": host.short_name,
+            "host_id": host.host_id,
             "serial": host.serial,
             "not_before": host.not_before.isoformat(),
             "not_after": host.not_after.isoformat(),
@@ -958,7 +961,13 @@ def clean_certificates(store_path: str, configured_hosts: list[str] | None = Non
         inventory_result.unwrap()
         # Hosts should already be removed from files, just need to update inventory
 
-    return Success({"action": "clean", "removed": removed_hosts, "total_removed": len(removed_hosts)})
+    return Success(
+        {
+            "action": "clean",
+            "removed": removed_hosts,
+            "total_removed": len(removed_hosts),
+        }
+    )
 
 
 def get_host_info(hostname: str, store_path: str) -> Result[dict[str, Any], str]:

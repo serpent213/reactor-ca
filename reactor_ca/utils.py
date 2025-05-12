@@ -3,7 +3,6 @@
 import os
 import stat
 import tempfile
-from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import (
@@ -80,25 +79,6 @@ def write_private_key_to_temp_file(private_key: PrivateKeyTypes, hostname: str) 
         )
 
     return temp_key_path, temp_files
-
-
-def get_host_paths(store: "Store", hostname: str) -> tuple[Path, Path, Path]:
-    """Get paths for a host's certificate files.
-
-    Args:
-    ----
-        store: Store instance
-        hostname: The hostname for the certificate
-
-    Returns:
-    -------
-        Tuple of (host_dir, cert_path, key_path)
-
-    """
-    host_dir = store.get_host_dir(hostname)
-    cert_path = store.get_host_cert_path(hostname)
-    key_path = store.get_host_key_path(hostname)
-    return host_dir, cert_path, key_path
 
 
 def run_deploy_command(store: "Store", hostname: str, command: str) -> bool:

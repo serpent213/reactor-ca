@@ -1,6 +1,5 @@
 """Configuration operations for ReactorCA."""
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +21,13 @@ from reactor_ca.models import (
     ExportConfig,
     HostConfig,
     PasswordConfig,
-    SubjectIdentity,
     ValidityConfig,
 )
-from reactor_ca.paths import SCHEMAS_DIR, ensure_dirs, get_ca_config_path, get_hosts_config_path, resolve_paths
+from reactor_ca.paths import (
+    SCHEMAS_DIR,
+    get_ca_config_path,
+    get_hosts_config_path,
+)
 from reactor_ca.result import Failure, Result, Success
 
 CONSOLE = Console()
@@ -34,26 +36,269 @@ yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
 
 
-# Exception definitions
-class ConfigError(Exception):
-    """Base exception for configuration errors."""
+def create(config_path: Path) -> Result[Config, str]:
+    """Create configuration files and directories with default values.
 
-    pass
+    Returns a Config object if successful.
+
+    Args:
+    ----
+        config_path: Path to config directory
+
+    Returns:
+    -------
+        Result with Config object or error message
+
+    """
+    # Determine store path, use sibling 'store' directory by default
+    store_path = config_path.parent / "store"
+
+    # Create directories
+    config_path.mkdir(parents=True, exist_ok=True)
+    store_path.mkdir(parents=True, exist_ok=True)
+
+    # Get default configurations
+    ca_config_data = get_default_ca_config()
+    hosts_config_data = get_default_hosts_config()
+
+    # Write CA config file
+    ca_config_file_path = get_ca_config_path(config_path)
+    if not ca_config_file_path.exists():
+        ca_result = _write_config_file(ca_config_data, ca_config_file_path, "ca")
+        if isinstance(ca_result, Failure):
+            return Failure(f"Failed to create CA config: {ca_result.error}")
+        CONSOLE.print(f"Created CA config at {ca_config_file_path}")
+    else:
+        CONSOLE.print(f"CA config already exists at {ca_config_file_path}, not overwriting")
+
+    # Write hosts config file
+    hosts_config_file_path = get_hosts_config_path(config_path)
+    if not hosts_config_file_path.exists():
+        hosts_result = _write_config_file(hosts_config_data, hosts_config_file_path, "hosts")
+        if isinstance(hosts_result, Failure):
+            return Failure(f"Failed to create hosts config: {hosts_result.error}")
+        CONSOLE.print(f"Created hosts config at {hosts_config_file_path}")
+    else:
+        CONSOLE.print(f"Hosts config already exists at {hosts_config_file_path}, not overwriting")
+
+    # Now initialize and return the config
+    return init(config_path)
 
 
-class ConfigNotFoundError(ConfigError):
-    """Exception raised when a configuration file is not found."""
+def init(config_path: Path) -> Result[Config, str]:
+    """Initialize a Config object from existing configuration files.
 
-    pass
+    Args:
+    ----
+        config_path: Path to config directory
+
+    Returns:
+    -------
+        Result with Config object or error message
+
+    """
+    # Determine store path, use sibling 'store' directory by default
+    config_path.parent / "store"
+
+    if not config_path.exists():
+        return Failure(f"Config directory does not exist: {config_path}")
+
+    # Load CA config
+    ca_config_result = _load_ca_config(config_path)
+    if isinstance(ca_config_result, Failure):
+        return Failure(f"Failed to load CA config: {ca_config_result.error}")
+
+    # Load hosts config
+    hosts_config_result = _load_hosts_config(config_path)
+    if isinstance(hosts_config_result, Failure):
+        return Failure(f"Failed to load hosts config: {hosts_config_result.error}")
+
+    # Create and return Config object
+    ca_config = ca_config_result.value
+    hosts_config = hosts_config_result.value
+
+    return Success(
+        Config(
+            config_path=config_path,
+            ca_config=ca_config,
+            hosts_config=hosts_config,
+        )
+    )
 
 
-class ConfigValidationError(ConfigError):
-    """Exception raised when a configuration file is invalid."""
+def validate(config_path: Path) -> Result[bool, str]:
+    """Validate configuration files.
 
-    pass
+    Args:
+    ----
+        config_path: Path to the configuration directory
+
+    Returns:
+    -------
+        Result with True if all configurations are valid, or error message
+
+    """
+    ca_config_path = get_ca_config_path(config_path)
+    hosts_config_path = get_hosts_config_path(config_path)
+
+    # Check if CA config exists (required)
+    if not ca_config_path.exists():
+        CONSOLE.print(f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}")
+        CONSOLE.print("Run 'ca config init' to create a default configuration.")
+        return Failure("CA configuration file not found")
+
+    # Hosts config is optional
+    if not hosts_config_path.exists():
+        CONSOLE.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_config_path}")
+        CONSOLE.print("You may want to create a hosts configuration to issue certificates.")
+
+    # Validate CA config
+    ca_validation = _validate_yaml(ca_config_path, "ca_config_schema.yaml")
+    if isinstance(ca_validation, Failure):
+        CONSOLE.print("[bold red]CA configuration validation failed:[/bold red]")
+        for error in ca_validation.error:
+            CONSOLE.print(f"  - {error}")
+        return Failure("CA configuration validation failed")
+
+    CONSOLE.print("✅ CA configuration is valid")
+
+    # Validate hosts config if it exists
+    if hosts_config_path.exists():
+        hosts_validation = _validate_yaml(hosts_config_path, "hosts_config_schema.yaml")
+        if isinstance(hosts_validation, Failure):
+            CONSOLE.print("[bold red]Hosts configuration validation failed:[/bold red]")
+            for error in hosts_validation.error:
+                CONSOLE.print(f"  - {error}")
+            return Failure("Hosts configuration validation failed")
+
+        CONSOLE.print("✅ Hosts configuration is valid")
+
+    return Success(True)
 
 
-def validate_yaml(file_path: Path, schema_name: str) -> Result[None, list[str]]:
+def save_ca_config(config: Config) -> Result[None, str]:
+    """Save CA configuration to file.
+
+    Args:
+    ----
+        config: Config object containing CA config
+
+    Returns:
+    -------
+        Result with None for success or error message for failure
+
+    """
+    if config.ca_config is None:
+        return Failure("No CA configuration to save")
+
+    try:
+        # Convert CAConfig to dictionary
+        config_dict = {
+            "ca": {
+                "common_name": config.ca_config.common_name,
+                "organization": config.ca_config.organization,
+                "organization_unit": config.ca_config.organization_unit,
+                "country": config.ca_config.country,
+                "state": config.ca_config.state,
+                "locality": config.ca_config.locality,
+                "email": config.ca_config.email,
+                "key_algorithm": config.ca_config.key_algorithm,
+                "validity": {
+                    "days": config.ca_config.validity.to_days(),
+                },
+                "hash_algorithm": config.ca_config.hash_algorithm,
+                "password": {
+                    "min_length": config.ca_config.password.min_length,
+                    "file": config.ca_config.password.file,
+                    "env_var": config.ca_config.password.env_var,
+                },
+            }
+        }
+
+        # Write config to file
+        ca_config_path = get_ca_config_path(config.config_path)
+        return _write_config_file(config_dict, ca_config_path, "ca")
+    except Exception as e:
+        return Failure(f"Error saving CA configuration: {str(e)}")
+
+
+def save_hosts_config(config: Config) -> Result[None, str]:
+    """Save hosts configuration to file.
+
+    Args:
+    ----
+        config: Config object containing hosts config
+
+    Returns:
+    -------
+        Result with None for success or error message for failure
+
+    """
+    if not config.hosts_config:
+        return Failure("No hosts configuration to save")
+
+    try:
+        # Convert HostConfig objects to dictionary
+        hosts_data = {}
+        for host_name, host_config in config.hosts_config.items():
+            host_data = _host_config_to_dict(host_config)
+            hosts_data[host_name] = host_data
+
+        # Write hosts config to file
+        hosts_config_path = get_hosts_config_path(config.config_path)
+        return _write_config_file({"hosts": hosts_data}, hosts_config_path, "hosts")
+    except Exception as e:
+        return Failure(f"Error saving hosts configuration: {str(e)}")
+
+
+def save(config: Config) -> Result[None, str]:
+    """Save all configuration to files.
+
+    Args:
+    ----
+        config: Config object containing configuration to save
+
+    Returns:
+    -------
+        Result with None for success or error message for failure
+
+    """
+    # Save CA config
+    ca_result = save_ca_config(config)
+    if isinstance(ca_result, Failure):
+        return ca_result
+
+    # Save hosts config
+    hosts_result = save_hosts_config(config)
+    if isinstance(hosts_result, Failure):
+        return hosts_result
+
+    return Success(None)
+
+
+def get_host_config(config: Config, host_name: str) -> Result[HostConfig, str]:
+    """Get the configuration for a specific host.
+
+    Args:
+    ----
+        config: Config object
+        host_name: Name of the host to get configuration for
+
+    Returns:
+    -------
+        Result with HostConfig object for the specified host or error message
+
+    """
+    if not config.hosts_config:
+        return Failure("No hosts configuration available")
+
+    if host_name not in config.hosts_config:
+        return Failure(f"Host not found in configuration: {host_name}")
+
+    return Success(config.hosts_config[host_name])
+
+
+def _validate_yaml(file_path: Path, schema_name: str) -> Result[None, list[str]]:
     """Validate a YAML file against a schema.
 
     Args:
@@ -83,84 +328,32 @@ def validate_yaml(file_path: Path, schema_name: str) -> Result[None, list[str]]:
         return Failure([str(error) for error in e.args[0]])
 
 
-def load_yaml(file_path: Path) -> Result[dict[str, Any], str]:
-    """Load YAML file into a dictionary, preserving comments.
-
-    Args:
-    ----
-        file_path: Path to the YAML file
-
-    Returns:
-    -------
-        Result with dictionary containing the YAML data or error message
-
-    """
-    if not file_path.exists():
-        return Failure(f"File not found: {file_path}")
-
-    try:
-        with open(file_path, encoding="locale") as f:
-            data = yaml.load(f)
-
-        # Ensure we return a dict, even if the file is empty
-        return Success(data or {})
-    except Exception as e:
-        return Failure(f"Error loading YAML file: {str(e)}")
-
-
-def save_yaml(data: dict[str, Any], file_path: Path) -> Result[None, str]:
-    """Save dictionary to a YAML file, preserving comments.
-
-    Args:
-    ----
-        data: Dictionary to save
-        file_path: Path to save the YAML file
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Ensure the directory exists
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(file_path, "w", encoding="locale") as f:
-            yaml.dump(data, f)
-
-        return Success(None)
-    except Exception as e:
-        return Failure(f"Error saving YAML file: {str(e)}")
-
-
-def load_ca_config(config_dir: Path) -> Result[CAConfig, str]:
+def _load_ca_config(config_path: Path) -> Result[CAConfig, str]:
     """Load and validate CA configuration into a CAConfig object.
 
     Args:
     ----
-        config_dir: Path to the configuration directory
+        config_path: Path to the configuration directory
 
     Returns:
     -------
         Result with CAConfig object or error message
 
     """
-    # Create a temporary Config object
-    temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
-    ca_config_path = get_ca_config_path(temp_config)
+    ca_config_path = get_ca_config_path(config_path)
 
     # Validate first
-    validation_result = validate_yaml(ca_config_path, "ca_config_schema.yaml")
+    validation_result = _validate_yaml(ca_config_path, "ca_config_schema.yaml")
     if isinstance(validation_result, Failure):
         error_message = "\n".join(validation_result.error)
         return Failure(f"Invalid CA configuration:\n{error_message}")
 
     # Load the configuration
-    config_result = load_yaml(ca_config_path)
-    if isinstance(config_result, Failure):
-        return config_result
-
-    config_dict = config_result.value
+    try:
+        with open(ca_config_path, encoding="locale") as f:
+            config_dict = yaml.load(f) or {}
+    except Exception as e:
+        return Failure(f"Error loading CA configuration file: {str(e)}")
 
     # Check if config is in the expected format (may be nested under 'ca' key)
     if "ca" in config_dict:
@@ -199,34 +392,37 @@ def load_ca_config(config_dir: Path) -> Result[CAConfig, str]:
         return Failure(f"Error processing CA configuration: {str(e)}")
 
 
-def load_hosts_config(config_dir: Path) -> Result[dict[str, HostConfig], str]:
+def _load_hosts_config(config_path: Path) -> Result[dict[str, HostConfig], str]:
     """Load and validate hosts configuration into a dictionary of HostConfig objects.
 
     Args:
     ----
-        config_dir: Path to the configuration directory
+        config_path: Path to the configuration directory
 
     Returns:
     -------
         Result with dictionary mapping host names to HostConfig objects or error message
 
     """
-    # Create a temporary Config object
-    temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
-    hosts_config_path = get_hosts_config_path(temp_config)
+    hosts_config_path = get_hosts_config_path(config_path)
+
+    # Check if hosts config exists
+    if not hosts_config_path.exists():
+        return Success({})  # Return empty dict if no hosts config
 
     # Validate first
-    validation_result = validate_yaml(hosts_config_path, "hosts_config_schema.yaml")
+    validation_result = _validate_yaml(hosts_config_path, "hosts_config_schema.yaml")
     if isinstance(validation_result, Failure):
         error_message = "\n".join(validation_result.error)
         return Failure(f"Invalid hosts configuration:\n{error_message}")
 
     # Load the configuration
-    config_result = load_yaml(hosts_config_path)
-    if isinstance(config_result, Failure):
-        return config_result
+    try:
+        with open(hosts_config_path, encoding="locale") as f:
+            config_dict = yaml.load(f) or {}
+    except Exception as e:
+        return Failure(f"Error loading hosts configuration file: {str(e)}")
 
-    config_dict = config_result.value
     hosts_dict = {}
     hosts_data = config_dict.get("hosts", {})
 
@@ -254,29 +450,52 @@ def load_hosts_config(config_dir: Path) -> Result[dict[str, HostConfig], str]:
         return Failure(f"Failed to process hosts configuration: {e}")
 
 
-def get_host_config(config_dir: Path, host_name: str) -> Result[HostConfig, str]:
-    """Get the configuration for a specific host.
+def _write_config_file(config: dict, config_path: Path, config_type: str = "ca") -> Result[None, str]:
+    """Write configuration to file with standard header.
 
     Args:
     ----
-        config_dir: Path to the configuration directory
-        host_name: Name of the host to get configuration for
+        config: Configuration dictionary to write
+        config_path: Path to save the configuration file
+        config_type: Type of configuration ("ca" or "hosts")
 
     Returns:
     -------
-        Result with HostConfig object for the specified host or error message
+        Result with None for success or error message for failure
 
     """
-    hosts_result = load_hosts_config(config_dir)
-    if isinstance(hosts_result, Failure):
-        return hosts_result
+    try:
+        # Ensure parent directory exists
+        config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    hosts_dict = hosts_result.value
+        # Select appropriate header based on config type
+        headers = {
+            "ca": [
+                "# ReactorCA Configuration",
+                "# This file contains settings for the Certificate Authority",
+                "# It is safe to modify this file directly\n",
+            ],
+            "hosts": [
+                "# ReactorCA Hosts Configuration",
+                "# This file contains settings for host certificates",
+                "# It is safe to modify this file directly\n",
+            ],
+        }
 
-    if host_name not in hosts_dict:
-        return Failure(f"Host not found in configuration: {host_name}")
+        header = headers.get(config_type, headers["ca"])
 
-    return Success(hosts_dict[host_name])
+        # Write file with headers and content
+        with open(config_path, "w", encoding="locale") as f:
+            # Write header comments
+            for line in header:
+                f.write(line + "\n")
+
+            # Write YAML content
+            yaml.dump(config, f)
+
+        return Success(None)
+    except Exception as e:
+        return Failure(f"Error writing configuration file: {str(e)}")
 
 
 def _parse_host_config(host_name: str, host_data: dict[str, Any]) -> Result[HostConfig, str]:
@@ -464,261 +683,6 @@ def _parse_deploy_config(host_data: dict[str, Any]) -> Result[DeploymentConfig |
         return Failure(f"Error parsing deployment configuration: {str(e)}")
 
 
-def get_password(
-    password: str | None = None, password_file: str | None = None, password_env: str | None = None
-) -> Result[str | None, str]:
-    """Get password from provided options.
-
-    This function tries to get a password from one of the provided sources,
-    in the following order: direct password, password file, environment variable.
-
-    Args:
-    ----
-        password: Password provided directly
-        password_file: Path to file containing the password
-        password_env: Name of environment variable containing the password
-
-    Returns:
-    -------
-        Result with password or None if no password is provided, or error message
-
-    """
-    provided_options = [opt for opt in [password, password_file, password_env] if opt is not None]
-
-    if len(provided_options) > 1:
-        return Failure("Only one of password, password_file, or password_env can be provided")
-
-    if password is not None:
-        return Success(password)
-
-    if password_file is not None:
-        if not os.path.exists(password_file):
-            return Failure(f"Password file not found: {password_file}")
-        try:
-            with open(password_file, encoding="locale") as f:
-                return Success(f.read().strip())
-        except Exception as e:
-            return Failure(f"Error reading password file: {str(e)}")
-
-    if password_env is not None:
-        env_value = os.environ.get(password_env)
-        if env_value is None:
-            return Failure(f"Environment variable not set: {password_env}")
-        return Success(env_value)
-
-    return Success(None)
-
-
-def write_config_file(config: dict, config_path: Path, config_type: str = "ca") -> Result[None, str]:
-    """Write configuration to file with standard header.
-
-    Args:
-    ----
-        config: Configuration dictionary to write
-        config_path: Path to save the configuration file
-        config_type: Type of configuration ("ca" or "hosts")
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Ensure parent directory exists
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Select appropriate header based on config type
-        headers = {
-            "ca": [
-                "# ReactorCA Configuration",
-                "# This file contains settings for the Certificate Authority",
-                "# It is safe to modify this file directly\n",
-            ],
-            "hosts": [
-                "# ReactorCA Hosts Configuration",
-                "# This file contains settings for host certificates",
-                "# It is safe to modify this file directly\n",
-            ],
-        }
-
-        header = headers.get(config_type, headers["ca"])
-
-        # Write file with headers and content
-        with open(config_path, "w", encoding="locale") as f:
-            # Write header comments
-            for line in header:
-                f.write(line + "\n")
-
-            # Write YAML content
-            yaml.dump(config, f)
-
-        return Success(None)
-    except Exception as e:
-        return Failure(f"Error writing configuration file: {str(e)}")
-
-
-def create_default_config(config_dir: Path, store_dir: Path) -> Result[None, str]:
-    """Create default configuration files.
-
-    Args:
-    ----
-        config_dir: Path to configuration directory
-        store_dir: Path to store directory
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Create necessary directories
-        # Create a temporary Config object
-        temp_config = Config(config_path=str(config_dir), store_path=str(store_dir), ca_config=None, hosts_config={})  # type: ignore
-        ensure_dirs(temp_config)
-
-        # Get default configurations
-        ca_config = get_default_ca_config()
-        hosts_config = get_default_hosts_config()
-
-        # Write configuration files
-        ca_config_path = get_ca_config_path(temp_config)
-        hosts_config_path = get_hosts_config_path(temp_config)
-
-        ca_result = write_config_file(ca_config, ca_config_path, "ca")
-        if isinstance(ca_result, Failure):
-            return ca_result
-
-        hosts_result = write_config_file(hosts_config, hosts_config_path, "hosts")
-        if isinstance(hosts_result, Failure):
-            return hosts_result
-
-        CONSOLE.print("✅ Created default configuration files:")
-        CONSOLE.print(f"   CA config: [bold]{ca_config_path}[/bold]")
-        CONSOLE.print(f"   Hosts config: [bold]{hosts_config_path}[/bold]")
-        CONSOLE.print("Please review and customize these files before initializing the CA.")
-
-        return Success(None)
-    except Exception as e:
-        return Failure(f"Error creating default configuration: {str(e)}")
-
-
-def update_config_with_metadata(
-    config: dict, cert_metadata: SubjectIdentity, key_algorithm: str, fallback_to_default: bool = False
-) -> Result[None, str]:
-    """Update configuration with certificate metadata.
-
-    Args:
-    ----
-        config: Configuration dictionary to update
-        cert_metadata: Certificate metadata to use for updating
-        key_algorithm: Key algorithm to use
-        fallback_to_default: Whether to use defaults if metadata is missing
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Helper function to update a config field if the metadata exists
-        def update_field(config_field: str, metadata_field: str) -> None:
-            metadata_value = getattr(cert_metadata, metadata_field)
-            if fallback_to_default:
-                config["ca"][config_field] = metadata_value or config["ca"][config_field]
-            elif metadata_value:
-                config["ca"][config_field] = metadata_value
-
-        update_field("common_name", "common_name")
-        update_field("organization", "organization")
-        update_field("organization_unit", "organization_unit")
-        update_field("country", "country")
-        update_field("state", "state")
-        update_field("locality", "locality")
-        update_field("email", "email")
-
-        # Always update key algorithm
-        config["ca"]["key_algorithm"] = key_algorithm
-
-        return Success(None)
-    except Exception as e:
-        return Failure(f"Error updating configuration with metadata: {str(e)}")
-
-
-def save_ca_config(ca_config: CAConfig, config_dir: Path) -> Result[None, str]:
-    """Save CA configuration to a file.
-
-    Args:
-    ----
-        ca_config: CAConfig object
-        config_dir: Path to the configuration directory
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Convert CAConfig to dictionary
-        config_dict = {
-            "ca": {
-                "common_name": ca_config.common_name,
-                "organization": ca_config.organization,
-                "organization_unit": ca_config.organization_unit,
-                "country": ca_config.country,
-                "state": ca_config.state,
-                "locality": ca_config.locality,
-                "email": ca_config.email,
-                "key_algorithm": ca_config.key_algorithm,
-                "validity": {
-                    "days": ca_config.validity.to_days(),
-                },
-                "hash_algorithm": ca_config.hash_algorithm,
-                "password": {
-                    "min_length": ca_config.password.min_length,
-                    "file": ca_config.password.file,
-                    "env_var": ca_config.password.env_var,
-                },
-            }
-        }
-
-        # Create a temporary Config object
-        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
-        # Write config to file
-        ca_config_path = get_ca_config_path(temp_config)
-        return write_config_file(config_dict, ca_config_path, "ca")
-    except Exception as e:
-        return Failure(f"Error saving CA configuration: {str(e)}")
-
-
-def save_hosts_config(hosts_dict: dict[str, HostConfig], config_dir: Path) -> Result[None, str]:
-    """Save hosts configuration to a file.
-
-    Args:
-    ----
-        hosts_dict: Dictionary mapping host names to HostConfig objects
-        config_dir: Path to the configuration directory
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Convert HostConfig objects to dictionary
-        hosts_data = {}
-        for host_name, host_config in hosts_dict.items():
-            host_data = _host_config_to_dict(host_config)
-            hosts_data[host_name] = host_data
-
-        # Create a temporary Config object
-        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=None, hosts_config={})  # type: ignore
-        # Write hosts config to file
-        hosts_config_path = get_hosts_config_path(temp_config)
-        return write_config_file({"hosts": hosts_data}, hosts_config_path, "hosts")
-    except Exception as e:
-        return Failure(f"Error saving hosts configuration: {str(e)}")
-
-
 def _host_config_to_dict(host_config: HostConfig) -> dict[str, Any]:
     """Convert a HostConfig object to a dictionary for serialization.
 
@@ -774,158 +738,16 @@ def _host_config_to_dict(host_config: HostConfig) -> dict[str, Any]:
         if host_config.alternative_names.other_name:
             alt_names_dict["other_name"] = host_config.alternative_names.other_name
 
+    # Add export and deploy configurations if present
+    if host_config.export:
+        host_data["export"] = {
+            "cert": host_config.export.cert,
+            "chain": host_config.export.chain,
+        }
+
+    if host_config.deploy:
+        host_data["deploy"] = {
+            "command": host_config.deploy.command,
+        }
+
     return host_data
-
-
-def validate_config_files(ca_config_path: Path, hosts_config_path: Path) -> Result[bool, str]:
-    """Validate configuration files.
-
-    Args:
-    ----
-        ca_config_path: Path to the CA configuration file
-        hosts_config_path: Path to the hosts configuration file
-
-    Returns:
-    -------
-        Result with True if all configurations are valid, or error message
-
-    """
-    # Check if CA config exists (required)
-    if not ca_config_path.exists():
-        CONSOLE.print(f"[bold red]Error:[/bold red] CA configuration file not found: {ca_config_path}")
-        CONSOLE.print("Run 'ca config init' to create a default configuration.")
-        return Failure("CA configuration file not found")
-
-    # Hosts config is optional
-    if not hosts_config_path.exists():
-        CONSOLE.print(f"[bold yellow]Warning:[/bold yellow] Hosts configuration file not found: {hosts_config_path}")
-        CONSOLE.print("You may want to create a hosts configuration to issue certificates.")
-
-    # Validate CA config
-    ca_validation = validate_yaml(ca_config_path, "ca_config_schema.yaml")
-    if isinstance(ca_validation, Failure):
-        CONSOLE.print("[bold red]CA configuration validation failed:[/bold red]")
-        for error in ca_validation.error:
-            CONSOLE.print(f"  - {error}")
-        return Failure("CA configuration validation failed")
-
-    CONSOLE.print("✅ CA configuration is valid")
-
-    # Validate hosts config if it exists
-    if hosts_config_path.exists():
-        hosts_validation = validate_yaml(hosts_config_path, "hosts_config_schema.yaml")
-        if isinstance(hosts_validation, Failure):
-            CONSOLE.print("[bold red]Hosts configuration validation failed:[/bold red]")
-            for error in hosts_validation.error:
-                CONSOLE.print(f"  - {error}")
-            return Failure("Hosts configuration validation failed")
-
-        CONSOLE.print("✅ Hosts configuration is valid")
-
-    return Success(True)
-
-
-def load_config(
-    config_dir: str | None = None, store_dir: str | None = None, root_dir: str | None = None
-) -> Result[Config, str]:
-    """Load all configurations and create a Config object.
-
-    Args:
-    ----
-        config_dir: Optional path to configuration directory
-        store_dir: Optional path to store directory
-        root_dir: Optional path to root directory
-
-    Returns:
-    -------
-        Result with Config object containing paths and loaded configurations
-
-    """
-    # Resolve paths
-    config_path_obj, store_path_obj = resolve_paths(config_dir, store_dir, root_dir)
-
-    # Load CA config
-    ca_config_result = load_ca_config(config_path_obj)
-    if isinstance(ca_config_result, Failure):
-        return Failure(ca_config_result.error)
-
-    # Load hosts config
-    hosts_config_result = load_hosts_config(config_path_obj)
-    if isinstance(hosts_config_result, Failure):
-        return Failure(hosts_config_result.error)
-
-    # Create and return Config object
-    ca_config = ca_config_result.unwrap() if isinstance(ca_config_result, Success) else None
-    hosts_config = hosts_config_result.unwrap() if isinstance(hosts_config_result, Success) else {}
-
-    # Check if we have valid config data
-    if ca_config is None:
-        return Failure("Failed to load CA configuration")
-
-    return Success(
-        Config(
-            config_path=str(config_path_obj),
-            store_path=str(store_path_obj),
-            ca_config=ca_config,
-            hosts_config=hosts_config,
-        )
-    )
-
-
-def init_config_files(config_dir: Path, store_dir: Path, force: bool = False) -> Result[None, str]:
-    """Initialize default configuration files.
-
-    Args:
-    ----
-        config_dir: Path to configuration directory
-        store_dir: Path to store directory
-        force: Whether to overwrite existing files
-
-    Returns:
-    -------
-        Result with None for success or error message for failure
-
-    """
-    try:
-        # Create a temporary Config object with dummy values that will be replaced
-        dummy_ca_config = CAConfig(
-            common_name="",
-            organization="",
-            organization_unit="",
-            country="",
-            state="",
-            locality="",
-            email="",
-            validity=ValidityConfig(),
-            password=PasswordConfig(min_length=0),
-            key_algorithm="",
-            hash_algorithm="",
-        )
-        temp_config = Config(config_path=str(config_dir), store_path="", ca_config=dummy_ca_config, hosts_config={})
-        # Get paths
-        ca_config_path = get_ca_config_path(temp_config)
-        hosts_config_path = get_hosts_config_path(temp_config)
-
-        # Create CA config if needed
-        if not ca_config_path.exists() or force:
-            ca_config = get_default_ca_config()
-            save_result = save_yaml(ca_config, ca_config_path)
-            if isinstance(save_result, Failure):
-                return save_result
-            CONSOLE.print(f"[green]Created CA configuration file: {ca_config_path}[/green]")
-        else:
-            CONSOLE.print(f"[yellow]CA configuration file already exists: {ca_config_path}[/yellow]")
-
-        # Create hosts config if needed
-        if not hosts_config_path.exists() or force:
-            hosts_config = get_default_hosts_config()
-            save_result = save_yaml(hosts_config, hosts_config_path)
-            if isinstance(save_result, Failure):
-                return save_result
-            CONSOLE.print(f"[green]Created hosts configuration file: {hosts_config_path}[/green]")
-        else:
-            CONSOLE.print(f"[yellow]Hosts configuration file already exists: {hosts_config_path}[/yellow]")
-
-        return Success(None)
-    except Exception as e:
-        return Failure(f"Error initializing configuration files: {str(e)}")

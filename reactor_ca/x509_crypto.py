@@ -23,9 +23,7 @@ from reactor_ca.models import (
     CA,
     AlternativeNames,
     CACertificateParams,
-    CAInventoryEntry,
     CertificateParams,
-    InventoryEntry,
 )
 from reactor_ca.result import Failure, Result, Success
 
@@ -90,13 +88,13 @@ def generate_key(key_algorithm: str) -> Result[PrivateKeyTypes, str]:
         return Failure(f"Error generating key: {str(e)}")
 
 
-def serialize_private_key(private_key: PrivateKeyTypes, password: bytes | None = None) -> Result[bytes, str]:
+def serialize_private_key(private_key: PrivateKeyTypes, password: str | None = None) -> Result[bytes, str]:
     """Serialize a private key to bytes, optionally encrypted with password.
 
     Args:
     ----
         private_key: The private key to serialize
-        password: Optional password for encryption
+        password: Optional password for encryption (string)
 
     Returns:
     -------
@@ -104,20 +102,22 @@ def serialize_private_key(private_key: PrivateKeyTypes, password: bytes | None =
 
     """
     try:
-        encryption = BestAvailableEncryption(password) if password else NoEncryption()
+        # Convert string password to bytes if needed
+        password_bytes = password.encode("utf-8") if password else None
+        encryption = BestAvailableEncryption(password_bytes) if password_bytes else NoEncryption()
         serialized_key = private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, encryption)
         return Success(serialized_key)
     except Exception as e:
         return Failure(f"Error serializing private key: {str(e)}")
 
 
-def deserialize_private_key(key_data: bytes, password: bytes | None = None) -> Result[PrivateKeyTypes, str]:
+def deserialize_private_key(key_data: bytes, password: str | None = None) -> Result[PrivateKeyTypes, str]:
     """Deserialize a private key from bytes.
 
     Args:
     ----
         key_data: PEM encoded key data
-        password: Optional password for decryption
+        password: Optional password for decryption (string)
 
     Returns:
     -------
@@ -125,14 +125,16 @@ def deserialize_private_key(key_data: bytes, password: bytes | None = None) -> R
 
     """
     try:
-        key = load_pem_private_key(key_data, password=password)
+        # Convert string password to bytes if needed
+        password_bytes = password.encode("utf-8") if password else None
+        key = load_pem_private_key(key_data, password=password_bytes)
         return Success(key)
     except Exception as e:
         return Failure(f"Error deserializing private key: {str(e)}")
 
 
-def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> Result[bool, str]:
-    """Verify that a key matches the expected algorithm.
+def ensure_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> Result[None, str]:
+    """Ensure that a key matches the expected algorithm.
 
     Args:
     ----
@@ -152,7 +154,10 @@ def verify_key_algorithm(key: PrivateKeyTypes, expected_algorithm: str) -> Resul
             return actual_algorithm_result
 
         actual_algorithm = actual_algorithm_result.unwrap()
-        return Success(actual_algorithm == expected_algorithm)
+
+        if actual_algorithm != expected_algorithm:
+            return Failure(f"Key algorithm {actual_algorithm} does not match expected {expected_algorithm}")
+        return Success(None)
     except Exception as e:
         return Failure(f"Error verifying key algorithm: {str(e)}")
 
@@ -552,48 +557,6 @@ def get_certificate_fingerprint(cert: x509.Certificate, hash_algorithm: str) -> 
         return Success(fingerprint.hex())
     except Exception as e:
         return Failure(f"Error getting certificate fingerprint: {str(e)}")
-
-
-# Inventory Integration
-
-
-def create_inventory_entry(cert: x509.Certificate, short_name: str) -> Result[InventoryEntry, str]:
-    """Create an inventory entry from a certificate.
-
-    Args:
-    ----
-        cert: X.509 certificate
-        short_name: Short name for the certificate
-
-    Returns:
-    -------
-        Result containing InventoryEntry object or error message
-
-    """
-    try:
-        inventory_entry = InventoryEntry.from_certificate(short_name, cert)
-        return Success(inventory_entry)
-    except Exception as e:
-        return Failure(f"Error creating inventory entry: {str(e)}")
-
-
-def create_ca_inventory_entry(cert: x509.Certificate) -> Result[CAInventoryEntry, str]:
-    """Create a CA inventory entry from a certificate.
-
-    Args:
-    ----
-        cert: X.509 CA certificate
-
-    Returns:
-    -------
-        Result containing CAInventoryEntry object or error message
-
-    """
-    try:
-        ca_inventory_entry = CAInventoryEntry.from_certificate(cert)
-        return Success(ca_inventory_entry)
-    except Exception as e:
-        return Failure(f"Error creating CA inventory entry: {str(e)}")
 
 
 # Private Helper Functions
