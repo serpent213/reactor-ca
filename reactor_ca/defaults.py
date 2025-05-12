@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from reactor_ca.types import HashAlgorithm, KeyAlgorithm
+
 DEFAULT_DIR_ROOT = Path(os.getcwd())
 DEFAULT_SUBDIR_CONFIG = "config"
 DEFAULT_SUBDIR_STORE = "store"
@@ -11,11 +13,11 @@ DEFAULT_SUBDIR_STORE = "store"
 DEFAULT_PASSWORD_MIN_LENGTH = 12
 
 # Certificate defaults
-DEFAULT_CA_HASH_ALGORITHM = "SHA256"
-DEFAULT_CA_KEY_ALGORITHM = "RSA4096"
+DEFAULT_CA_HASH_ALGORITHM = HashAlgorithm.SHA256
+DEFAULT_CA_KEY_ALGORITHM = KeyAlgorithm.RSA4096
 DEFAULT_CA_VALIDITY_DAYS = 3650  # 10 years
-DEFAULT_HOST_HASH_ALGORITHM = "SHA256"
-DEFAULT_HOST_KEY_ALGORITHM = "RSA2048"
+DEFAULT_HOST_HASH_ALGORITHM = HashAlgorithm.SHA256
+DEFAULT_HOST_KEY_ALGORITHM = KeyAlgorithm.RSA2048
 DEFAULT_HOST_VALIDITY_DAYS = 365  # 1 year
 
 # Constants for expiration warnings

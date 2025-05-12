@@ -669,7 +669,7 @@ def _add_standard_extensions(
 
         # Add Subject Alternative Names if provided
         if alt_names and not alt_names.is_empty():
-            sans_result = alt_names.process_all_sans()
+            sans_result = alt_names.to_general_names()
             if isinstance(sans_result, Failure):
                 return sans_result
 

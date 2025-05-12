@@ -2,9 +2,10 @@
 
 import ipaddress
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, List, Optional, Dict, cast
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 from urllib.parse import urlparse
 
 from cryptography import x509
@@ -23,61 +24,126 @@ from reactor_ca.defaults import (
     DEFAULT_PASSWORD_MIN_LENGTH,
 )
 from reactor_ca.result import Failure, Result, Success
+from reactor_ca.types import KeyAlgorithm, HashAlgorithm
 
 # Config
 
 
-@dataclass
-class AlternativeNames:
+class AlternativeNames(BaseModel):
     """Container for Subject Alternative Names."""
 
-    dns: list[str] = field(default_factory=list)
-    ip: list[str] = field(default_factory=list)
-    email: list[str] = field(default_factory=list)
-    uri: list[str] = field(default_factory=list)
-    directory_name: list[str] = field(default_factory=list)
-    registered_id: list[str] = field(default_factory=list)
-    other_name: list[str] = field(default_factory=list)
+    dns: List[str] = Field(default_factory=list)
+    ip: List[str] = Field(default_factory=list)
+    email: List[str] = Field(default_factory=list)
+    uri: List[str] = Field(default_factory=list)
+    directory_name: List[str] = Field(default_factory=list)
+    registered_id: List[str] = Field(default_factory=list)
+    other_name: List[str] = Field(default_factory=list)
 
-    def is_empty(self: "AlternativeNames") -> bool:
+    @field_validator('dns')
+    @classmethod
+    def validate_dns(cls, v):
+        """Validate DNS names have proper format."""
+        if not v:
+            return v
+            
+        for name in v:
+            if not re.match(r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$', name):
+                raise ValueError(f"Invalid DNS name format: {name}")
+        return v
+
+    @field_validator('ip')
+    @classmethod
+    def validate_ip(cls, v):
+        """Validate IP addresses are valid."""
+        if not v:
+            return v
+            
+        for ip in v:
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                raise ValueError(f"Invalid IP address: {ip}")
+        return v
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        """Validate email addresses have proper format."""
+        if not v:
+            return v
+            
+        for email in v:
+            if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+                raise ValueError(f"Invalid email address: {email}")
+        return v
+
+    @field_validator('uri')
+    @classmethod
+    def validate_uri(cls, v):
+        """Validate URIs have proper format."""
+        if not v:
+            return v
+            
+        for uri in v:
+            if not re.match(r'^[a-zA-Z][a-zA-Z0-9+\.-]*://.*$', uri):
+                raise ValueError(f"Invalid URI format: {uri}")
+        return v
+
+    @field_validator('directory_name')
+    @classmethod
+    def validate_directory_name(cls, v):
+        """Validate directory names have proper format."""
+        if not v:
+            return v
+            
+        for dn in v:
+            if not re.match(r'^(CN|O|OU|C|ST|L|E)=.*?(,(CN|O|OU|C|ST|L|E)=.*?)*$', dn):
+                raise ValueError(f"Invalid directory name format: {dn}")
+        return v
+
+    @field_validator('registered_id')
+    @classmethod
+    def validate_registered_id(cls, v):
+        """Validate registered IDs have proper format."""
+        if not v:
+            return v
+            
+        for oid in v:
+            if not re.match(r'^\d+(\.\d+)*$', oid):
+                raise ValueError(f"Invalid OID format: {oid}")
+        return v
+
+    @field_validator('other_name')
+    @classmethod
+    def validate_other_name(cls, v):
+        """Validate other names have proper format."""
+        if not v:
+            return v
+            
+        for other in v:
+            if not re.match(r'^\d+(\.\d+)*:.*$', other):
+                raise ValueError(f"Invalid other name format: {other}")
+        return v
+
+    def is_empty(self) -> bool:
         """Check if there are any SANs defined."""
-        return not any(getattr(self, attr_name) for attr_name in self.__annotations__)
+        return not any([self.dns, self.ip, self.email, self.uri, 
+                     self.directory_name, self.registered_id, self.other_name])
 
-    @classmethod
-    def process_dns_names(cls: type["AlternativeNames"], names: list[str]) -> Result[list[x509.DNSName], str]:
-        """Process DNS names into appropriate SAN format.
-
-        Args:
-        ----
-            names: List of DNS name strings
-
-        Returns:
-        -------
-            Result containing list of x509.DNSName objects or an error message
-
-        """
+    def to_dns_names(self) -> Result[List[x509.DNSName], str]:
+        """Convert DNS names to appropriate SAN format."""
         try:
-            return Success([x509.DNSName(name) for name in names])
+            return Success([x509.DNSName(name) for name in self.dns])
         except Exception as err:
-            return Failure(f"Error processing DNS names: {str(err)}")
+            return Failure(f"Error converting DNS names: {str(err)}")
 
-    @classmethod
-    def process_ip_addresses(cls: type["AlternativeNames"], ips: list[str]) -> Result[list[x509.IPAddress], str]:
-        """Process IP addresses into appropriate SAN format.
-
-        Args:
-        ----
-            ips: List of IP address strings
-
-        Returns:
-        -------
-            Result containing list of valid x509.IPAddress objects or an error message
-
-        """
+    def to_ip_addresses(self) -> Result[List[x509.IPAddress], str]:
+        """Convert IP addresses to appropriate SAN format."""
         result = []
 
         try:
-            for ip in ips:
+            for ip in self.ip:
                 try:
                     ip_obj = ipaddress.ip_address(ip)
                     result.append(x509.IPAddress(ip_obj))
@@ -86,27 +152,14 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing IP addresses: {str(err)}")
+            return Failure(f"Error converting IP addresses: {str(err)}")
 
-    @classmethod
-    def process_email_addresses(
-        cls: type["AlternativeNames"], emails: list[str]
-    ) -> Result[list[x509.RFC822Name], str]:
-        """Process email addresses into appropriate SAN format.
-
-        Args:
-        ----
-            emails: List of email address strings
-
-        Returns:
-        -------
-            Result containing list of valid x509.RFC822Name objects or an error message
-
-        """
+    def to_email_addresses(self) -> Result[List[x509.RFC822Name], str]:
+        """Convert email addresses to appropriate SAN format."""
         result = []
 
         try:
-            for email in emails:
+            for email in self.email:
                 # Simple email validation
                 if re.match(r"[^@]+@[^@]+\.[^@]+", email):
                     result.append(x509.RFC822Name(email))
@@ -115,27 +168,14 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing email addresses: {str(err)}")
+            return Failure(f"Error converting email addresses: {str(err)}")
 
-    @classmethod
-    def process_uri_addresses(
-        cls: type["AlternativeNames"], uris: list[str]
-    ) -> Result[list[x509.UniformResourceIdentifier], str]:
-        """Process URIs into appropriate SAN format.
-
-        Args:
-        ----
-            uris: List of URI strings
-
-        Returns:
-        -------
-            Result containing list of valid x509.UniformResourceIdentifier objects or an error message
-
-        """
+    def to_uri_addresses(self) -> Result[List[x509.UniformResourceIdentifier], str]:
+        """Convert URIs to appropriate SAN format."""
         result = []
 
         try:
-            for uri in uris:
+            for uri in self.uri:
                 # Validate URI
                 parsed = urlparse(uri)
                 if parsed.scheme and parsed.netloc:
@@ -145,27 +185,14 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing URIs: {str(err)}")
+            return Failure(f"Error converting URIs: {str(err)}")
 
-    @classmethod
-    def process_directory_names(
-        cls: type["AlternativeNames"], dns: list[str]
-    ) -> Result[list[x509.DirectoryName], str]:
-        """Process directory names into appropriate SAN format.
-
-        Args:
-        ----
-            dns: List of directory name strings (format "CN=example,O=org,C=US")
-
-        Returns:
-        -------
-            Result containing list of valid x509.DirectoryName objects or an error message
-
-        """
+    def to_directory_names(self) -> Result[List[x509.DirectoryName], str]:
+        """Convert directory names to appropriate SAN format."""
         result = []
 
         try:
-            for dn in dns:
+            for dn in self.directory_name:
                 # Expect format like "CN=example,O=org,C=US"
                 attrs = []
                 for part in dn.split(","):
@@ -198,27 +225,14 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing directory names: {str(err)}")
+            return Failure(f"Error converting directory names: {str(err)}")
 
-    @classmethod
-    def process_registered_ids(
-        cls: type["AlternativeNames"], oids: list[str]
-    ) -> Result[list[x509.RegisteredID], str]:
-        """Process OID strings into appropriate SAN format.
-
-        Args:
-        ----
-            oids: List of OID strings
-
-        Returns:
-        -------
-            Result containing list of valid x509.RegisteredID objects or an error message
-
-        """
+    def to_registered_ids(self) -> Result[List[x509.RegisteredID], str]:
+        """Convert OID strings to appropriate SAN format."""
         result = []
 
         try:
-            for oid in oids:
+            for oid in self.registered_id:
                 # Validate OID format
                 if re.match(r"^\d+(\.\d+)*$", oid):
                     result.append(RegisteredID(ObjectIdentifier(oid)))
@@ -227,27 +241,14 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing OIDs: {str(err)}")
+            return Failure(f"Error converting OIDs: {str(err)}")
 
-    @classmethod
-    def process_other_names(
-        cls: type["AlternativeNames"], other_names: list[str]
-    ) -> Result[list[x509.OtherName], str]:
-        """Process other name strings into appropriate SAN format.
-
-        Args:
-        ----
-            other_names: List of other name strings (format "oid:value")
-
-        Returns:
-        -------
-            Result containing list of valid x509.OtherName objects or an error message
-
-        """
+    def to_other_names(self) -> Result[List[x509.OtherName], str]:
+        """Convert other name strings to appropriate SAN format."""
         result = []
 
         try:
-            for other_name in other_names:
+            for other_name in self.other_name:
                 # Format expected: "oid:value"
                 if ":" in other_name:
                     oid_str, value = other_name.split(":", 1)
@@ -267,173 +268,171 @@ class AlternativeNames:
 
             return Success(result)
         except Exception as err:
-            return Failure(f"Error processing other names: {str(err)}")
+            return Failure(f"Error converting other names: {str(err)}")
 
-    def process_all_sans(self: "AlternativeNames") -> Result[list[GeneralName], str]:
-        """Process all Subject Alternative Name types from this instance.
-
-        Returns
-        -------
-            Result containing list of all valid SAN objects or an error message
-
-        """
-        # Initialize the result list
-        result: list[GeneralName] = []
+    def to_general_names(self) -> Result[List[GeneralName], str]:
+        """Convert all Subject Alternative Name types to a list of GeneralName objects."""
+        result: List[GeneralName] = []
 
         # Add DNS names
         if self.dns:
-            dns_result = self.process_dns_names(self.dns)
+            dns_result = self.to_dns_names()
             if isinstance(dns_result, Failure):
                 return dns_result
-            result.extend(cast(list[GeneralName], dns_result.unwrap()))
+            result.extend(cast(List[GeneralName], dns_result.unwrap()))
 
         # Add IP addresses
         if self.ip:
-            ip_result = self.process_ip_addresses(self.ip)
+            ip_result = self.to_ip_addresses()
             if isinstance(ip_result, Failure):
                 return ip_result
-            result.extend(cast(list[GeneralName], ip_result.unwrap()))
+            result.extend(cast(List[GeneralName], ip_result.unwrap()))
 
         # Add email addresses
         if self.email:
-            email_result = self.process_email_addresses(self.email)
+            email_result = self.to_email_addresses()
             if isinstance(email_result, Failure):
                 return email_result
-            result.extend(cast(list[GeneralName], email_result.unwrap()))
+            result.extend(cast(List[GeneralName], email_result.unwrap()))
 
         # Add URIs
         if self.uri:
-            uri_result = self.process_uri_addresses(self.uri)
+            uri_result = self.to_uri_addresses()
             if isinstance(uri_result, Failure):
                 return uri_result
-            result.extend(cast(list[GeneralName], uri_result.unwrap()))
+            result.extend(cast(List[GeneralName], uri_result.unwrap()))
 
         # Add directory names
         if self.directory_name:
-            dn_result = self.process_directory_names(self.directory_name)
+            dn_result = self.to_directory_names()
             if isinstance(dn_result, Failure):
                 return dn_result
-            result.extend(cast(list[GeneralName], dn_result.unwrap()))
+            result.extend(cast(List[GeneralName], dn_result.unwrap()))
 
         # Add registered IDs (OIDs)
         if self.registered_id:
-            oid_result = self.process_registered_ids(self.registered_id)
+            oid_result = self.to_registered_ids()
             if isinstance(oid_result, Failure):
                 return oid_result
-            result.extend(cast(list[GeneralName], oid_result.unwrap()))
+            result.extend(cast(List[GeneralName], oid_result.unwrap()))
 
         # Add other names
         if self.other_name:
-            other_result = self.process_other_names(self.other_name)
+            other_result = self.to_other_names()
             if isinstance(other_result, Failure):
                 return other_result
-            result.extend(cast(list[GeneralName], other_result.unwrap()))
+            result.extend(cast(List[GeneralName], other_result.unwrap()))
 
         return Success(result)
 
 
-@dataclass
-class ValidityConfig:
+class ValidityConfig(BaseModel):
     """Configuration for certificate validity period."""
 
-    days: int | None = None
-    years: int | None = None
+    days: Optional[int] = Field(None, gt=0, description="Validity period in days")
+    years: Optional[int] = Field(None, gt=0, description="Validity period in years")
 
-    def to_days(self: "ValidityConfig") -> Result[int, str]:
+    @model_validator(mode='after')
+    def validate_validity_period(self) -> 'ValidityConfig':
+        """Ensure exactly one of days or years is specified."""
+        if (self.days is None and self.years is None) or (self.days is not None and self.years is not None):
+            raise ValueError("Exactly one of 'days' or 'years' must be specified")
+        return self
+        
+    def to_days(self) -> Result[int, str]:
         """Convert validity configuration to days."""
         if self.days is not None:
             return Success(self.days)
         if self.years is not None:
             return Success(self.years * 365)
+        # This should never happen due to the validator, but keeping for robustness
         return Failure("No validity specified")
 
 
-@dataclass
-class ExportConfig:
+class ExportConfig(BaseModel):
     """Configuration for certificate export."""
 
-    cert: str | None = None
-    chain: str | None = None
+    cert: Optional[str] = None
+    chain: Optional[str] = None
 
 
-@dataclass
-class DeploymentConfig:
+class DeploymentConfig(BaseModel):
     """Configuration for certificate deployment."""
 
     command: str
 
 
-@dataclass
-class PasswordConfig:
+class PasswordConfig(BaseModel):
     """Configuration for CA password handling."""
 
-    min_length: int
-    file: str | None = None
-    env_var: str | None = None
+    min_length: int = Field(..., ge=8)
+    file: Optional[str] = None
+    env_var: Optional[str] = None
 
 
-@dataclass
-class CAConfig:
+class CAConfig(BaseModel):
     """Configuration for the Certificate Authority."""
 
     common_name: str
-    organization: str | None = None
-    organization_unit: str | None = None
-    country: str | None = None
-    state: str | None = None
-    locality: str | None = None
-    email: str | None = None
-    validity: ValidityConfig = field(default_factory=lambda: ValidityConfig(days=DEFAULT_CA_VALIDITY_DAYS))
-    password: PasswordConfig = field(default_factory=lambda: PasswordConfig(min_length=DEFAULT_PASSWORD_MIN_LENGTH))
-    key_algorithm: str = DEFAULT_CA_KEY_ALGORITHM
-    hash_algorithm: str = DEFAULT_CA_HASH_ALGORITHM
+    organization: Optional[str] = None
+    organization_unit: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    locality: Optional[str] = None
+    email: Optional[str] = None
+    # mypy incorrectly thinks we need to specify both days and years
+    validity: ValidityConfig = Field(default_factory=lambda: ValidityConfig(days=DEFAULT_CA_VALIDITY_DAYS))  # type: ignore
+    password: PasswordConfig = Field(default_factory=lambda: PasswordConfig(min_length=DEFAULT_PASSWORD_MIN_LENGTH))
+    key_algorithm: KeyAlgorithm = DEFAULT_CA_KEY_ALGORITHM
+    hash_algorithm: HashAlgorithm = DEFAULT_CA_HASH_ALGORITHM
 
 
-@dataclass
-class HostConfig:
+class HostConfig(BaseModel):
     """Configuration for a host certificate."""
 
     host_id: str
     common_name: str
-    organization: str | None = None
-    organization_unit: str | None = None
-    country: str | None = None
-    state: str | None = None
-    locality: str | None = None
-    email: str | None = None
-    alternative_names: AlternativeNames | None = None
-    validity: ValidityConfig = field(default_factory=lambda: ValidityConfig(days=DEFAULT_HOST_VALIDITY_DAYS))
-    key_algorithm: str = DEFAULT_HOST_KEY_ALGORITHM
-    hash_algorithm: str = DEFAULT_HOST_HASH_ALGORITHM
-    export: ExportConfig | None = None
-    deploy: DeploymentConfig | None = None
+    organization: Optional[str] = None
+    organization_unit: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    locality: Optional[str] = None
+    email: Optional[str] = None
+    alternative_names: Optional[AlternativeNames] = None
+    # mypy incorrectly thinks we need to specify both days and years
+    validity: ValidityConfig = Field(default_factory=lambda: ValidityConfig(days=DEFAULT_HOST_VALIDITY_DAYS))  # type: ignore
+    key_algorithm: KeyAlgorithm = DEFAULT_HOST_KEY_ALGORITHM
+    hash_algorithm: HashAlgorithm = DEFAULT_HOST_HASH_ALGORITHM
+    export: Optional[ExportConfig] = None
+    deploy: Optional[DeploymentConfig] = None
 
 
 # Core Runtime Entities
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     """Represents the runtime configuration."""
 
     config_path: Path
-    ca_config: CAConfig | None = None
-    hosts_config: dict[str, HostConfig] | None = None
+    ca_config: Optional[CAConfig] = None
+    hosts_config: Optional[Dict[str, HostConfig]] = None
 
 
-@dataclass
-class CA:
+class CA(BaseModel):
     """Represents the runtime Certificate Authority."""
-
+    
+    model_config = {"arbitrary_types_allowed": True}
+    
     ca_config: CAConfig
     cert: x509.Certificate
     key: PrivateKeyTypes
 
 
-@dataclass
-class Host:
+class Host(BaseModel):
     """Represents a runtime host."""
-
+    
+    model_config = {"arbitrary_types_allowed": True}
+    
     host_config: HostConfig
     cert: x509.Certificate
     key: PrivateKeyTypes
@@ -442,16 +441,14 @@ class Host:
 # Store
 
 
-@dataclass
-class CAInventoryEntry:
+class CAInventoryEntry(BaseModel):
     """CA entry in the certificate inventory."""
 
     renewal_count: int = 0
     rekey_count: int = 0
 
 
-@dataclass
-class InventoryEntry:
+class InventoryEntry(BaseModel):
     """Entry in the certificate inventory."""
 
     host_id: str
@@ -459,39 +456,36 @@ class InventoryEntry:
     rekey_count: int = 0
 
 
-@dataclass
-class Inventory:
+class Inventory(BaseModel):
     """Top-level certificate inventory."""
 
     ca: CAInventoryEntry
-    hosts: list[InventoryEntry]
+    hosts: List[InventoryEntry]
 
 
-@dataclass
-class Store:
+class Store(BaseModel):
     """Top-level store entity."""
 
     path: Path
-    password: str | None = None
+    password: Optional[str] = None
     unlocked: bool = False
 
 
 # Certificates
 
 
-@dataclass
-class SubjectIdentity:
+class SubjectIdentity(BaseModel):
     """Container for certificate subject identity (X.509 name) information."""
 
     common_name: str
-    organization: str | None = None
-    organization_unit: str | None = None
-    country: str | None = None
-    state: str | None = None
-    locality: str | None = None
-    email: str | None = None
+    organization: Optional[str] = None
+    organization_unit: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    locality: Optional[str] = None
+    email: Optional[str] = None
 
-    def to_x509_name(self: "SubjectIdentity") -> x509.Name:
+    def to_x509_name(self) -> x509.Name:
         """Convert subject identity to x509.Name object."""
         subject_attributes = []
 
@@ -515,7 +509,7 @@ class SubjectIdentity:
         return x509.Name(subject_attributes)
 
     @classmethod
-    def from_x509_name(cls: type["SubjectIdentity"], name: x509.Name) -> Result["SubjectIdentity", str]:
+    def from_x509_name(cls, name: x509.Name) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an x509.Name object."""
         try:
             # Helper function to safely extract attributes from the name
@@ -543,15 +537,15 @@ class SubjectIdentity:
             return Failure(f"Error extracting subject identity: {str(err)}")
 
     @classmethod
-    def from_certificate(cls: type["SubjectIdentity"], cert: x509.Certificate) -> Result["SubjectIdentity", str]:
+    def from_certificate(cls, cert: x509.Certificate) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from an X.509 certificate."""
         return cls.from_x509_name(cert.subject)
 
     @classmethod
     def from_config(
-        cls: type["SubjectIdentity"],
+        cls,
         ca_config: CAConfig,
-        host_config: HostConfig | None = None,
+        host_config: Optional[HostConfig] = None,
     ) -> Result["SubjectIdentity", str]:
         """Create a SubjectIdentity from CA config with fields optionally overridden by a host config.
 
@@ -583,19 +577,20 @@ class SubjectIdentity:
             return Failure(f"Error creating subject identity from config: {str(err)}")
 
 
-@dataclass
-class CACertificateParams:
+class CACertificateParams(BaseModel):
     """Parameters for CA certificate creation."""
-
+    
+    model_config = {"arbitrary_types_allowed": True}
+    
     subject_identity: SubjectIdentity
-    private_key: PrivateKeyTypes | None = None
-    validity_days: int | None = None
-    alt_names: AlternativeNames | None = None
-    hash_algorithm: str | None = None
+    private_key: Optional[PrivateKeyTypes] = None
+    validity_days: Optional[int] = None
+    alt_names: Optional[AlternativeNames] = None
+    hash_algorithm: Optional[HashAlgorithm] = None
 
     @classmethod
     def from_ca_config(
-        cls: type["CACertificateParams"],
+        cls,
         ca_config: CAConfig,
         private_key: PrivateKeyTypes,
     ) -> Result["CACertificateParams", str]:
@@ -634,23 +629,24 @@ class CACertificateParams:
             return Failure(f"Error creating CA certificate parameters: {str(err)}")
 
 
-@dataclass
-class CertificateParams:
+class CertificateParams(BaseModel):
     """Parameters for certificate creation."""
-
+    
+    model_config = {"arbitrary_types_allowed": True}
+    
     subject_identity: SubjectIdentity
     ca: CA
-    private_key: PrivateKeyTypes | None = None
-    validity_days: int | None = None
-    alt_names: AlternativeNames | None = None
-    hash_algorithm: str | None = None
+    private_key: Optional[PrivateKeyTypes] = None
+    validity_days: Optional[int] = None
+    alt_names: Optional[AlternativeNames] = None
+    hash_algorithm: Optional[HashAlgorithm] = None
 
     @classmethod
     def from_host_config(
-        cls: type["CertificateParams"],
+        cls,
         host_config: HostConfig,
         ca: CA,
-        private_key: PrivateKeyTypes | None = None,
+        private_key: Optional[PrivateKeyTypes] = None,
     ) -> Result["CertificateParams", str]:
         """Create CertificateParams from a host configuration.
 
@@ -690,17 +686,18 @@ class CertificateParams:
             return Failure(f"Error creating certificate parameters from host config: {str(err)}")
 
 
-@dataclass
-class CSRInfo:
+class CSRInfo(BaseModel):
     """Information extracted from a Certificate Signing Request."""
-
+    
+    model_config = {"arbitrary_types_allowed": True}
+    
     hostname: str
     subject: x509.Name
     alternative_names: AlternativeNames
     public_key: Any
 
     @classmethod
-    def from_csr(cls: type["CSRInfo"], csr: x509.CertificateSigningRequest) -> Result["CSRInfo", str]:
+    def from_csr(cls, csr: x509.CertificateSigningRequest) -> Result["CSRInfo", str]:
         """Create CSRInfo from a Certificate Signing Request."""
         try:
             # Extract hostname from subject common name

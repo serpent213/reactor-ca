@@ -39,7 +39,7 @@ click = "^8.1.3"
 cryptography = "^41.0.0"
 rich = "^13.5.0"
 ruamel-yaml = "^0.18.5"
-yamale = "^6.0.0"
+pydantic = "^2.6.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.3.0"
@@ -51,9 +51,9 @@ ruff = "^0.1.6"
 ca = "reactor_ca.main:cli"
 
 [tool.poe.tasks]
-format = { cmd = "ruff format ca .", help = "Format code with ruff" }
-formatcheck = { cmd = "ruff format --check ca .", help = "Check code format" }
-lint = { cmd = "ruff check --preview ca .", help = "Run ruff linter" }
+format = { cmd = "ruff format ca reactor_ca", help = "Format code with ruff" }
+formatcheck = { cmd = "ruff format --check ca reactor_ca", help = "Check code format" }
+lint = { cmd = "ruff check --preview ca reactor_ca", help = "Run ruff linter" }
 typecheck = { cmd = "mypy ca reactor_ca", help = "Run mypy type checker" }
 test = { cmd = "pytest", help = "Run pytest tests" }
 check = { sequence = [
@@ -64,7 +64,7 @@ check = { sequence = [
 ], help = "Run all checks and tests" }
 fix = { sequence = [
     "format",
-    { cmd = "ruff check --preview --fix --unsafe-fixes ca ." }
+    { cmd = "ruff check --preview --fix --unsafe-fixes ca reactor_ca" }
 ], help = "Fix format and lint (unsafe)" }
 
 [tool.ruff]
