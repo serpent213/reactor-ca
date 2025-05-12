@@ -5,7 +5,7 @@ from enum import StrEnum
 
 class KeyAlgorithm(StrEnum):
     """Supported key algorithms."""
-    
+
     RSA2048 = "RSA2048"
     RSA3072 = "RSA3072"
     RSA4096 = "RSA4096"
@@ -18,7 +18,7 @@ class KeyAlgorithm(StrEnum):
 
 class HashAlgorithm(StrEnum):
     """Supported hash algorithms."""
-    
+
     SHA256 = "SHA256"
     SHA384 = "SHA384"
     SHA512 = "SHA512"

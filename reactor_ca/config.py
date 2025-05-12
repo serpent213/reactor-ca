@@ -1,44 +1,39 @@
 """Configuration operations for ReactorCA."""
 
-from pathlib import Path
-from typing import Any, Dict, Optional, cast
-
 import json
+from pathlib import Path
+from typing import Any
+
 from pydantic import ValidationError
 from rich.console import Console
 from ruamel.yaml import YAML
 
 from reactor_ca.defaults import (
-    DEFAULT_CA_VALIDITY_DAYS,
-    DEFAULT_HOST_VALIDITY_DAYS,
     get_default_ca_config,
     get_default_hosts_config,
 )
 from reactor_ca.models import (
-    AlternativeNames,
     CAConfig,
     Config,
-    DeploymentConfig,
-    ExportConfig,
     HostConfig,
-    PasswordConfig,
-    ValidityConfig,
 )
 from reactor_ca.paths import (
     get_ca_config_path,
     get_hosts_config_path,
 )
 from reactor_ca.result import Failure, Result, Success
-from reactor_ca.types import KeyAlgorithm, HashAlgorithm
+from reactor_ca.types import HashAlgorithm, KeyAlgorithm
 
 CONSOLE = Console()
 yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+
 # Add custom representers for enum types
 def enum_representer(dumper, data):
-    return dumper.represent_scalar('tag:yaml.org,2002:str', str(data.value))
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
+
 
 yaml.representer.add_representer(KeyAlgorithm, enum_representer)
 yaml.representer.add_representer(HashAlgorithm, enum_representer)
@@ -202,13 +197,13 @@ def save_ca_config(config: Config) -> Result[None, str]:
     try:
         # Use Pydantic's model_dump to convert CAConfig to dictionary
         ca_dict = config.ca_config.model_dump(exclude_none=True, exclude_unset=True)
-        
+
         # Format validity days/years correctly
         if "validity" in ca_dict and "days" in ca_dict["validity"]:
             days_result = config.ca_config.validity.to_days()
             if isinstance(days_result, Success):
                 ca_dict["validity"] = {"days": days_result.unwrap()}
-        
+
         # Wrap in 'ca' key for config file format
         config_dict = {"ca": ca_dict}
 
@@ -315,37 +310,39 @@ def _validate_yaml(file_path: Path, config_type: str) -> Result[None, list[str]]
         # Load the YAML file
         with open(file_path, encoding="locale") as f:
             config_dict = yaml.load(f) or {}
-        
+
         # Validate based on config type
-        if config_type == 'ca':
-            ca_data = config_dict.get('ca', {})
+        if config_type == "ca":
+            ca_data = config_dict.get("ca", {})
             # Validate using CAConfig Pydantic model
             CAConfig.model_validate(ca_data)
-        elif config_type == 'hosts':
-            hosts_data = config_dict.get('hosts', {})
-            
+        elif config_type == "hosts":
+            hosts_data = config_dict.get("hosts", {})
+
             # If hosts is a list, convert to dict for validation
             if isinstance(hosts_data, list):
                 hosts_dict = {}
                 for host in hosts_data:
-                    if 'host_id' in host:
-                        hosts_dict[host['host_id']] = host
+                    if "host_id" in host:
+                        hosts_dict[host["host_id"]] = host
                     else:
                         return Failure([f"Host missing required 'host_id' field: {host}"])
                 hosts_data = hosts_dict
-            
+
             # Validate each host configuration
             for host_id, host_data in hosts_data.items():
                 # Ensure host_id is included in the data for validation
-                host_data_with_id = {**host_data, 'host_id': host_id}
+                host_data_with_id = {**host_data, "host_id": host_id}
                 HostConfig.model_validate(host_data_with_id)
         else:
             return Failure([f"Unknown configuration type: {config_type}"])
-        
+
         return Success(None)
     except ValidationError as e:
         # Extract error messages from Pydantic ValidationError
-        return Failure([f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in json.loads(e.json())])
+        return Failure(
+            [f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in json.loads(e.json())]
+        )
     except Exception as e:
         return Failure([f"Error validating configuration: {str(e)}"])
 
@@ -388,7 +385,9 @@ def _load_ca_config(config_path: Path) -> Result[CAConfig, str]:
     except ValidationError as e:
         # Parse validation errors to provide meaningful error messages
         errors = json.loads(e.json())
-        error_message = "\n".join([f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in errors])
+        error_message = "\n".join(
+            [f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in errors]
+        )
         CONSOLE.print(f"[bold red]Error:[/bold red] Invalid CA configuration: {error_message}")
         return Failure(f"Invalid CA configuration: {error_message}")
     except Exception as e:
@@ -426,7 +425,7 @@ def _load_hosts_config(config_path: Path) -> Result[dict[str, HostConfig], str]:
     except Exception as e:
         return Failure(f"Error loading hosts configuration file: {str(e)}")
 
-    hosts_dict: Dict[str, HostConfig] = {}
+    hosts_dict: dict[str, HostConfig] = {}
     hosts_data = config_dict.get("hosts", {})
 
     # Convert a list of host dicts to a dict keyed by host_id
@@ -449,7 +448,9 @@ def _load_hosts_config(config_path: Path) -> Result[dict[str, HostConfig], str]:
                 hosts_dict[host_id] = host_config
             except ValidationError as e:
                 errors = json.loads(e.json())
-                error_message = "\n".join([f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in errors])
+                error_message = "\n".join(
+                    [f"{'.'.join(str(loc) for loc in error['loc'])}: {error['msg']}" for error in errors]
+                )
                 return Failure(f"Error parsing host {host_id}: {error_message}")
 
         return Success(hosts_dict)
@@ -523,15 +524,15 @@ def _host_config_to_dict(host_config: HostConfig) -> dict[str, Any]:
     """
     # Use Pydantic's model_dump to convert to dict with exclusion of empty values
     host_data = host_config.model_dump(exclude_none=True, exclude_unset=True)
-    
+
     # Remove host_id from the serialized data since it's part of the key in the hosts dict
     if "host_id" in host_data:
         del host_data["host_id"]
-    
+
     # Ensure validity days format is correct if days is available through to_days()
     if "validity" in host_data and host_config.validity:
         days_result = host_config.validity.to_days()
         if isinstance(days_result, Success):
             host_data["validity"] = {"days": days_result.unwrap()}
-    
+
     return host_data
