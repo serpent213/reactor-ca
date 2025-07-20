@@ -6,7 +6,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from reactor_ca.main import cli
+from reactor_ca.cli import cli
+from reactor_ca.paths import get_ca_config_path
 from tests.helpers import assert_cert_paths, setup_test_env
 
 
@@ -59,7 +60,8 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w", encoding="locale") as f:
+        ca_config_path = Path(tmpdir) / "config" / "ca.yaml"
+        with open(ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -105,7 +107,7 @@ ca:
 
             assert result.exit_code == 0
             assert "subject" in result.output
-            assert "common_name" in result.output
+            assert "commonName" in result.output
             assert "serial" in result.output
             assert "fingerprint" in result.output
 
@@ -144,7 +146,8 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w", encoding="locale") as f:
+        ca_config_path = Path(tmpdir) / "config" / "ca.yaml"
+        with open(ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -168,8 +171,7 @@ ca:
             # Verify certificate paths
             assert_cert_paths(store)
 
-            # Also check inventory
-            assert store.config.inventory_path.exists()
+            # The inventory is no longer a separate file in the new codebase
             assert "CA created successfully" in result.output
 
         finally:
@@ -207,7 +209,8 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w", encoding="locale") as f:
+        ca_config_path = Path(tmpdir) / "config" / "ca.yaml"
+        with open(ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -225,7 +228,9 @@ ca:
             assert_cert_paths(store)
 
             # Get the creation date of the certificate
-            ca_cert_path = store.get_ca_cert_path()
+            from reactor_ca.paths import get_store_ca_cert_path
+
+            ca_cert_path = get_store_ca_cert_path(store)
             original_mtime = ca_cert_path.stat().st_mtime
 
             # Now renew the CA with explicit paths
@@ -280,7 +285,8 @@ ca:
 """
 
         # Write the config file directly
-        with open(store.config.ca_config_path, "w", encoding="locale") as f:
+        ca_config_path = Path(tmpdir) / "config" / "ca.yaml"
+        with open(ca_config_path, "w", encoding="locale") as f:
             f.write(config_content)
 
         # Set environment variable for password
@@ -298,8 +304,10 @@ ca:
             assert_cert_paths(store)
 
             # Get paths from the store
-            ca_cert_path = store.get_ca_cert_path()
-            ca_key_path = store.get_ca_key_path()
+            from reactor_ca.paths import get_store_ca_cert_path, get_store_ca_key_path
+
+            ca_cert_path = get_store_ca_cert_path(store)
+            ca_key_path = get_store_ca_key_path(store)
 
             # Get the original certificate and key modification times
             original_cert_mtime = ca_cert_path.stat().st_mtime

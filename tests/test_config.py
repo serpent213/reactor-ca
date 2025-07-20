@@ -1,4 +1,4 @@
-"""Tests for the configuration and validator."""
+"""Tests for the configuration and validation."""
 
 import os
 import tempfile
@@ -6,11 +6,13 @@ from pathlib import Path
 
 import yaml
 
-from reactor_ca.config import Config, create_default_config, validate_config
+from reactor_ca.config import init, create, validate, _validate_yaml
+from reactor_ca.models import CAConfig, HostConfig, AlternativeNames, ValidityConfig, PasswordConfig
+from reactor_ca.result import Success
 
 
 def test_validate_ca_config_valid() -> None:
-    """Test validating a valid CA configuration using the config.validate_config function."""
+    """Test validating a valid CA configuration using the config._validate_yaml function."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
             "ca": {
@@ -35,11 +37,9 @@ def test_validate_ca_config_valid() -> None:
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "ca_config_schema.yaml")
-        if not valid:
-            print(f"Validation errors: {errors}")
-        assert valid
-        assert not errors
+        # Use _validate_yaml with the test file
+        validation_result = _validate_yaml(Path(tmp_file.name), "ca")
+        assert isinstance(validation_result, Success)
 
 
 def test_validate_ca_config_invalid() -> None:
@@ -50,13 +50,14 @@ def test_validate_ca_config_invalid() -> None:
                 "common_name": "Test CA",
                 "organization": "Test Org",
                 "organization_unit": "IT",
-                # Missing required fields
-                # "country": "US",
+                "country": "US",
                 "state": "Test State",
                 "locality": "Test City",
                 "email": "test@example.com",
                 "key_algorithm": "RSA4096",
+                # Invalid validity - specifying both days and years
                 "validity": {
+                    "days": 365,
                     "years": 10,
                 },
                 "password": {
@@ -67,18 +68,17 @@ def test_validate_ca_config_invalid() -> None:
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "ca_config_schema.yaml")
-        assert not valid
-        assert errors
+        validation_result = _validate_yaml(Path(tmp_file.name), "ca")
+        assert not isinstance(validation_result, Success)
 
 
 def test_validate_hosts_config_valid_rsa2048() -> None:
     """Test validating a valid hosts configuration (RSA2048)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
-            "hosts": [
-                {
-                    "name": "test.example.com",
+            "hosts": {
+                "test.example.com": {
+                    "host_id": "test.example.com",
                     "common_name": "test.example.com",
                     "alternative_names": {
                         "dns": ["www.example.com"],
@@ -96,25 +96,22 @@ def test_validate_hosts_config_valid_rsa2048() -> None:
                     },
                     "key_algorithm": "RSA2048",
                 }
-            ]
+            }
         }
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
-        if not valid:
-            print(f"Validation errors: {errors}")
-        assert valid
-        assert not errors
+        validation_result = _validate_yaml(Path(tmp_file.name), "hosts")
+        assert isinstance(validation_result, Success)
 
 
 def test_validate_hosts_config_valid_rsa4096() -> None:
     """Test validating a valid hosts configuration (RSA4096)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         valid_config = {
-            "hosts": [
-                {
-                    "name": "test.example.com",
+            "hosts": {
+                "test.example.com": {
+                    "host_id": "test.example.com",
                     "common_name": "test.example.com",
                     "alternative_names": {
                         "dns": ["www.example.com"],
@@ -132,25 +129,22 @@ def test_validate_hosts_config_valid_rsa4096() -> None:
                     },
                     "key_algorithm": "RSA4096",
                 }
-            ]
+            }
         }
         yaml.dump(valid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
-        if not valid:
-            print(f"Validation errors: {errors}")
-        assert valid
-        assert not errors
+        validation_result = _validate_yaml(Path(tmp_file.name), "hosts")
+        assert isinstance(validation_result, Success)
 
 
 def test_validate_hosts_config_invalid1() -> None:
     """Test validating an invalid hosts configuration (common name, algo)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         invalid_config = {
-            "hosts": [
-                {
-                    "name": "test.example.com",
+            "hosts": {
+                "test.example.com": {
+                    "host_id": "test.example.com",
                     # Missing required field
                     # "common_name": "test.example.com",
                     "alternative_names": {
@@ -162,23 +156,22 @@ def test_validate_hosts_config_invalid1() -> None:
                     },
                     "key_algorithm": "INVALID",  # Invalid algorithm
                 }
-            ]
+            }
         }
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
-        assert not valid
-        assert errors
+        validation_result = _validate_yaml(Path(tmp_file.name), "hosts")
+        assert not isinstance(validation_result, Success)
 
 
 def test_validate_hosts_config_invalid2() -> None:
     """Test validating a valid hosts configuration (invalid key algorithm)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", encoding="locale") as tmp_file:
         invalid_config = {
-            "hosts": [
-                {
-                    "name": "test.example.com",
+            "hosts": {
+                "test.example.com": {
+                    "host_id": "test.example.com",
                     "common_name": "test.example.com",
                     "alternative_names": {
                         "dns": ["www.example.com"],
@@ -196,95 +189,73 @@ def test_validate_hosts_config_invalid2() -> None:
                     },
                     "key_algorithm": "RSA2047",  # Invalid algorithm (not in enum)
                 }
-            ]
+            }
         }
         yaml.dump(invalid_config, tmp_file)
         tmp_file.flush()
 
-        valid, errors = validate_config(Path(tmp_file.name), "hosts_config_schema.yaml")
-        assert not valid
-        assert errors
+        validation_result = _validate_yaml(Path(tmp_file.name), "hosts")
+        assert not isinstance(validation_result, Success)
 
 
-def test_default_config_ca_validates() -> None:
-    """Test that the default CA config created by utils.create_default_config passes validation."""
+def test_default_config_create_and_validate() -> None:
+    """Test that creating and validating default config works."""
     # Create a temporary directory for the test
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Change to temp directory to avoid affecting real config
-        original_cwd = Path.cwd()
+        # Use the temp directory
         temp_path = Path(temp_dir)
 
-        try:
-            # Create config directory in the temp directory
-            config_dir = temp_path / "config"
-            config_dir.mkdir(exist_ok=True)
+        # Create config
+        config_result = create(temp_path / "config")
+        assert isinstance(config_result, Success)
 
-            # Temporarily change working directory
-            os.chdir(temp_path)
-
-            # Set environment variable for root directory
-            os.environ["REACTOR_CA_ROOT"] = str(temp_path)
-
-            # Create default configuration with explicit config
-            config = Config.create(root_dir=str(temp_path))
-            create_default_config(config)
-
-            # Check the CA config file exists at the explicit path
-            ca_config_path = config.ca_config_path
-            print(f"Looking for CA config at: {ca_config_path}")
-            assert ca_config_path.exists(), f"Default CA config was not created at {ca_config_path}"
-
-            # Validate the CA config
-            valid, errors = validate_config(ca_config_path, "ca_config_schema.yaml")
-            if not valid:
-                print(f"Validation errors: {errors}")
-            assert valid, f"Default CA config does not validate against schema: {errors}"
-            assert not errors
-
-        finally:
-            # Clean up and restore original working directory
-            os.chdir(original_cwd)
-            if "REACTOR_CA_ROOT" in os.environ:
-                del os.environ["REACTOR_CA_ROOT"]
+        # Validate config
+        validation_result = validate(temp_path / "config")
+        assert isinstance(validation_result, Success)
 
 
-def test_default_config_hosts_validates() -> None:
-    """Test that the default hosts config created by utils.create_default_config passes validation."""
-    # Create a temporary directory for the test
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Change to temp directory to avoid affecting real config
-        original_cwd = Path.cwd()
-        temp_path = Path(temp_dir)
+def test_models_validity_config() -> None:
+    """Test the ValidityConfig model."""
+    # Test with days
+    validity_days = ValidityConfig(days=365)
+    days_result = validity_days.to_days()
+    assert isinstance(days_result, Success)
+    assert days_result.unwrap() == 365
 
-        try:
-            # Create config directory in the temp directory
-            config_dir = temp_path / "config"
-            config_dir.mkdir(exist_ok=True)
+    # Test with years
+    validity_years = ValidityConfig(years=1)
+    years_result = validity_years.to_days()
+    assert isinstance(years_result, Success)
+    assert years_result.unwrap() == 365
 
-            # Temporarily change working directory
-            os.chdir(temp_path)
+    # Test model validation - shouldn't be able to set both
+    try:
+        ValidityConfig(days=365, years=1)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
 
-            # Set environment variable for root directory
-            os.environ["REACTOR_CA_ROOT"] = str(temp_path)
 
-            # Create default configuration with explicit config
-            config = Config.create(root_dir=str(temp_path))
-            create_default_config(config)
+def test_alternative_names() -> None:
+    """Test the AlternativeNames model."""
+    # Valid DNS
+    alt_names = AlternativeNames(dns=["valid.example.com"])
+    assert not alt_names.is_empty()
 
-            # Check the hosts config file exists at the explicit path
-            hosts_config_path = config.hosts_config_path
-            print(f"Looking for hosts config at: {hosts_config_path}")
-            assert hosts_config_path.exists(), f"Default hosts config was not created at {hosts_config_path}"
+    # Invalid DNS
+    try:
+        AlternativeNames(dns=["invalid..example.com"])
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
 
-            # Validate the hosts config
-            valid, errors = validate_config(hosts_config_path, "hosts_config_schema.yaml")
-            if not valid:
-                print(f"Validation errors: {errors}")
-            assert valid, f"Default hosts config does not validate against schema: {errors}"
-            assert not errors
+    # Valid IP
+    alt_names = AlternativeNames(ip=["192.168.1.1"])
+    assert not alt_names.is_empty()
 
-        finally:
-            # Clean up and restore original working directory
-            os.chdir(original_cwd)
-            if "REACTOR_CA_ROOT" in os.environ:
-                del os.environ["REACTOR_CA_ROOT"]
+    # Invalid IP
+    try:
+        AlternativeNames(ip=["999.999.999.999"])
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass

@@ -51,8 +51,8 @@ ruff = "^0.1.6"
 ca = "reactor_ca.main:cli"
 
 [tool.poe.tasks]
-format = { cmd = "ruff format ca reactor_ca", help = "Format code with ruff" }
-formatcheck = { cmd = "ruff format --check ca reactor_ca", help = "Check code format" }
+format = { cmd = "ruff format ca reactor_ca tests", help = "Format code with ruff" }
+formatcheck = { cmd = "ruff format --check ca reactor_ca tests", help = "Check code format" }
 lint = { cmd = "ruff check --preview ca reactor_ca", help = "Run ruff linter" }
 typecheck = { cmd = "mypy ca reactor_ca", help = "Run mypy type checker" }
 test = { cmd = "pytest", help = "Run pytest tests" }
