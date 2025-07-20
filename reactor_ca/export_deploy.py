@@ -18,7 +18,7 @@ from rich.console import Console
 
 from reactor_ca.paths import get_host_cert_path
 from reactor_ca.result import Failure, Result, Success
-from reactor_ca.x509_crypto import serialize_certificate, serialize_unencrypted_private_key
+from reactor_ca.x509_crypto import serialize_certificate, serialize_private_key
 
 # Module-level console instance
 CONSOLE = Console()
@@ -62,7 +62,7 @@ def export_unencrypted_key(key: PrivateKeyTypes, export_path: Path) -> Result[No
     """Export an unencrypted private key to the specified path."""
     try:
         export_path.parent.mkdir(parents=True, exist_ok=True)
-        key_bytes_res = serialize_unencrypted_private_key(key)
+        key_bytes_res = serialize_private_key(key, password=None)
         if isinstance(key_bytes_res, Failure):
             return key_bytes_res
         export_path.write_bytes(key_bytes_res.unwrap())
@@ -128,7 +128,7 @@ def deploy(command: str, cert: x509.Certificate, key: PrivateKeyTypes) -> Result
 def _write_key_to_temp_file(key: PrivateKeyTypes) -> Result[str, str]:
     """Write a private key to a temporary file with secure permissions."""
     try:
-        key_bytes_res = serialize_unencrypted_private_key(key)
+        key_bytes_res = serialize_private_key(key, password=None)
         if isinstance(key_bytes_res, Failure):
             return key_bytes_res
 

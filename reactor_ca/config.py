@@ -90,7 +90,9 @@ def init(config_path: Path) -> Result[Config, str]:
     if isinstance(hosts_config_result, Failure):
         return hosts_config_result
 
-    return Success(Config(config_path=config_path, ca_config=ca_config_result.value, hosts_config=hosts_config_result.value))
+    return Success(
+        Config(config_path=config_path, ca_config=ca_config_result.value, hosts_config=hosts_config_result.value)
+    )
 
 
 def validate(config_path: Path) -> Result[None, str]:

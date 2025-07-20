@@ -55,7 +55,7 @@ from reactor_ca.x509_crypto import (
     deserialize_private_key,
     ensure_key_algorithm,
     generate_key,
-    serialize_unencrypted_private_key,
+    serialize_private_key,
 )
 
 
@@ -298,7 +298,9 @@ def import_host_key(
     try:
         key_data = key_path.read_bytes()
         # Prompt for source key password
-        src_password_res = get_password(min_length=1, prompt_message="Enter password for key to import (or press Enter if none): ", confirm=False)
+        src_password_res = get_password(
+            min_length=1, prompt_message="Enter password for key to import (or press Enter if none): ", confirm=False
+        )
         src_password = src_password_res.unwrap() if isinstance(src_password_res, Success) else None
 
         private_key_res = deserialize_private_key(key_data, src_password)
@@ -332,7 +334,7 @@ def export_host_key_unencrypted_wrapper(
             return Failure(f"Failed to export unencrypted key: {export_result.error}")
         console.print(f"✅ Unencrypted key exported to [bold]{out_path}[/bold]")
     else:
-        key_bytes_res = serialize_unencrypted_private_key(private_key)
+        key_bytes_res = serialize_private_key(private_key, password=None)
         if isinstance(key_bytes_res, Failure):
             return key_bytes_res
         console.print(key_bytes_res.unwrap().decode("utf-8"))
@@ -369,7 +371,9 @@ def deploy_host(
     return Success(None)
 
 
-def deploy_all_hosts(ctx: Context, config: "models.Config", store: "models.Store", password: str) -> Result[None, str]:
+def deploy_all_hosts(
+    ctx: Context, config: "models.Config", store: "models.Store", password: str
+) -> Result[None, str]:
     """Deploy all host certificates."""
     console = ctx.obj["console"]
     hosts_config = config.hosts_config

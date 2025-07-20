@@ -212,7 +212,9 @@ def import_ca(
         if isinstance(private_key_result, Failure):
             if src_key_password:
                 return Failure(f"Failed to decrypt key with provided password: {private_key_result.error}")
-            return Failure(f"Key is password-protected or invalid. Try --key-password. Error: {private_key_result.error}")
+            return Failure(
+                f"Key is password-protected or invalid. Try --key-password. Error: {private_key_result.error}"
+            )
         private_key = private_key_result.unwrap()
     except Exception as e:
         return Failure(f"Error loading key: {e!s}")
