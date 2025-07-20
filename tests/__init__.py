@@ -1,1 +1,1 @@
-"""Test package for ReactorCA."""
+"""Tests for ReactorCA."""
