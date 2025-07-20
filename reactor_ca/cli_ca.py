@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
 from reactor_ca.models import CACertificateParams, Config, Store
-from reactor_ca.paths import get_store_ca_cert_path, get_store_ca_key_path
+from reactor_ca.paths import get_ca_cert_path, get_ca_key_path
 from reactor_ca.result import Failure, Result, Success
 from reactor_ca.store import check_ca_files, read_ca_cert, read_ca_key, write_ca_cert, write_ca_key
 from reactor_ca.x509_crypto import (
@@ -26,18 +26,19 @@ from reactor_ca.x509_crypto import (
 )
 
 
-def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str]:
+def issue_ca(ctx: Context, config: "Config", store: "Store", password: str) -> Result[None, str]:
     """Issue a CA certificate. Creates one if it doesn't exist, renews if it does.
 
     Args:
     ----
         ctx: Click context
         config: Config object with loaded configurations
-        store: Store object (already unlocked)
+        store: Store object for path info
+        password: The master password for encryption.
 
     Returns:
     -------
-        Result with CA info dict or error message
+        Result with None or error message
 
     """
     console = ctx.obj["console"]
@@ -45,8 +46,6 @@ def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
     if not ca_config:
         return Failure("No CA config provided")
     key_algorithm = ca_config.key_algorithm
-    if not store.unlocked:
-        return Failure("Store must be unlocked")
 
     key_present, cert_present = check_ca_files(store)
     if not key_present:
@@ -56,7 +55,7 @@ def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
             return key_result
         private_key = key_result.unwrap()
     else:
-        read_result = read_ca_key(store)
+        read_result = read_ca_key(store, password)
         if isinstance(read_result, Failure):
             return read_result
         private_key = read_result.unwrap()
@@ -82,7 +81,7 @@ def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
 
     # Save key and certificate
     if not key_present:
-        key_save_result = write_ca_key(store, private_key)
+        key_save_result = write_ca_key(store, private_key, password)
         if isinstance(key_save_result, Failure):
             return Failure(f"Failed to save CA key: {key_save_result.error}")
 
@@ -98,14 +97,15 @@ def issue_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
     return Success(None)
 
 
-def rekey_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str]:
+def rekey_ca(ctx: Context, config: "Config", store: "Store", password: str) -> Result[None, str]:
     """Generate a new key and renew the CA certificate.
 
     Args:
     ----
         ctx: Click context
         config: Config object with loaded configurations
-        store: Store object (already unlocked with password)
+        store: Store object for path info
+        password: The master password.
 
     Returns:
     -------
@@ -119,10 +119,6 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
     if not key_present or not cert_present:
         return Failure("CA certificate or key not found. Please initialize the CA first.")
 
-    # Make sure we have a password
-    if not store.password or not store.unlocked:
-        return Failure("Store must be unlocked and have a password set")
-
     # Get CA config directly from the Config object
     ca_config = config.ca_config
     if not ca_config:
@@ -135,7 +131,6 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
         return key_result
     new_ca_key = key_result.unwrap()
 
-    # Generate a new certificate with the new key
     # Create CA certificate params from config
     ca_params_result = CACertificateParams.from_ca_config(
         ca_config=ca_config,
@@ -152,7 +147,7 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
     cert = cert_result.unwrap()
 
     # Save the new certificate and key
-    key_save_result = write_ca_key(store, new_ca_key)
+    key_save_result = write_ca_key(store, new_ca_key, password)
     if isinstance(key_save_result, Failure):
         return Failure(f"Failed to save CA key: {key_save_result.error}")
 
@@ -162,9 +157,8 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store") -> Result[None, str
 
     # Print success message
     console.print("✅ CA rekeyed successfully")
-    console.print(f"   Certificate: [bold]{get_store_ca_cert_path(store)}[/bold]")
-    console.print(f"   Private key (encrypted): [bold]{get_store_ca_key_path(store)}[/bold]")
-    console.print("📋 Inventory updated")
+    console.print(f"   Certificate: [bold]{get_ca_cert_path(store)}[/bold]")
+    console.print(f"   Private key (encrypted): [bold]{get_ca_key_path(store)}[/bold]")
 
     return Success(None)
 
@@ -175,7 +169,8 @@ def import_ca(
     key_path: Path,
     config: "Config",
     store: "Store",
-    src_password: str | None = None,
+    new_password: str,
+    src_key_password: str | None = None,
 ) -> Result[None, str]:
     """Import an existing CA certificate and key.
 
@@ -185,8 +180,9 @@ def import_ca(
         cert_path: Path to the certificate file
         key_path: Path to the key file
         config: Config object with loaded configurations
-        store: Store object (already unlocked with password)
-        src_password: Optional password for the source key
+        store: Store object for path info
+        new_password: The master password to encrypt the new key with.
+        src_key_password: Optional password for the source key.
 
     Returns:
     -------
@@ -196,87 +192,54 @@ def import_ca(
     console = ctx.obj["console"]
 
     # Check if CA exists in the store
-    key_present, cert_present = check_ca_files(store)
-    if key_present or cert_present:
+    if any(check_ca_files(store)):
         return Failure("CA already exists in store. Please remove it first or use a different store.")
-
-    # Check if source files exist
-    if not cert_path.exists():
-        return Failure(f"Certificate file not found: {cert_path}")
-
-    if not key_path.exists():
-        return Failure(f"Key file not found: {key_path}")
-
-    # Make sure we have a password in the store for saving
-    if not store.password or not store.unlocked:
-        return Failure("Store must be unlocked and have a password set for saving imported CA")
 
     # Load the certificate
     try:
-        with open(cert_path, "rb") as f:
-            cert_data = f.read()
-
+        cert_data = cert_path.read_bytes()
         cert_result = deserialize_certificate(cert_data)
         if isinstance(cert_result, Failure):
             return Failure(f"Failed to load certificate: {cert_result.error}")
         cert = cert_result.unwrap()
     except Exception as e:
-        return Failure(f"Error loading certificate: {str(e)}")
+        return Failure(f"Error loading certificate: {e!s}")
 
-    # Load and validate the key
+    # Load the private key
     try:
-        with open(key_path, "rb") as f:
-            key_data = f.read()
-    except Exception as e:
-        return Failure(f"Error loading key file: {str(e)}")
-
-    # Try to load it without password first
-    try:
-        private_key_result = deserialize_private_key(key_data, None)
+        key_data = key_path.read_bytes()
+        private_key_result = deserialize_private_key(key_data, src_key_password)
         if isinstance(private_key_result, Failure):
-            # Need a password for the source key
-            if src_password:
-                private_key_result = deserialize_private_key(key_data, src_password)
-                if isinstance(private_key_result, Failure):
-                    return Failure(f"Failed to decrypt key with provided password: {private_key_result.error}")
-            else:
-                return Failure("Key is password-protected. Please provide a source key password.")
+            if src_key_password:
+                return Failure(f"Failed to decrypt key with provided password: {private_key_result.error}")
+            return Failure(f"Key is password-protected or invalid. Try --key-password. Error: {private_key_result.error}")
+        private_key = private_key_result.unwrap()
     except Exception as e:
-        return Failure(f"Error loading key: {str(e)}")
-
-    private_key = private_key_result.unwrap()
+        return Failure(f"Error loading key: {e!s}")
 
     # Verify that the certificate and key match
     public_key_cert = cert.public_key()
     public_key = private_key.public_key()
-
     if public_key_cert.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo) != public_key.public_bytes(
         Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
     ):
         return Failure("Certificate and key do not match")
 
-    # Save certificate and key
+    # Save certificate and key, encrypted with the new password
     cert_save_result = write_ca_cert(store, cert)
     if isinstance(cert_save_result, Failure):
-        return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
+        return cert_save_result
 
-    key_save_result = write_ca_key(store, private_key)
+    key_save_result = write_ca_key(store, private_key, new_password)
     if isinstance(key_save_result, Failure):
-        return Failure(f"Failed to save CA key: {key_save_result.error}")
-
-    # Extract common name for output
-    subject = cert.subject
-    common_name = ""
-    for attr in subject:
-        if attr.oid.dotted_string == "2.5.4.3":  # Common Name
-            common_name = str(attr.value) if attr.value is not None else ""
+        return key_save_result
 
     # Print success message
+    common_name = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
     console.print("✅ CA imported successfully")
-    console.print(f"   Certificate: [bold]{get_store_ca_cert_path(store)}[/bold]")
-    console.print(f"   Private key (encrypted): [bold]{get_store_ca_key_path(store)}[/bold]")
-    if common_name:
-        console.print(f"   Common Name: [bold]{common_name}[/bold]")
+    console.print(f"   Certificate: [bold]{get_ca_cert_path(store)}[/bold]")
+    console.print(f"   Private key (encrypted): [bold]{get_ca_key_path(store)}[/bold]")
+    console.print(f"   Common Name: [bold]{common_name}[/bold]")
 
     return Success(None)
 
@@ -286,55 +249,37 @@ def get_ca_info_dict(store: "Store") -> Result[dict[str, Any], str]:
 
     Args:
     ----
-        store: Store object containing path and password information
+        store: Store object containing path information
 
     Returns:
     -------
         Result with CA info dictionary or error message
 
     """
-    # Check if CA exists
-    key_present, cert_present = check_ca_files(store)
-    if not cert_present:
+    if not check_ca_files(store)[1]:
         return Failure("CA certificate not found. Please initialize the CA first.")
 
-    # Load the certificate
     cert_result = read_ca_cert(store)
     if isinstance(cert_result, Failure):
-        return Failure(f"Failed to load CA certificate: {cert_result.error}")
-
+        return cert_result
     cert = cert_result.unwrap()
 
-    # Extract information from certificate
-    subject = cert.subject
-    subject_info = {}
-
-    for attr in subject:
-        attr_name = attr.oid._name
-        attr_value = attr.value
-        subject_info[attr_name] = attr_value
-
-    # Build fingerprint
-    fingerprint_result = cert.fingerprint(hashes.SHA256())
-    fingerprint = "SHA256:" + fingerprint_result.hex() if isinstance(fingerprint_result, bytes) else ""
-
-    # Calculate days until expiration
+    subject_info = {attr.oid._name: attr.value for attr in cert.subject}
+    fingerprint = "SHA256:" + cert.fingerprint(hashes.SHA256()).hex()
     now = datetime.datetime.now(datetime.UTC)
-    expiry_date = cert.not_valid_after.replace(tzinfo=datetime.UTC)
-    days_remaining = (expiry_date - now).days
+    days_remaining = (cert.not_valid_after_utc - now).days
 
-    # Build CA info dictionary
     ca_info = {
         "subject": subject_info,
         "serial": format(cert.serial_number, "x"),
-        "not_before": cert.not_valid_before.isoformat(),
-        "not_after": cert.not_valid_after.isoformat(),
+        "not_before": cert.not_valid_before_utc.isoformat(),
+        "not_after": cert.not_valid_after_utc.isoformat(),
         "days_remaining": days_remaining,
         "fingerprint": fingerprint,
         "public_key": {
             "type": cert.public_key().__class__.__name__,
         },
-        "key_present": key_present,
+        "key_present": check_ca_files(store)[0],
     }
 
     return Success(ca_info)
@@ -346,7 +291,7 @@ def get_ca_info(ctx: Context, store: "Store") -> Result[None, str]:
     Args:
     ----
         ctx: Click context
-        store: Store object containing path and password information
+        store: Store object containing path information
 
     Returns:
     -------
@@ -354,65 +299,38 @@ def get_ca_info(ctx: Context, store: "Store") -> Result[None, str]:
 
     """
     console = ctx.obj["console"]
-
-    # Get CA information as dictionary
     info_result = get_ca_info_dict(store)
     if isinstance(info_result, Failure):
         return info_result
-
     info = info_result.unwrap()
-    subject_info = info["subject"]
-    days_remaining = info["days_remaining"]
-    key_present = info["key_present"]
 
-    # Display CA information
     console.print("[bold]CA Certificate Information[/bold]")
+    for key, value in info["subject"].items():
+        console.print(f"{key.replace('_', ' ').title()}: {value}")
 
-    # Subject information
-    common_name = subject_info.get("commonName", "")
-    console.print(f"Subject: {common_name}")
-
-    if "organizationName" in subject_info:
-        console.print(f"Organization: {subject_info.get('organizationName', '')}")
-
-    if "organizationalUnitName" in subject_info:
-        console.print(f"Organizational Unit: {subject_info.get('organizationalUnitName', '')}")
-
-    if "countryName" in subject_info:
-        console.print(f"Country: {subject_info.get('countryName', '')}")
-
-    if "stateOrProvinceName" in subject_info:
-        console.print(f"State/Province: {subject_info.get('stateOrProvinceName', '')}")
-
-    if "localityName" in subject_info:
-        console.print(f"Locality: {subject_info.get('localityName', '')}")
-
-    if "emailAddress" in subject_info:
-        console.print(f"Email: {subject_info.get('emailAddress', '')}")
-
-    # Certificate details
     console.print(f"Serial: {info['serial']}")
     console.print(f"Valid From: {info['not_before']}")
     console.print(f"Valid Until: {info['not_after']}")
 
-    # Format days remaining with color based on how soon it expires
-
+    days_remaining = info["days_remaining"]
     if days_remaining < 0:
-        console.print(f"Days Remaining: [bold red]{days_remaining} (expired)[/bold red]")
+        expiry_style = "bold red"
+        expiry_text = f"{days_remaining} (expired)"
     elif days_remaining < EXPIRY_CRITICAL_DAYS:
-        console.print(f"Days Remaining: [bold red]{days_remaining}[/bold red]")
+        expiry_style = "bold red"
+        expiry_text = str(days_remaining)
     elif days_remaining < EXPIRY_WARNING_DAYS:
-        console.print(f"Days Remaining: [bold yellow]{days_remaining}[/bold yellow]")
+        expiry_style = "bold yellow"
+        expiry_text = str(days_remaining)
     else:
-        console.print(f"Days Remaining: {days_remaining}")
+        expiry_style = "none"
+        expiry_text = str(days_remaining)
+    console.print(f"Days Remaining: [{expiry_style}]{expiry_text}[/{expiry_style}]")
 
     console.print(f"Fingerprint: {info['fingerprint']}")
     console.print(f"Public Key Type: {info['public_key']['type']}")
 
-    # Show key status
-    if key_present:
-        console.print("Private Key: [bold green]Present[/bold green]")
-    else:
-        console.print("Private Key: [bold red]Missing[/bold red]")
+    key_status = "[bold green]Present[/bold green]" if info["key_present"] else "[bold red]Missing[/bold red]"
+    console.print(f"Private Key: {key_status}")
 
     return Success(None)

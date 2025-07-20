@@ -44,13 +44,11 @@ def get_default_ca_config() -> dict[str, Any]:
     }
 
 
-# TODO: better create from text incl. comments?
 def get_default_hosts_config() -> dict[str, Any]:
     """Get default hosts configuration dictionary."""
     return {
-        "hosts": [
-            {
-                "host_id": "server1",
+        "hosts": {
+            "server1": {
                 "common_name": "server1.example.com",
                 "alternative_names": {
                     "dns": [
@@ -71,7 +69,7 @@ def get_default_hosts_config() -> dict[str, Any]:
                 "validity": {
                     "years": 1,
                 },
-                "key_algorithm": DEFAULT_HOST_KEY_ALGORITHM,
+                "key_algorithm": DEFAULT_HOST_KEY_ALGORITHM.value,
             },
-        ]
+        }
     }

@@ -107,7 +107,7 @@ ca ca create
 vim config/hosts.yaml
 
 # Issue certificates
-ca host issue server1.example.com
+ca host issue server1
 ```
 
 ### Import CA Workflow
@@ -123,20 +123,20 @@ ca ca import --cert path/to/ca.crt --key path/to/ca.key
 vim config/hosts.yaml
 
 # Issue certificates
-ca host issue server1.example.com
+ca host issue server1
 ```
 
 ### Import Host Keys Workflow
 
 ```bash
 # Import existing key
-ca host import server1.example.com --key path/to/key.pem
+ca host import server1 --key path/to/key.pem
 
 # Finalize host config
 vim config/hosts.yaml
 
 # Issue certificate using imported key
-ca host issue server1.example.com
+ca host issue server1
 ```
 
 ### Key Rotation Workflow
@@ -146,7 +146,7 @@ ca host issue server1.example.com
 ca ca rekey
 
 # Rotate a specific host key and certificate
-ca host rekey server1.example.com
+ca host rekey server1
 
 # Rotate all host keys and certificates
 ca host rekey --all
@@ -156,13 +156,13 @@ ca host rekey --all
 
 ```bash
 # Deploy a specific certificate
-ca host deploy server1.example.com
+ca host deploy server1
 
 # Deploy all certificates
 ca host deploy --all
 
 # Issue and deploy in one step
-ca host issue server1.example.com --deploy
+ca host issue server1 --deploy
 ```
 
 ## Configuration
@@ -180,9 +180,7 @@ ca:
   state: "Berlin"
   locality: "Berlin"
   email: "admin@example.com"
-  key:
-    algorithm: "RSA"  # or "EC"
-    size: 4096        # or curve name for EC
+  key_algorithm: "RSA4096"
   validity:
     years: 10         # Can specify years or days
     # days: 3650      # Alternative: specify in days
@@ -197,11 +195,11 @@ See the `example_config` directory for reference examples.
 
 ### Hosts Configuration
 
-Host certificates are configured in `config/hosts.yaml`:
+Host certificates are configured in `config/hosts.yaml`. Hosts are defined in a dictionary where the key is a unique host ID.
 
 ```yaml
 hosts:
-  - name: "server1.example.com"
+  server1:
     common_name: "server1.example.com"
     alternative_names:
       dns:
@@ -217,23 +215,23 @@ hosts:
     validity:
       years: 1           # Can specify years or days
       # days: 365        # Alternative: specify in days
-    key:
-      algorithm: "RSA"
-      size: 2048
+    key_algorithm: "RSA2048"
 ```
 
 #### Deployment Commands
 
 When configuring host certificates in `hosts.yaml`, you can specify a `deploy.command` that will be executed after issuing or renewing a certificate. This command supports the following variable substitutions:
 
-- `${cert}` - Will be replaced with the absolute path to the certificate file
-- `${private_key}` - Will be replaced with the absolute path to a temporary file containing the decrypted private key that will be automatically removed after the command completes.
+- `${cert}` - Will be replaced with the absolute path to the certificate file in the store.
+- `${private_key}` - Will be replaced with the absolute path to a temporary file containing the decrypted private key. This temporary file is created with secure permissions (readable only by the owner) and is automatically removed after the command completes.
 
 Example:
 ```yaml
 deploy:
   command: "cp ${cert} /etc/nginx/ssl/server.pem && cp ${private_key} /etc/nginx/ssl/server.key && systemctl reload nginx"
 ```
+
+**Security Note:** The deployment command is parsed and executed safely, avoiding shell injection vulnerabilities.
 
 ## Cryptographic Options
 
@@ -243,23 +241,17 @@ ReactorCA supports the following key types:
 
 1. **RSA**
    - Traditional asymmetric algorithm
-   - Specify key size in bits (e.g., 2048, 4096)
-   - Example: `algorithm: "RSA", size: 4096`
+   - Specify key size (e.g., RSA2048, RSA4096)
 
 2. **EC (Elliptic Curve)**
    - More efficient than RSA with smaller key sizes
-   - Specify curve name (P256, P384, P521)
-   - Example: `algorithm: "EC", size: "P384"`
+   - Specify curve (e.g., ECP256, ECP384, ECP521)
 
 3. **ED25519**
    - Modern Edwards-curve algorithm
-   - Fixed key size (no size parameter needed)
-   - Example: `algorithm: "ED25519"`
 
 4. **ED448**
    - Higher security Edwards-curve algorithm
-   - Fixed key size (no size parameter needed)
-   - Example: `algorithm: "ED448"`
 
 ### Performance Implications
 
