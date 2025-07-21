@@ -1,0 +1,85 @@
+package domain
+
+import (
+	"context"
+	"crypto"
+	"crypto/x509"
+	"time"
+)
+
+// Logger defines the logging interface.
+type Logger interface {
+	Info(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+	Log(msg string)
+}
+
+// ConfigLoader defines the interface for loading configuration.
+type ConfigLoader interface {
+	LoadCA() (*CAConfig, error)
+	LoadHosts() (*HostsConfig, error)
+}
+
+// Store defines the interface for persistence operations.
+type Store interface {
+	// CA operations
+	CAExists() (bool, error)
+	SaveCA(cert, encryptedKey []byte) error
+	LoadCACert() (*x509.Certificate, error)
+	LoadCAKey() ([]byte, error) // Returns encrypted key
+
+	// Host operations
+	HostExists(hostID string) (bool, error)
+	HostKeyExists(hostID string) (bool, error)
+	SaveHostCert(hostID string, cert []byte) error
+	SaveHostKey(hostID string, encryptedKey []byte) error
+	LoadHostCert(hostID string) (*x509.Certificate, error)
+	LoadHostKey(hostID string) ([]byte, error) // Returns encrypted key
+	ListHostIDs() ([]string, error)
+	DeleteHost(hostID string) error
+	GetAllEncryptedKeyPaths() ([]string, error)
+	UpdateEncryptedKey(path string, data []byte) error
+
+	// Path getters
+	GetHostCertPath(hostID string) string
+	GetHostKeyPath(hostID string) string
+	GetCACertPath() string
+}
+
+// PasswordProvider defines the interface for retrieving the master password.
+type PasswordProvider interface {
+	GetMasterPassword(ctx context.Context, cfg PasswordConfig) ([]byte, error)
+	GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error)
+	GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error)
+	Confirm(prompt string) (bool, error)
+}
+
+// CryptoService defines the interface for all cryptographic operations.
+type CryptoService interface {
+	GeneratePrivateKey(algo KeyAlgorithm) (crypto.Signer, error)
+	CreateRootCertificate(cfg *CAConfig, key crypto.Signer) (*x509.Certificate, error)
+	CreateHostCertificate(hostCfg *HostConfig, caCert *x509.Certificate, caKey crypto.Signer, hostPublicKey crypto.PublicKey) (*x509.Certificate, error)
+	SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error)
+	EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error)
+	DecryptPrivateKey(pemData, password []byte) (crypto.Signer, error)
+	EncodeCertificateToPEM(cert *x509.Certificate) []byte
+	EncodeKeyToPEM(key crypto.Signer) ([]byte, error)
+	ParseCertificate(pemData []byte) (*x509.Certificate, error)
+	ParsePrivateKey(pemData []byte) (crypto.Signer, error)
+	ParseCSR(pemData []byte) (*x509.CertificateRequest, error)
+	ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error
+	FormatCertificateInfo(cert *x509.Certificate) string
+}
+
+// Commander defines the interface for executing external commands.
+type Commander interface {
+	Execute(name string, args ...string) ([]byte, error)
+}
+
+// HostInfo is a DTO for listing hosts.
+type HostInfo struct {
+	ID            string    `json:"id"`
+	CommonName    string    `json:"common_name"`
+	NotAfter      time.Time `json:"not_after"`
+	DaysRemaining int64     `json:"days_remaining"`
+}
