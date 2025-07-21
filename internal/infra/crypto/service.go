@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/youmark/pkcs8"
 	"reactor.dev/reactor-ca/internal/domain"
 )
 
@@ -81,17 +82,13 @@ func (s *Service) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509
 	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 
-	for _, dns := range hostCfg.AlternativeNames.DNS {
-		template.DNSNames = append(template.DNSNames, dns)
-	}
+	template.DNSNames = append(template.DNSNames, hostCfg.AlternativeNames.DNS...)
 	for _, ipStr := range hostCfg.AlternativeNames.IP {
 		if ip := net.ParseIP(ipStr); ip != nil {
 			template.IPAddresses = append(template.IPAddresses, ip)
 		}
 	}
-	for _, emailStr := range hostCfg.AlternativeNames.Email {
-		template.EmailAddresses = append(template.EmailAddresses, emailStr)
-	}
+	template.EmailAddresses = append(template.EmailAddresses, hostCfg.AlternativeNames.Email...)
 	for _, uriStr := range hostCfg.AlternativeNames.URI {
 		if uri, err := url.Parse(uriStr); err == nil {
 			template.URIs = append(template.URIs, uri)
@@ -134,15 +131,24 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 
 // EncryptPrivateKey encrypts a private key using PKCS#8 and AES-256-CBC.
 func (s *Service) EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error) {
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal private key to PKCS#8: %w", err)
+	opts := pkcs8.Opts{
+		Cipher: pkcs8.AES256CBC,
+		KDFOpts: pkcs8.PBKDF2Opts{
+			SaltSize:       16,
+			IterationCount: 100000,
+			HMACHash:       crypto.SHA256,
+		},
 	}
-	block, err := x509.EncryptPEMBlock(rand.Reader, "ENCRYPTED PRIVATE KEY", keyBytes, password, x509.PEMCipherAES256)
+
+	encryptedDER, err := pkcs8.MarshalPrivateKey(key, password, &opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt PEM block: %w", err)
+		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 	}
-	return pem.EncodeToMemory(block), nil
+
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "ENCRYPTED PRIVATE KEY",
+		Bytes: encryptedDER,
+	}), nil
 }
 
 // DecryptPrivateKey decrypts a PEM-encoded private key.
@@ -151,14 +157,12 @@ func (s *Service) DecryptPrivateKey(pemData, password []byte) (crypto.Signer, er
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM block containing private key")
 	}
-	keyBytes, err := x509.DecryptPEMBlock(block, password)
+
+	key, err := pkcs8.ParsePKCS8PrivateKey(block.Bytes, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt PEM block: %w", err)
+		return nil, fmt.Errorf("failed to decrypt and parse private key: %w", err)
 	}
-	key, err := x509.ParsePKCS8PrivateKey(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
-	}
+
 	signer, ok := key.(crypto.Signer)
 	if !ok {
 		return nil, fmt.Errorf("parsed key is not a crypto.Signer")
@@ -265,19 +269,19 @@ func (s *Service) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) err
 // FormatCertificateInfo provides a human-readable summary of a certificate.
 func (s *Service) FormatCertificateInfo(cert *x509.Certificate) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Certificate:\n"))
+	b.WriteString("Certificate:\n")
 	b.WriteString(fmt.Sprintf("    Version: %d\n", cert.Version))
 	b.WriteString(fmt.Sprintf("    Serial Number: %s\n", cert.SerialNumber))
 	b.WriteString(fmt.Sprintf("    Signature Algorithm: %s\n", cert.SignatureAlgorithm))
 	b.WriteString(fmt.Sprintf("    Issuer: %s\n", cert.Issuer.String()))
-	b.WriteString(fmt.Sprintf("    Validity:\n"))
+	b.WriteString("    Validity:\n")
 	b.WriteString(fmt.Sprintf("        Not Before: %s\n", cert.NotBefore.Format(time.RFC1123)))
 	b.WriteString(fmt.Sprintf("        Not After : %s\n", cert.NotAfter.Format(time.RFC1123)))
 	b.WriteString(fmt.Sprintf("    Subject: %s\n", cert.Subject.String()))
-	b.WriteString(fmt.Sprintf("    Subject Public Key Info:\n"))
+	b.WriteString("    Subject Public Key Info:\n")
 	b.WriteString(fmt.Sprintf("        Public Key Algorithm: %s\n", cert.PublicKeyAlgorithm))
 	if len(cert.DNSNames) > 0 || len(cert.IPAddresses) > 0 {
-		b.WriteString(fmt.Sprintf("    X509v3 Subject Alternative Name:\n"))
+		b.WriteString("    X509v3 Subject Alternative Name:\n")
 		if len(cert.DNSNames) > 0 {
 			b.WriteString(fmt.Sprintf("        DNS: %s\n", strings.Join(cert.DNSNames, ", ")))
 		}
