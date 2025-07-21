@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -261,10 +263,6 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to decrypt key %s: %w. Aborting password change", filepath.Base(path), err)
 		}
-		keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(key)
-		if err != nil {
-			return fmt.Errorf("failed to re-encode key %s to PEM: %w", path, err)
-		}
 
 		reEncrypted, err := a.cryptoSvc.EncryptPrivateKey(key, newPassword)
 		if err != nil {
@@ -490,7 +488,7 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 	caCertPEM := a.cryptoSvc.EncodeCertificateToPEM(caCert)
 	chain := bytes.Join([][]byte{hostCertPEM, caCertPEM}, []byte{})
-	
+
 	tempChainFile, err := os.CreateTemp("", "reactor-ca-chain-*.pem")
 	if err != nil {
 		return fmt.Errorf("failed to create temp chain file: %w", err)
@@ -502,7 +500,7 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	if err := tempChainFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temp chain file: %w", err)
 	}
-	
+
 	// Variable substitution
 	replacer := strings.NewReplacer(
 		"${cert}", a.store.GetHostCertPath(hostID),

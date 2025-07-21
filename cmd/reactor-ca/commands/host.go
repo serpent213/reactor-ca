@@ -20,8 +20,8 @@ var hostCmd = &cobra.Command{
 
 // host issue
 var (
-	rekeyHost   bool
-	deployHost  bool
+	rekeyHost     bool
+	deployHost    bool
 	issueAllHosts bool
 )
 var hostIssueCmd = &cobra.Command{

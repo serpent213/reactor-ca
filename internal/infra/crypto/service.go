@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -39,11 +40,11 @@ func (s *Service) GeneratePrivateKey(algo domain.KeyAlgorithm) (crypto.Signer, e
 	case domain.RSA4096:
 		return rsa.GenerateKey(rand.Reader, 4096)
 	case domain.ECP256:
-		return ecdsa.GenerateKey(ecdsa.P256(), rand.Reader)
+		return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	case domain.ECP384:
-		return ecdsa.GenerateKey(ecdsa.P384(), rand.Reader)
+		return ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case domain.ECP521:
-		return ecdsa.GenerateKey(ecdsa.P521(), rand.Reader)
+		return ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	case domain.ED25519:
 		_, key, err := ed25519.GenerateKey(rand.Reader)
 		return key, err
@@ -96,7 +97,7 @@ func (s *Service) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509
 			template.URIs = append(template.URIs, uri)
 		}
 	}
-	
+
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, hostPublicKey, caKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create host certificate: %w", err)
@@ -110,18 +111,18 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 	if err != nil {
 		return nil, err
 	}
-	
+
 	template := &x509.Certificate{
-		SerialNumber:    serialNumber,
-		Subject:         csr.Subject,
-		NotBefore:       time.Now().Add(-5 * time.Minute).UTC(),
-		NotAfter:        time.Now().AddDate(0, 0, validityDays).UTC(),
-		KeyUsage:        x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:        csr.DNSNames,
-		IPAddresses:     csr.IPAddresses,
-		EmailAddresses:  csr.EmailAddresses,
-		URIs:            csr.URIs,
+		SerialNumber:   serialNumber,
+		Subject:        csr.Subject,
+		NotBefore:      time.Now().Add(-5 * time.Minute).UTC(),
+		NotAfter:       time.Now().AddDate(0, 0, validityDays).UTC(),
+		KeyUsage:       x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:    []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		DNSNames:       csr.DNSNames,
+		IPAddresses:    csr.IPAddresses,
+		EmailAddresses: csr.EmailAddresses,
+		URIs:           csr.URIs,
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, csr.PublicKey, caKey)
@@ -227,7 +228,6 @@ func (s *Service) ParseCSR(pemData []byte) (*x509.CertificateRequest, error) {
 	}
 	return x509.ParseCertificateRequest(block.Bytes)
 }
-
 
 // ValidateKeyPair checks if a private key and certificate belong together.
 func (s *Service) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error {

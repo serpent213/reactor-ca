@@ -2,6 +2,7 @@ package password
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -99,9 +100,4 @@ func (p *Provider) Confirm(prompt string) (bool, error) {
 			return false, nil
 		}
 	}
-}
-
-// A simple byte trim helper
-func bytes.TrimSpace(b []byte) []byte {
-    return bytes.Trim(b, "\r\n\t ")
 }

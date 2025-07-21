@@ -43,7 +43,7 @@ var initCmd = &cobra.Command{
 		}
 
 		files := map[string]string{
-			filepath.Join(rootPath, "config", "ca.yaml"):   defaultCaYAML,
+			filepath.Join(rootPath, "config", "ca.yaml"):    defaultCaYAML,
 			filepath.Join(rootPath, "config", "hosts.yaml"): defaultHostsYAML,
 		}
 
