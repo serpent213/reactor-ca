@@ -13,4 +13,5 @@ var (
 	ErrValidation           = errors.New("configuration validation failed")
 	ErrActionAborted        = errors.New("action aborted by user")
 	ErrNoDeployCommand      = errors.New("no deploy command configured for this host")
+	ErrInvalidDeployConfig  = errors.New("cannot specify both 'command' and 'commands' in deploy configuration. Use one or the other")
 )

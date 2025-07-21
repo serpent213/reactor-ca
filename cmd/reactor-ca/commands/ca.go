@@ -47,7 +47,8 @@ var caRekeyCmd = &cobra.Command{
 	Short: "Create a new key and a new self-signed certificate, retiring the old ones",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.RekeyCA(cmd.Context())
+		force, _ := cmd.Flags().GetBool("force")
+		err := appCtx.App.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err
 		}
@@ -110,6 +111,8 @@ func init() {
 	caImportCmd.Flags().StringVar(&importKeyPath, "key", "", "Path to the CA private key file (PEM format)")
 	_ = caImportCmd.MarkFlagRequired("cert")
 	_ = caImportCmd.MarkFlagRequired("key")
+
+	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 
 	caCmd.AddCommand(caCreateCmd)
 	caCmd.AddCommand(caRenewCmd)

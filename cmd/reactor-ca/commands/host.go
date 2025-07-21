@@ -234,16 +234,17 @@ var hostExportKeyCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		pemKey, err := appCtx.App.ExportHostKey(cmd.Context(), args[0])
-		if err != nil {
-			return err
-		}
 
 		if exportKeyOutPath == "" || exportKeyOutPath == "-" {
+			pemKey, err := appCtx.App.ExportHostKey(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
 			fmt.Print(string(pemKey))
 		} else {
-			if err := os.WriteFile(exportKeyOutPath, pemKey, 0600); err != nil {
-				return fmt.Errorf("failed to write key to %s: %w", exportKeyOutPath, err)
+			err := appCtx.App.ExportHostKeyToFile(cmd.Context(), args[0], exportKeyOutPath)
+			if err != nil {
+				return err
 			}
 			fmt.Printf("✅ Unencrypted key for '%s' exported to %s\n", args[0], exportKeyOutPath)
 		}

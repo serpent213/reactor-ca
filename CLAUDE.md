@@ -23,16 +23,32 @@ Key architectural principles:
 
 ## Development Commands
 
-### Build and Test
+This project uses [just](https://github.com/casey/just) for task automation. Run `just help` to see available commands.
+
+### Common Commands
 ```bash
-# Build the binary
-go build -v ./cmd/reactor-ca
+# Build the binary (debug mode)
+just build
 
-# Run all tests
-go test -v ./...
+# Build optimized release binary
+just release
 
-# Tidy dependencies
-go mod tidy
+# Format code
+just fmt
+
+# Run linting and checks
+just lint
+
+# Run tests
+just test              # All tests
+just test-unit        # Unit tests only
+just test-integration # Integration tests only
+
+# Full CI pipeline
+just ci
+
+# Complete check (lint, build, test, tidy)
+just check
 ```
 
 ### CLI Usage Pattern

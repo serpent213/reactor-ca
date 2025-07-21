@@ -48,12 +48,23 @@ func (p *Provider) GetMasterPassword(ctx context.Context, cfg domain.PasswordCon
 
 // GetNewMasterPassword prompts the user to enter and confirm a new password.
 func (p *Provider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+	// Check if we're in a non-interactive environment and try env var fallback
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		if pw := os.Getenv("REACTOR_CA_PASSWORD"); pw != "" {
+			if len(pw) < minLength {
+				return nil, fmt.Errorf("password from REACTOR_CA_PASSWORD is too short (minimum %d characters)", minLength)
+			}
+			return []byte(pw), nil
+		}
+		return nil, fmt.Errorf("running in non-interactive environment but no password provided via REACTOR_CA_PASSWORD environment variable")
+	}
+
 	for {
 		fmt.Print("Enter New Master Password: ")
 		pw1, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read password interactively: %w", err)
 		}
 
 		if len(pw1) < minLength {
@@ -85,12 +96,16 @@ func (p *Provider) GetPasswordForImport(ctx context.Context, minLength int) ([]b
 
 // Confirm prompts the user for a yes/no answer.
 func (p *Provider) Confirm(prompt string) (bool, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false, fmt.Errorf("cannot prompt for confirmation in non-interactive environment: %s", prompt)
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print(prompt)
 		response, err := reader.ReadString('\n')
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to read user input: %w", err)
 		}
 		response = strings.ToLower(strings.TrimSpace(response))
 		if response == "y" || response == "yes" {

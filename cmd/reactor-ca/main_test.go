@@ -85,7 +85,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openssl failed to read CA cert: %v", err)
 	}
-	if !strings.Contains(out, "CN = Reactor Test CA") {
+	if !strings.Contains(out, "CN=Reactor Test CA") {
 		t.Errorf("CA cert has wrong subject: %s", out)
 	}
 
@@ -158,7 +158,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 		t.Fatalf("`export-key` failed with correct password: %v", err)
 	}
 	e.assertFileExists("unencrypted.key")
-	_, err = e.runOpenSSL("pkey", "-in", "unencrypted.key", "-noout", "-check")
+	_, err = e.runOpenSSL("pkey", "-in", "unencrypted.key", "-noout")
 	if err != nil {
 		t.Fatalf("Exported key is invalid: %v", err)
 	}
@@ -201,17 +201,16 @@ func TestE2E_CAManagement(t *testing.T) {
 
 	// 2. Rekey the CA (new cert, new key)
 	time.Sleep(1 * time.Second)
-	// The rekey command requires interactive confirmation, which we can't do.
-	// We'll simulate by deleting and re-creating with a different password to ensure new key is generated.
-	// In a real E2E test with TTY, one would pipe "y/n" to stdin.
-	// For this test, we accept `ca rekey` is an alias for `ca create` but with a check.
-	// A better test is to just force a new key creation.
-	e.runWithCheck(testPassword, "ca", "rekey") // This test will fail if it prompts. The code uses confirm.
-	// The current code requires an interactive prompt for rekey.
-	// `confirmed, err := a.passwordProvider.Confirm(...)`
-	// This makes it untestable in this context. We'll test `host --rekey` instead,
-	// which has a non-interactive flag.
-	t.Log("Skipping `ca rekey` test due to interactive confirmation prompt.")
+	e.runWithCheck(testPassword, "ca", "rekey", "--force")
+	certV3, _ := os.ReadFile(e.path("store/ca/ca.crt"))
+	keyV3, _ := os.ReadFile(e.path("store/ca/ca.key.enc"))
+
+	if bytes.Equal(certV2, certV3) {
+		t.Error("`ca rekey` did not change the certificate")
+	}
+	if bytes.Equal(keyV2, keyV3) {
+		t.Error("`ca rekey` did not change the private key")
+	}
 
 	// Test host rekey instead
 	e.writeConfig("hosts.yaml", testHostsYAML)
@@ -247,7 +246,7 @@ func TestE2E_ImportAndSign(t *testing.T) {
 	}
 
 	// 2. Import the external CA
-	e.runWithCheck(testPassword, "ca", "import", "--cert", "external_ca.crt", "--key", "external_ca.key")
+	e.runWithCheck(testPassword, "ca", "import", "--cert", e.path("external_ca.crt"), "--key", e.path("external_ca.key"))
 	e.assertFileExists("store/ca/ca.crt")
 	e.assertFileExists("store/ca/ca.key.enc")
 
@@ -263,7 +262,7 @@ func TestE2E_ImportAndSign(t *testing.T) {
 	e.copyTestData("external.csr", "external.csr")
 	e.copyTestData("external.key", "external.key")
 
-	e.runWithCheck(testPassword, "host", "sign-csr", "--csr", "external.csr", "--out", "signed.crt", "--days", "90")
+	e.runWithCheck(testPassword, "host", "sign-csr", "--csr", e.path("external.csr"), "--out", "signed.crt", "--days", "90")
 	e.assertFileExists("signed.crt")
 
 	// 5. Verify the signed CSR
@@ -274,7 +273,7 @@ func TestE2E_ImportAndSign(t *testing.T) {
 
 	// Verify the subject and public key match the original CSR/key
 	out, _ = e.runOpenSSL("x509", "-in", "signed.crt", "-noout", "-subject")
-	if !strings.Contains(out, "CN = csr.reactor.local") {
+	if !strings.Contains(out, "CN=csr.reactor.local") {
 		t.Error("Signed cert has wrong subject")
 	}
 
@@ -404,6 +403,7 @@ func (e *testEnv) path(p ...string) string {
 func (e *testEnv) run(password string, args ...string) (stdout, stderr string, err error) {
 	e.t.Helper()
 	cmd := exec.Command(reactorCABin, args...)
+	cmd.Dir = e.root
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "REACTOR_CA_ROOT="+e.root)
 	if password != "" {

@@ -71,7 +71,8 @@ type ExportConfig struct {
 	Chain string `yaml:"chain"`
 }
 
-// DeployConfig defines the command to run after issuance.
+// DeployConfig defines the command(s) to run after issuance.
 type DeployConfig struct {
-	Command string `yaml:"command"`
+	Command  string   `yaml:"command"`
+	Commands []string `yaml:"commands"`
 }

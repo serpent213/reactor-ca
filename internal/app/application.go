@@ -52,21 +52,39 @@ func (a *Application) ValidateConfig(ctx context.Context) error {
 	if _, err := a.configLoader.LoadCA(); err != nil {
 		return fmt.Errorf("invalid ca.yaml: %w", err)
 	}
-	if _, err := a.configLoader.LoadHosts(); err != nil {
+	hostsCfg, err := a.configLoader.LoadHosts()
+	if err != nil {
 		return fmt.Errorf("invalid hosts.yaml: %w", err)
 	}
+
+	// Validate deploy configurations
+	for hostID, hostCfg := range hostsCfg.Hosts {
+		hasCommand := hostCfg.Deploy.Command != ""
+		hasCommands := len(hostCfg.Deploy.Commands) > 0
+		if hasCommand && hasCommands {
+			return fmt.Errorf("invalid deploy configuration for host '%s': %w", hostID, domain.ErrInvalidDeployConfig)
+		}
+	}
+
 	a.logger.Log("Configuration files are valid.")
 	return nil
 }
 
 // CreateCA creates a new Certificate Authority.
 func (a *Application) CreateCA(ctx context.Context) error {
-	exists, err := a.store.CAExists()
-	if err != nil {
-		return fmt.Errorf("could not check for existing CA: %w", err)
-	}
-	if exists {
-		return domain.ErrCAAlreadyExists
+	return a.createCA(ctx, false)
+}
+
+// createCA creates a new Certificate Authority with optional force parameter.
+func (a *Application) createCA(ctx context.Context, force bool) error {
+	if !force {
+		exists, err := a.store.CAExists()
+		if err != nil {
+			return fmt.Errorf("could not check for existing CA: %w", err)
+		}
+		if exists {
+			return domain.ErrCAAlreadyExists
+		}
 	}
 
 	a.logger.Log("Loading CA configuration...")
@@ -152,17 +170,19 @@ func (a *Application) RenewCA(ctx context.Context) error {
 }
 
 // RekeyCA creates a new key and certificate, replacing the old ones.
-func (a *Application) RekeyCA(ctx context.Context) error {
+func (a *Application) RekeyCA(ctx context.Context, force bool) error {
 	a.logger.Log("Re-keying CA. This will replace the existing CA key and certificate.")
-	confirmed, err := a.passwordProvider.Confirm("This is a destructive action. Are you sure you want to proceed? [y/N]: ")
-	if err != nil {
-		return err
+	if !force {
+		confirmed, err := a.passwordProvider.Confirm("This is a destructive action. Are you sure you want to proceed? [y/N]: ")
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return domain.ErrActionAborted
+		}
 	}
-	if !confirmed {
-		return domain.ErrActionAborted
-	}
-	// Essentially the same as create, but we don't check for existence first.
-	return a.CreateCA(ctx)
+	// Create new CA, allowing overwrite of existing CA
+	return a.createCA(ctx, true)
 }
 
 // InfoCA returns a formatted string with details about the CA certificate.
@@ -403,19 +423,21 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 
 	// Export certificate
 	if hostCfg.Export.Cert != "" {
-		a.logger.Log(fmt.Sprintf("Exporting certificate to %s", hostCfg.Export.Cert))
-		if err := a.writeFileWithDir(hostCfg.Export.Cert, a.cryptoSvc.EncodeCertificateToPEM(hostCert), 0644); err != nil {
+		certPath := a.resolvePath(hostCfg.Export.Cert)
+		a.logger.Log(fmt.Sprintf("Exporting certificate to %s", certPath))
+		if err := a.writeFileWithDir(certPath, a.cryptoSvc.EncodeCertificateToPEM(hostCert), 0644); err != nil {
 			return fmt.Errorf("failed to export certificate: %w", err)
 		}
 	}
 
 	// Export chain
 	if hostCfg.Export.Chain != "" {
-		a.logger.Log(fmt.Sprintf("Exporting certificate chain to %s", hostCfg.Export.Chain))
+		chainPath := a.resolvePath(hostCfg.Export.Chain)
+		a.logger.Log(fmt.Sprintf("Exporting certificate chain to %s", chainPath))
 		hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 		caCertPEM := a.cryptoSvc.EncodeCertificateToPEM(caCert)
 		chain := bytes.Join([][]byte{hostCertPEM, caCertPEM}, []byte{})
-		if err := a.writeFileWithDir(hostCfg.Export.Chain, chain, 0644); err != nil {
+		if err := a.writeFileWithDir(chainPath, chain, 0644); err != nil {
 			return fmt.Errorf("failed to export chain: %w", err)
 		}
 	}
@@ -432,11 +454,26 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	if !ok {
 		return domain.ErrHostNotFoundInConfig
 	}
-	if hostCfg.Deploy.Command == "" {
+	// Validate deploy configuration
+	hasCommand := hostCfg.Deploy.Command != ""
+	hasCommands := len(hostCfg.Deploy.Commands) > 0
+
+	if !hasCommand && !hasCommands {
 		return domain.ErrNoDeployCommand
 	}
+	if hasCommand && hasCommands {
+		return domain.ErrInvalidDeployConfig
+	}
 
-	a.logger.Log(fmt.Sprintf("Running deploy command for '%s': %s", hostID, hostCfg.Deploy.Command))
+	// Build command list
+	var commands []string
+	if hasCommand {
+		commands = append(commands, hostCfg.Deploy.Command)
+	} else {
+		commands = append(commands, hostCfg.Deploy.Commands...)
+	}
+
+	a.logger.Log(fmt.Sprintf("Running %d deploy command(s) for '%s'", len(commands), hostID))
 
 	// Get unencrypted key
 	caCfg, err := a.configLoader.LoadCA()
@@ -507,22 +544,22 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 		"${chain}", tempChainFile.Name(),
 		"${private_key}", tempKeyFile.Name(),
 	)
-	commandString := replacer.Replace(hostCfg.Deploy.Command)
 
-	// Execute command
-	// Note: We split by space. This is safer than a raw shell, but disallows complex shell syntax.
-	// This matches the design decision to prioritize security over shell feature-completeness.
-	parts := strings.Fields(commandString)
-	if len(parts) == 0 {
-		return fmt.Errorf("deploy command is empty after variable substitution")
+	// Apply variable substitution to all commands
+	var substitutedCommands []string
+	for _, cmd := range commands {
+		substitutedCommands = append(substitutedCommands, replacer.Replace(cmd))
 	}
-	cmd, args := parts[0], parts[1:]
 
-	output, err := a.commander.Execute(cmd, args...)
+	// Create shell script with safety flags
+	shellScript := "set -euo pipefail\n" + strings.Join(substitutedCommands, "\n")
+
+	// Execute via shell
+	output, err := a.commander.Execute("bash", "-c", shellScript)
 	if err != nil {
 		return fmt.Errorf("deploy command failed: %w\nOutput:\n%s", err, string(output))
 	}
-	a.logger.Log(fmt.Sprintf("Deploy command for '%s' successful. Output: %s", hostID, string(output)))
+	a.logger.Log(fmt.Sprintf("Deploy commands for '%s' successful. Output: %s", hostID, string(output)))
 	return nil
 }
 
@@ -581,6 +618,21 @@ func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte,
 		return nil, err
 	}
 	return a.cryptoSvc.EncodeKeyToPEM(hostKey)
+}
+
+// ExportHostKeyToFile exports the unencrypted private key for a host to a file.
+func (a *Application) ExportHostKeyToFile(ctx context.Context, hostID, outputPath string) error {
+	keyPEM, err := a.ExportHostKey(ctx, hostID)
+	if err != nil {
+		return err
+	}
+
+	resolvedPath := a.resolvePath(outputPath)
+	if err := os.WriteFile(resolvedPath, keyPEM, 0600); err != nil {
+		return fmt.Errorf("failed to write key to %s: %w", resolvedPath, err)
+	}
+	a.logger.Log(fmt.Sprintf("Exported unencrypted key for '%s' to %s", hostID, resolvedPath))
+	return nil
 }
 
 // ImportHostKey imports an external key for a host.
@@ -721,6 +773,13 @@ func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, err
 	}
 	a.logger.Log("Host cleaning complete.")
 	return toPrune, nil
+}
+
+func (a *Application) resolvePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(a.rootPath, path)
 }
 
 func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMode) error {
