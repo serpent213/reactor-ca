@@ -41,7 +41,6 @@ from reactor_ca.result import Failure, Result, Success
 from reactor_ca.store import (
     delete_host,
     host_exists,
-    list_hosts as store_list_hosts,
     read_ca_cert,
     read_ca_key,
     read_host_cert,
@@ -49,9 +48,11 @@ from reactor_ca.store import (
     write_host_cert,
     write_host_key,
 )
+from reactor_ca.store import (
+    list_hosts as store_list_hosts,
+)
 from reactor_ca.x509_crypto import (
     create_certificate,
-    deserialize_certificate,
     deserialize_private_key,
     ensure_key_algorithm,
     generate_key,

@@ -16,7 +16,7 @@ from reactor_ca.defaults import EXPIRY_CRITICAL_DAYS, EXPIRY_WARNING_DAYS
 from reactor_ca.models import CACertificateParams, Config, Store
 from reactor_ca.paths import get_ca_cert_path, get_ca_key_path
 from reactor_ca.result import Failure, Result, Success
-from reactor_ca.store import check_ca_files, read_ca_cert, read_ca_key, write_ca_cert, write_ca_key
+from reactor_ca.store import check_ca_files, read_ca_cert, read_ca_key, unlock, write_ca_cert, write_ca_key
 from reactor_ca.x509_crypto import (
     create_ca_certificate,
     deserialize_certificate,
@@ -24,6 +24,7 @@ from reactor_ca.x509_crypto import (
     ensure_key_algorithm,
     generate_key,
 )
+from cryptography import x509
 
 
 def issue_ca(ctx: Context, config: "Config", store: "Store", password: str) -> Result[None, str]:
@@ -48,6 +49,16 @@ def issue_ca(ctx: Context, config: "Config", store: "Store", password: str) -> R
     key_algorithm = ca_config.key_algorithm
 
     key_present, cert_present = check_ca_files(store)
+
+    # For CA creation, we only unlock if a key already exists (for renewal)
+    if key_present:
+        unlock_result = unlock(store, password)
+        if isinstance(unlock_result, Failure):
+            return unlock_result
+        unlocked_store = unlock_result.unwrap()
+    else:
+        # Create a new unlocked store for initial CA creation
+        unlocked_store = Store(path=store.path, password=password, unlocked=True)
     if not key_present:
         console.print(f"Generating {key_algorithm} key for CA...")
         key_result = generate_key(key_algorithm)
@@ -55,7 +66,7 @@ def issue_ca(ctx: Context, config: "Config", store: "Store", password: str) -> R
             return key_result
         private_key = key_result.unwrap()
     else:
-        read_result = read_ca_key(store, password)
+        read_result = read_ca_key(unlocked_store, password)
         if isinstance(read_result, Failure):
             return read_result
         private_key = read_result.unwrap()
@@ -81,11 +92,11 @@ def issue_ca(ctx: Context, config: "Config", store: "Store", password: str) -> R
 
     # Save key and certificate
     if not key_present:
-        key_save_result = write_ca_key(store, private_key, password)
+        key_save_result = write_ca_key(unlocked_store, private_key)
         if isinstance(key_save_result, Failure):
             return Failure(f"Failed to save CA key: {key_save_result.error}")
 
-    cert_save_result = write_ca_cert(store, cert)
+    cert_save_result = write_ca_cert(unlocked_store, cert)
     if isinstance(cert_save_result, Failure):
         return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
@@ -114,8 +125,14 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store", password: str) -> R
     """
     console = ctx.obj["console"]
 
+    # Unlock the store with the password
+    unlock_result = unlock(store, password)
+    if isinstance(unlock_result, Failure):
+        return unlock_result
+    unlocked_store = unlock_result.unwrap()
+
     # Check if CA exists
-    key_present, cert_present = check_ca_files(store)
+    key_present, cert_present = check_ca_files(unlocked_store)
     if not key_present or not cert_present:
         return Failure("CA certificate or key not found. Please initialize the CA first.")
 
@@ -147,11 +164,11 @@ def rekey_ca(ctx: Context, config: "Config", store: "Store", password: str) -> R
     cert = cert_result.unwrap()
 
     # Save the new certificate and key
-    key_save_result = write_ca_key(store, new_ca_key, password)
+    key_save_result = write_ca_key(unlocked_store, new_ca_key)
     if isinstance(key_save_result, Failure):
         return Failure(f"Failed to save CA key: {key_save_result.error}")
 
-    cert_save_result = write_ca_cert(store, cert)
+    cert_save_result = write_ca_cert(unlocked_store, cert)
     if isinstance(cert_save_result, Failure):
         return Failure(f"Failed to save CA certificate: {cert_save_result.error}")
 
@@ -227,12 +244,15 @@ def import_ca(
     ):
         return Failure("Certificate and key do not match")
 
+    # Create an unlocked store with the new password for saving
+    unlocked_store = Store(path=store.path, password=new_password, unlocked=True)
+
     # Save certificate and key, encrypted with the new password
-    cert_save_result = write_ca_cert(store, cert)
+    cert_save_result = write_ca_cert(unlocked_store, cert)
     if isinstance(cert_save_result, Failure):
         return cert_save_result
 
-    key_save_result = write_ca_key(store, private_key, new_password)
+    key_save_result = write_ca_key(unlocked_store, private_key)
     if isinstance(key_save_result, Failure):
         return key_save_result
 

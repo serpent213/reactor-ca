@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 from ruamel.yaml import YAML
 
-from reactor_ca.main import cli
+from reactor_ca.cli import cli
 
 # A strong, consistent password for all tests
 TEST_PASSWORD = "super-secret-password-for-testing-123"

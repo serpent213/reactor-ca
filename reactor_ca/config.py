@@ -176,7 +176,7 @@ def _load_ca_config(config_path: Path) -> Result[CAConfig | None, str]:
 
     validation_result = _validate_yaml(ca_config_path, "ca")
     if isinstance(validation_result, Failure):
-        return Failure(f"Invalid CA configuration:\n" + "\n".join(validation_result.error))
+        return Failure("Invalid CA configuration:\n" + "\n".join(validation_result.error))
 
     try:
         with ca_config_path.open(encoding="locale") as f:
@@ -194,7 +194,7 @@ def _load_hosts_config(config_path: Path) -> Result[dict[str, HostConfig], str]:
 
     validation_result = _validate_yaml(hosts_config_path, "hosts")
     if isinstance(validation_result, Failure):
-        return Failure(f"Invalid hosts configuration:\n" + "\n".join(validation_result.error))
+        return Failure("Invalid hosts configuration:\n" + "\n".join(validation_result.error))
 
     try:
         with hosts_config_path.open(encoding="locale") as f:

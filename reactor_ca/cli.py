@@ -51,6 +51,35 @@ def _setup_logging(store_path: Path) -> None:
     )
 
 
+def get_config_or_exit(ctx: click.Context) -> Config:
+    """Get config, exit with error message if not available."""
+    console = ctx.obj["console"]
+    config_dir = ctx.obj["config_dir"]
+
+    config_result = init_config(config_dir)
+    if isinstance(config_result, Failure):
+        console.print(f"[bold red]Error:[/bold red] {config_result.error}")
+        console.print('Run "ca config init" to initialize the configuration.')
+        ctx.exit(1)
+    return config_result.value
+
+
+def get_store_or_exit(ctx: click.Context) -> Store:
+    """Get store, exit with error message if not available."""
+    console = ctx.obj["console"]
+    store_dir = ctx.obj["store_dir"]
+
+    store_result = init_store(store_dir)
+    if isinstance(store_result, Failure):
+        console.print(f"[bold red]Error:[/bold red] {store_result.error}")
+        console.print('Run "ca config init" to initialize the store.')
+        ctx.exit(1)
+
+    # Set up logging when store is successfully initialized
+    _setup_logging(store_dir)
+    return store_result.value
+
+
 def _get_password_from_config(ctx: click.Context, ca_config: CAConfig, confirm: bool) -> str:
     """Gets the master password, handling prompt, env var, or file."""
     console = ctx.obj["console"]
@@ -104,32 +133,6 @@ def cli(
     config_dir, store_dir = resolve_paths(root_path, config_path, store_path)
     ctx.obj["config_dir"] = config_dir
     ctx.obj["store_dir"] = store_dir
-
-    # Eagerly initialize and store the config and store objects
-    # This makes them available to all subcommands.
-    console = ctx.obj["console"]
-
-    config_result = init_config(config_dir)
-    if isinstance(config_result, Failure):
-        # Allow `config init` to run without a pre-existing config
-        if not (ctx.invoked_subcommand == "config" and ctx.args[0] == "init"):
-            console.print(f"[bold red]Error:[/bold red] {config_result.error}")
-            console.print('Run "ca config init" to initialize the configuration.')
-            ctx.exit(1)
-        ctx.obj["config"] = None
-    else:
-        ctx.obj["config"] = config_result.value
-
-    store_result = init_store(store_dir)
-    if isinstance(store_result, Failure):
-        if not (ctx.invoked_subcommand == "config" and ctx.args[0] == "init"):
-            console.print(f"[bold red]Error:[/bold red] {store_result.error}")
-            console.print('Run "ca config init" to initialize the store.')
-            ctx.exit(1)
-        ctx.obj["store"] = None
-    else:
-        ctx.obj["store"] = store_result.value
-        _setup_logging(store_dir)
 
 
 # Configuration commands
@@ -186,10 +189,10 @@ def ca() -> None:
 def ca_create(ctx: click.Context) -> None:
     """Create or renew a CA certificate."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store or not config.ca_config:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
+    if not config.ca_config:
+        console.print("[bold red]Error:[/bold red] CA configuration not found.")
         ctx.exit(1)
 
     password = _get_password_from_config(ctx, config.ca_config, confirm=True)
@@ -220,10 +223,10 @@ def ca_create(ctx: click.Context) -> None:
 def ca_import(ctx: click.Context, cert_path_str: Path, key_path_str: Path, key_password: str | None) -> None:
     """Import an existing CA."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store or not config.ca_config:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
+    if not config.ca_config:
+        console.print("[bold red]Error:[/bold red] CA configuration not found.")
         ctx.exit(1)
 
     new_password = _get_password_from_config(ctx, config.ca_config, confirm=True)
@@ -239,10 +242,10 @@ def ca_import(ctx: click.Context, cert_path_str: Path, key_path_str: Path, key_p
 def ca_rekey(ctx: click.Context) -> None:
     """Generate a new key and renew the CA certificate."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store or not config.ca_config:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
+    if not config.ca_config:
+        console.print("[bold red]Error:[/bold red] CA configuration not found.")
         ctx.exit(1)
 
     password = _get_password_from_config(ctx, config.ca_config, confirm=False)
@@ -259,10 +262,7 @@ def ca_rekey(ctx: click.Context) -> None:
 def ca_info(ctx: click.Context, json_output: bool) -> None:
     """Show information about the Certificate Authority."""
     console = ctx.obj["console"]
-    store: Store = ctx.obj["store"]
-    if not store:
-        console.print("[bold red]Error:[/bold red] Store not initialized.")
-        ctx.exit(1)
+    store = get_store_or_exit(ctx)
 
     if json_output:
         result = get_ca_info_dict(store)
@@ -287,10 +287,10 @@ def host() -> None:
 def _get_deps_for_host_op(ctx: click.Context) -> tuple[Config, Store, str]:
     """Helper to get Config, Store, and Password for host operations."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store or not config.ca_config:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
+    if not config.ca_config:
+        console.print("[bold red]Error:[/bold red] CA configuration not found.")
         ctx.exit(1)
 
     password = _get_password_from_config(ctx, config.ca_config, confirm=False)
@@ -393,10 +393,7 @@ def host_rekey(ctx: click.Context, host_id: str | None, all_hosts: bool, no_expo
 def host_list(ctx: click.Context, expired: bool, expiring: int | None, json_output: bool) -> None:
     """List certificates with their expiration dates."""
     console = ctx.obj["console"]
-    store: Store = ctx.obj["store"]
-    if not store:
-        console.print("[bold red]Error:[/bold red] Store not initialized.")
-        ctx.exit(1)
+    store = get_store_or_exit(ctx)
 
     if json_output:
         result = get_certificates_list_dict(store, expired=expired, expiring_days=expiring)
@@ -444,11 +441,8 @@ def host_deploy(ctx: click.Context, host_id: str | None, all_hosts: bool) -> Non
 def host_clean(ctx: click.Context) -> None:
     """Remove host folders that are no longer in the configuration."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
-        ctx.exit(1)
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
 
     result = clean_certificates(ctx, config, store)
     if isinstance(result, Failure):
@@ -501,10 +495,10 @@ def util() -> None:
 def util_passwd(ctx: click.Context) -> None:
     """Change password for all encrypted keys."""
     console = ctx.obj["console"]
-    config: Config = ctx.obj["config"]
-    store: Store = ctx.obj["store"]
-    if not config or not store or not config.ca_config:
-        console.print("[bold red]Error:[/bold red] Configuration or store not initialized.")
+    config = get_config_or_exit(ctx)
+    store = get_store_or_exit(ctx)
+    if not config.ca_config:
+        console.print("[bold red]Error:[/bold red] CA configuration not found.")
         ctx.exit(1)
 
     console.print("You will need to provide the current password and then the new password.")
