@@ -1,38 +1,11 @@
 # Ignore store and config directories
-store/
-config/
-
-# Python artifacts
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-.env
-.venv/
-venv/
-ENV/
-.pytest_cache/
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-
-# Poetry
-.poetry/
-poetry.toml
+/store/
+/config/
 
 # Nix
 .direnv/
 .devenv/
 .devenv.flake.nix
 
-# Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-
+# LLMs
 **/.claude/settings.local.json

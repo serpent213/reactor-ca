@@ -20,6 +20,9 @@ var initCmd = &cobra.Command{
 			return err
 		}
 		if rootPath == "" {
+			rootPath = os.Getenv("REACTOR_CA_ROOT")
+		}
+		if rootPath == "" {
 			rootPath, err = os.Getwd()
 			if err != nil {
 				return fmt.Errorf("could not determine current directory: %w", err)
@@ -73,13 +76,14 @@ const defaultCaYAML = `# ReactorCA: Certificate Authority Configuration
 ca:
   # --- Subject Details ---
   # These values are used to build the distinguished name (DN) of the CA certificate.
-  common_name: "Reactor Homelab CA"
-  organization: "Reactor Industries"
-  organization_unit: "IT Department"
-  country: "DE"                 # 2-letter country code
-  state: "Berlin"               # State or province
-  locality: "Berlin"            # City or locality
-  email: "admin@reactor.dev"  # Administrative contact
+  subject:
+    common_name: "Reactor Homelab CA"
+    organization: "Reactor Industries"
+    organization_unit: "IT Department"
+    country: "DE"                 # 2-letter country code
+    state: "Berlin"               # State or province
+    locality: "Berlin"            # City or locality
+    email: "admin@reactor.dev"  # Administrative contact
 
   # --- Validity Period ---
   # How long the CA certificate will be valid for.
@@ -120,10 +124,10 @@ hosts:
   web-server-example:
     # --- Subject Details ---
     # The Common Name (CN) is typically the primary fully-qualified domain name (FQDN).
-    common_name: "web.reactor.local"
-
-    # Other subject fields are optional and will inherit from ca.yaml if not specified.
-    # organization_unit: "Web Services"
+    subject:
+      common_name: "web.reactor.local"
+      # Other subject fields are optional and will inherit from ca.yaml if not specified.
+      # organization_unit: "Web Services"
 
     # --- Subject Alternative Names (SANs) ---
     # A list of additional names the certificate should be valid for. This is highly recommended.

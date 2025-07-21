@@ -297,7 +297,8 @@ func TestE2E_DeployAndClean(t *testing.T) {
 	const deployHostYAML = `
 hosts:
   deploy-target:
-    common_name: "deploy.reactor.test"
+    subject:
+      common_name: "deploy.reactor.test"
     validity: { days: 15 }
     deploy:
       command: "echo DEPLOYED > deployment.flag"
@@ -323,7 +324,8 @@ hosts:
 	const cleanedHostsYAML = `
 hosts:
   web-server:
-    common_name: "web.reactor.test"
+    subject:
+      common_name: "web.reactor.test"
     validity: { days: 15 }
 `
 	e.writeConfig("hosts.yaml", cleanedHostsYAML)
@@ -337,9 +339,10 @@ hosts:
 
 const testCaYAML = `
 ca:
-  common_name: "Reactor Test CA"
-  organization: "Test Corp"
-  country: "US"
+  subject:
+    common_name: "Reactor Test CA"
+    organization: "Test Corp"
+    country: "US"
   validity:
     days: 30
   key_algorithm: "ECP256"
@@ -352,7 +355,8 @@ ca:
 const testHostsYAML = `
 hosts:
   web-server:
-    common_name: "web.reactor.test"
+    subject:
+      common_name: "web.reactor.test"
     alternative_names:
       dns: [ "web.reactor.test", "grafana.reactor.test" ]
       ip: [ "192.168.1.10", "10.0.0.10" ]
@@ -361,7 +365,8 @@ hosts:
       cert: "exports/web-server.pem"
       chain: "exports/web-server-chain.pem"
   db-server:
-    common_name: "db.reactor.test"
+    subject:
+      common_name: "db.reactor.test"
     validity: { days: 15 }
 `
 
