@@ -1,0 +1,106 @@
+# ReactorCA: Host Certificate Configuration
+# This file defines the certificates you want to issue for your hosts/services.
+
+hosts:
+  # Web server example - typical use case
+  web-server:
+    subject:
+      common_name: "web.reactor.local"
+    alternative_names:
+      dns:
+        - "web.reactor.local"
+        - "www.reactor.local"
+        - "grafana.reactor.local"
+      ip:
+        - "192.168.1.100"
+        - "10.10.0.1"
+    validity:
+      years: 1
+    key_algorithm: "RSA2048"
+    hash_algorithm: "SHA256"
+    export:
+      cert: "/etc/ssl/certs/web-server.crt"
+      chain: "/etc/ssl/certs/web-server-chain.crt"
+    deploy:
+      commands:
+        - "systemctl reload nginx"
+
+  # VPN server with IPv6 support
+  vpn-server:
+    subject:
+      common_name: "vpn.reactor.local"
+    alternative_names:
+      dns:
+        - "vpn.reactor.local"
+        - "openvpn.reactor.local"
+      ip:
+        - "192.168.1.200"
+        - "2001:db8::1"  # IPv6 example
+    validity:
+      years: 2
+    key_algorithm: "ECP384"
+    hash_algorithm: "SHA384"
+    export:
+      cert: "/etc/openvpn/server.crt"
+      chain: "/etc/openvpn/server-chain.crt"
+    deploy:
+      commands:
+        - "systemctl restart openvpn@server"
+
+  # IoT device with custom subject fields
+  iot-gateway:
+    subject:
+      common_name: "iot.reactor.local"
+      organization_unit: "IoT Division"
+    alternative_names:
+      dns:
+        - "iot.reactor.local"
+        - "mqtt.reactor.local"
+      ip:
+        - "192.168.1.150"
+    validity:
+      days: 365
+    key_algorithm: "ED25519"
+    hash_algorithm: "SHA256"
+    export:
+      cert: "/opt/iot/certs/gateway.crt"
+      chain: "/opt/iot/certs/gateway-chain.crt"
+    deploy:
+      commands:
+        - "chown iot:iot /opt/iot/certs/*"
+        - "systemctl restart mosquitto"
+
+  # Client certificate for user authentication
+  client-user:
+    subject:
+      common_name: "john.doe@reactor.local"
+      organization_unit: "Users"
+    alternative_names:
+      dns:
+        - "john.doe.reactor.local"
+    validity:
+      years: 1
+    key_algorithm: "RSA3072"
+    hash_algorithm: "SHA256"
+    # No export/deploy - stored in secure store only
+
+  # Development server with multiple domains
+  dev-server:
+    subject:
+      common_name: "dev.reactor.local"
+    alternative_names:
+      dns:
+        - "dev.reactor.local"
+        - "api.dev.reactor.local"
+        - "staging.reactor.local"
+        - "localhost"
+      ip:
+        - "127.0.0.1"
+        - "192.168.1.50"
+    validity:
+      months: 6  # Shorter validity for dev environments
+    key_algorithm: "RSA2048"
+    hash_algorithm: "SHA256"
+    export:
+      cert: "/var/www/ssl/dev.crt"
+      chain: "/var/www/ssl/dev-chain.crt"
