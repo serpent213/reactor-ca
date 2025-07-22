@@ -1,6 +1,9 @@
 # Executable
 /ca
 
+# Build artifacts
+/dist/
+
 # Ignore store and config directories
 /store/
 /config/

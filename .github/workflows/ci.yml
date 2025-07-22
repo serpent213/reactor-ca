@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  release:
+    types: [ created ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Install just
+      uses: extractions/setup-just@v2
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Run CI pipeline
+      run: just ci
+
+    - name: Upload test artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          **/*test.log
+          **/*coverage.out
+
+  release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Install just
+      uses: extractions/setup-just@v2
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Build cross-platform binaries
+      run: just build-cross
+
+    - name: Create checksums
+      run: |
+        cd dist
+        sha256sum * > checksums.txt
+
+    - name: Upload release artifacts
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/reactor-ca-linux-amd64
+        asset_name: reactor-ca-linux-amd64
+        asset_content_type: application/octet-stream
+
+    - name: Upload macOS AMD64 binary
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/reactor-ca-darwin-amd64
+        asset_name: reactor-ca-darwin-amd64
+        asset_content_type: application/octet-stream
+
+    - name: Upload macOS ARM64 binary
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/reactor-ca-darwin-arm64
+        asset_name: reactor-ca-darwin-arm64
+        asset_content_type: application/octet-stream
+
+    - name: Upload Windows binary
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/reactor-ca-windows-amd64.exe
+        asset_name: reactor-ca-windows-amd64.exe
+        asset_content_type: application/octet-stream
+
+    - name: Upload checksums
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/checksums.txt
+        asset_name: checksums.txt
+        asset_content_type: text/plain
