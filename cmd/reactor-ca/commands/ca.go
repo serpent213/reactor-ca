@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.dev/reactor-ca/internal/domain"
+	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var caCmd = &cobra.Command{
@@ -27,7 +28,7 @@ var caCreateCmd = &cobra.Command{
 			}
 			return err
 		}
-		fmt.Println("✅ CA created successfully.")
+		ui.Success("CA created successfully")
 		return nil
 	},
 }
@@ -42,7 +43,7 @@ var caRenewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println("✅ CA renewed successfully.")
+		ui.Success("CA renewed successfully")
 		return nil
 	},
 }
@@ -76,7 +77,7 @@ re-issue and re-deploy all host certificates after this operation.`),
 		if err != nil {
 			return err
 		}
-		color.Green("✅ CA re-keyed successfully. Remember to re-issue all host certificates.")
+		ui.Success("CA re-keyed successfully. Remember to re-issue all host certificates")
 		return nil
 	},
 }
@@ -110,7 +111,7 @@ var caImportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println("✅ CA imported successfully.")
+		ui.Success("CA imported successfully")
 		return nil
 	},
 }
@@ -125,7 +126,7 @@ var caPasswdCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println("✅ Master password changed successfully for all keys.")
+		ui.Success("Master password changed successfully for all keys")
 		return nil
 	},
 }

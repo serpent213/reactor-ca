@@ -1,9 +1,8 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var configCmd = &cobra.Command{
@@ -21,7 +20,7 @@ var configValidateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println("✅ Configuration files are valid.")
+		ui.Success("Configuration files are valid")
 		return nil
 	},
 }

@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.dev/reactor-ca/internal/domain"
+	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var hostCmd = &cobra.Command{
@@ -40,7 +39,7 @@ A new key is generated only if one does not already exist, unless --rekey is spe
 		return processHostCmd(cmd, args, "all",
 			"Issuing certificate for host '%s'...",
 			"Issuing certificates for all %d hosts...",
-			"  ✅ Successfully issued certificate for '%s'",
+			"  Successfully issued certificate for '%s'",
 			action,
 		)
 	},
@@ -102,31 +101,14 @@ func printHostTable(list []*domain.HostInfo) {
 		return
 	}
 
-	red := color.New(color.FgRed).SprintFunc()
-	yellow := color.New(color.FgYellow).SprintFunc()
-	green := color.New(color.FgGreen).SprintFunc()
-
 	// Header
-	fmt.Printf("%-30s | %-25s | %s\n", "HOST ID", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
-	fmt.Println(strings.Repeat("-", 78))
+	ui.PrintTableHeader("HOST ID", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
 
 	for _, h := range list {
-		var status string
-		daysStr := fmt.Sprintf("%d", h.DaysRemaining)
-		if h.DaysRemaining < 0 {
-			status = red("EXPIRED")
-		} else if h.DaysRemaining < 30 {
-			status = red(daysStr)
-		} else if h.DaysRemaining < 90 {
-			status = yellow(daysStr)
-		} else {
-			status = green(daysStr)
-		}
-
 		fmt.Printf("%-30s | %-25s | %s\n",
 			h.ID,
 			h.NotAfter.UTC().Format(time.RFC3339),
-			status)
+			ui.FormatCertStatus(h.DaysRemaining))
 	}
 }
 
@@ -161,7 +143,7 @@ var hostDeployCmd = &cobra.Command{
 		return processHostCmd(cmd, args, "all",
 			"Deploying certificate for host '%s'...",
 			"Deploying certificates for all %d hosts...",
-			"  ✅ Successfully deployed certificate for '%s'",
+			"  Successfully deployed certificate for '%s'",
 			action,
 		)
 	},
@@ -189,7 +171,7 @@ var hostExportKeyCmd = &cobra.Command{
 			if err := os.WriteFile(exportKeyOutPath, pemKey, 0600); err != nil {
 				return fmt.Errorf("failed to write key to %s: %w", exportKeyOutPath, err)
 			}
-			fmt.Printf("✅ Unencrypted key for '%s' exported to %s\n", hostID, exportKeyOutPath)
+			ui.Success("Unencrypted key for '%s' exported to %s", hostID, exportKeyOutPath)
 		}
 		return nil
 	},
@@ -207,7 +189,7 @@ var hostImportKeyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("✅ Key for host '%s' imported successfully. Run 'host issue %s' to create a matching certificate.\n", args[0], args[0])
+		ui.Success("Key for host '%s' imported successfully. Run 'host issue %s' to create a matching certificate", args[0], args[0])
 		return nil
 	},
 }
@@ -234,7 +216,7 @@ var hostSignCSRCmd = &cobra.Command{
 			if err := os.WriteFile(csrOut, certPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write certificate to %s: %w", csrOut, err)
 			}
-			fmt.Printf("✅ Certificate signed successfully and saved to %s\n", csrOut)
+			ui.Success("Certificate signed successfully and saved to %s", csrOut)
 		}
 		return nil
 	},
@@ -257,7 +239,7 @@ var hostCleanCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Println("Pruned the following hosts from the store:")
+		ui.Success("Pruned the following hosts from the store:")
 		for _, id := range pruned {
 			fmt.Printf("- %s\n", id)
 		}

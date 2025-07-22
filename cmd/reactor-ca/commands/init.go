@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var forceInit bool
@@ -20,7 +21,7 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("Initializing Reactor CA in %s...\n", rootPath)
+		ui.Action("Initializing Reactor CA in %s...", rootPath)
 
 		dirs := []string{
 			filepath.Join(rootPath, "config"),
@@ -33,7 +34,7 @@ var initCmd = &cobra.Command{
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", dir, err)
 			}
-			fmt.Printf("✓ Created directory: %s\n", dir)
+			ui.Success("Created directory: %s", dir)
 		}
 
 		files := map[string]string{
@@ -43,16 +44,16 @@ var initCmd = &cobra.Command{
 
 		for path, content := range files {
 			if _, err := os.Stat(path); err == nil && !forceInit {
-				fmt.Printf("! Skipping existing file: %s (use --force to overwrite)\n", path)
+				ui.Warning("Skipping existing file: %s (use --force to overwrite)", path)
 				continue
 			}
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				return fmt.Errorf("failed to write file %s: %w", path, err)
 			}
-			fmt.Printf("✓ Created config file: %s\n", path)
+			ui.Success("Created config file: %s", path)
 		}
 
-		fmt.Println("\nInitialization complete. Review the files in config/ and then run 'reactor-ca ca create'.")
+		ui.Success("Initialization complete. Review the files in config/ and then run 'reactor-ca ca create'.")
 		return nil
 	},
 }

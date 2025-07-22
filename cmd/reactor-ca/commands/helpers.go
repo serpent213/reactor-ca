@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.dev/reactor-ca/internal/app"
+	"reactor.dev/reactor-ca/internal/ui"
 )
 
 // getApp retrieves the application context from the command.
@@ -93,21 +93,22 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 			hasErrors = true
 			// Don't stop on error if --all is used
 			if isAll {
-				color.Red("  Error processing host '%s': %v\n", id, err)
+				ui.Error("Error processing host '%s': %v", id, err)
 				continue
 			}
 			return err
 		}
 		if successMsg != "" {
-			color.Green(successMsg+"\n", id)
+			ui.Success(successMsg, id)
 		}
 	}
 
 	if isAll {
+		fmt.Println()
 		if hasErrors {
-			color.Yellow("\nDone, but with errors.")
+			ui.Warning("Done, but with errors")
 		} else {
-			fmt.Println("\nDone.")
+			ui.Success("Done")
 		}
 	}
 	return nil
