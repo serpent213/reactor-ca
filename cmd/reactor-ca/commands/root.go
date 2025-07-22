@@ -36,22 +36,9 @@ suitable for homelab and small-to-medium business environments.`,
 			return nil
 		}
 
-		rootPath, err := cmd.Flags().GetString("root")
+		rootPath, err := getRootPath(cmd)
 		if err != nil {
 			return err
-		}
-		if rootPath == "" {
-			rootPath = os.Getenv("REACTOR_CA_ROOT")
-		}
-		if rootPath == "" {
-			rootPath, err = os.Getwd()
-			if err != nil {
-				return fmt.Errorf("could not determine current directory: %w", err)
-			}
-		}
-		rootPath, err = filepath.Abs(rootPath)
-		if err != nil {
-			return fmt.Errorf("could not get absolute path for root: %w", err)
 		}
 
 		// Basic validation to ensure we are in a reactor-ca directory

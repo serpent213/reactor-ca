@@ -92,6 +92,8 @@ func (m *mockLogger) Log(msg string)                        {}
 // --- Tests ---
 
 func TestCleanHosts(t *testing.T) {
+	errInput := errors.New("input error")
+
 	testCases := []struct {
 		name              string
 		storeIDs          []string
@@ -144,9 +146,9 @@ func TestCleanHosts(t *testing.T) {
 			storeIDs:       []string{"host1", "host2-to-prune"},
 			configIDs:      []string{"host1"},
 			force:          false,
-			confirmError:   errors.New("input error"),
+			confirmError:   errInput,
 			expectedPruned: nil,
-			expectedErr:    nil, // We'll check the error message instead
+			expectedErr:    errInput,
 		},
 	}
 
@@ -176,15 +178,8 @@ func TestCleanHosts(t *testing.T) {
 			pruned, err := application.CleanHosts(context.Background(), tc.force)
 
 			// Assertions
-			if tc.expectedErr != nil {
-				if !errors.Is(err, tc.expectedErr) {
-					t.Errorf("expected error %v, got %v", tc.expectedErr, err)
-				}
-			} else if tc.name == "Confirmation fails" {
-				// Special case: check for the specific error message
-				if err == nil || err.Error() != "input error" {
-					t.Errorf("expected 'input error', got %v", err)
-				}
+			if !errors.Is(err, tc.expectedErr) {
+				t.Errorf("expected error '%v', got '%v'", tc.expectedErr, err)
 			}
 
 			if len(pruned) != len(tc.expectedPruned) {

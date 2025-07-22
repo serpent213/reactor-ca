@@ -226,8 +226,39 @@ func (s *FileStore) GetAllEncryptedKeyPaths() ([]string, error) {
 }
 
 // UpdateEncryptedKey writes new data to an existing key file path.
-func (s *FileStore) UpdateEncryptedKey(path string, data []byte) error {
-	// Simple overwrite with secure permissions.
-	// A more robust implementation might write to a temp file and rename.
-	return os.WriteFile(path, data, 0600)
+// It uses an atomic write-and-rename operation for safety.
+func (s *FileStore) UpdateEncryptedKey(path string, data []byte) (err error) {
+	// Create a temporary file in the same directory to ensure atomic rename.
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, filepath.Base(path)+".tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary key file: %w", err)
+	}
+	// Ensure the temp file is removed on error
+	defer func() {
+		if err != nil {
+			os.Remove(tmpFile.Name())
+		}
+	}()
+
+	if err = os.Chmod(tmpFile.Name(), 0600); err != nil {
+		return fmt.Errorf("failed to set permissions on temporary key file: %w", err)
+	}
+
+	if _, err = tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close() // Close file before trying to remove.
+		return fmt.Errorf("failed to write to temporary key file: %w", err)
+	}
+
+	if err = tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary key file: %w", err)
+	}
+
+	// Atomically replace the old file with the new one.
+	err = os.Rename(tmpFile.Name(), path)
+	if err != nil {
+		return fmt.Errorf("failed to rename temporary key file to final destination: %w", err)
+	}
+
+	return nil
 }

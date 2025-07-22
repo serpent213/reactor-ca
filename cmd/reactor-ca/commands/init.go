@@ -15,18 +15,9 @@ var initCmd = &cobra.Command{
 	Short: "Initialize config and store directories",
 	Long:  `Creates the necessary directory structure (config/, store/) and populates it with default configuration files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		rootPath, err := cmd.Flags().GetString("root")
+		rootPath, err := getRootPath(cmd)
 		if err != nil {
 			return err
-		}
-		if rootPath == "" {
-			rootPath = os.Getenv("REACTOR_CA_ROOT")
-		}
-		if rootPath == "" {
-			rootPath, err = os.Getwd()
-			if err != nil {
-				return fmt.Errorf("could not determine current directory: %w", err)
-			}
 		}
 
 		fmt.Printf("Initializing Reactor CA in %s...\n", rootPath)

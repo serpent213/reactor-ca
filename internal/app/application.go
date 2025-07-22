@@ -644,21 +644,6 @@ func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte,
 	return a.cryptoSvc.EncodeKeyToPEM(hostKey)
 }
 
-// ExportHostKeyToFile exports the unencrypted private key for a host to a file.
-func (a *Application) ExportHostKeyToFile(ctx context.Context, hostID, outputPath string) error {
-	keyPEM, err := a.ExportHostKey(ctx, hostID)
-	if err != nil {
-		return err
-	}
-
-	resolvedPath := a.resolvePath(outputPath)
-	if err := os.WriteFile(resolvedPath, keyPEM, 0600); err != nil {
-		return fmt.Errorf("failed to write key to %s: %w", resolvedPath, err)
-	}
-	a.logger.Log(fmt.Sprintf("Exported unencrypted key for '%s' to %s", hostID, resolvedPath))
-	return nil
-}
-
 // ImportHostKey imports an external key for a host.
 func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string) error {
 	a.logger.Log(fmt.Sprintf("Importing key for host '%s' from %s", hostID, keyPath))

@@ -1,10 +1,10 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,49 +30,19 @@ var hostIssueCmd = &cobra.Command{
 	Long: `Issues or renews a certificate for a host defined in hosts.yaml.
 Use '--all' to issue for all defined hosts.
 A new key is generated only if one does not already exist, unless --rekey is specified.`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		if !issueAllHosts && len(args) != 1 {
-			return fmt.Errorf("accepts exactly one argument: <host-id>")
-		}
-		if issueAllHosts && len(args) > 0 {
-			return fmt.Errorf("cannot use <host-id> argument when --all is specified")
-		}
-		if !issueAllHosts && len(args) == 0 {
-			return fmt.Errorf("must specify <host-id> or use --all flag")
-		}
-		return nil
-	},
+	Args: hostIDOrAllFlag("all"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-
-		var hostIDs []string
-		if issueAllHosts {
-			var err error
-			hostIDs, err = appCtx.App.GetAllHostIDs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Issuing certificates for all %d hosts...\n", len(hostIDs))
-		} else {
-			hostIDs = append(hostIDs, args[0])
+		action := func(ctx context.Context, hostID string) error {
+			app := getApp(cmd)
+			return app.IssueHost(ctx, hostID, rekeyHost, deployHost)
 		}
 
-		for _, id := range hostIDs {
-			fmt.Printf("Issuing certificate for host '%s'...\n", id)
-			err := appCtx.App.IssueHost(cmd.Context(), id, rekeyHost, deployHost)
-			if err != nil {
-				// Don't stop on error if --all is used
-				if issueAllHosts {
-					color.Red("  Error: %v\n", err)
-					continue
-				}
-				return err
-			}
-			color.Green("  ✅ Successfully issued certificate for '%s'\n", id)
-		}
-
-		fmt.Println("\nDone.")
-		return nil
+		return processHostCmd(cmd, args, "all",
+			"Issuing certificate for host '%s'...",
+			"Issuing certificates for all %d hosts...",
+			"  ✅ Successfully issued certificate for '%s'",
+			action,
+		)
 	},
 }
 
@@ -86,8 +56,8 @@ var hostListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all host certificates in the store with their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		list, err := appCtx.App.ListHosts(cmd.Context())
+		app := getApp(cmd)
+		list, err := app.ListHosts(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -142,7 +112,7 @@ func printHostTable(list []*domain.HostInfo) {
 
 	for _, h := range list {
 		var status string
-		daysStr := strconv.FormatInt(h.DaysRemaining, 10)
+		daysStr := fmt.Sprintf("%d", h.DaysRemaining)
 		if h.DaysRemaining < 0 {
 			status = red("EXPIRED")
 		} else if h.DaysRemaining < 30 {
@@ -166,8 +136,8 @@ var hostInfoCmd = &cobra.Command{
 	Short: "Display detailed information about a specific host certificate",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		info, err := appCtx.App.InfoHost(cmd.Context(), args[0])
+		app := getApp(cmd)
+		info, err := app.InfoHost(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
@@ -181,47 +151,19 @@ var deployAllHosts bool
 var hostDeployCmd = &cobra.Command{
 	Use:   "deploy <host-id>",
 	Short: "Run the configured deployment command for one or all hosts",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if !deployAllHosts && len(args) != 1 {
-			return fmt.Errorf("accepts exactly one argument: <host-id>")
-		}
-		if deployAllHosts && len(args) > 0 {
-			return fmt.Errorf("cannot use <host-id> argument when --all is specified")
-		}
-		if !deployAllHosts && len(args) == 0 {
-			return fmt.Errorf("must specify <host-id> or use --all flag")
-		}
-		return nil
-	},
+	Args:  hostIDOrAllFlag("all"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		var hostIDs []string
-		if deployAllHosts {
-			var err error
-			hostIDs, err = appCtx.App.GetAllHostIDs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			fmt.Printf("Deploying certificates for all %d hosts...\n", len(hostIDs))
-		} else {
-			hostIDs = append(hostIDs, args[0])
+		action := func(ctx context.Context, hostID string) error {
+			app := getApp(cmd)
+			return app.DeployHost(ctx, hostID)
 		}
 
-		for _, id := range hostIDs {
-			fmt.Printf("Deploying certificate for host '%s'...\n", id)
-			err := appCtx.App.DeployHost(cmd.Context(), id)
-			if err != nil {
-				if deployAllHosts {
-					color.Red("  Error: %v\n", err)
-					continue
-				}
-				return err
-			}
-			color.Green("  ✅ Successfully deployed certificate for '%s'\n", id)
-		}
-
-		fmt.Println("\nDone.")
-		return nil
+		return processHostCmd(cmd, args, "all",
+			"Deploying certificate for host '%s'...",
+			"Deploying certificates for all %d hosts...",
+			"  ✅ Successfully deployed certificate for '%s'",
+			action,
+		)
 	},
 }
 
@@ -233,20 +175,21 @@ var hostExportKeyCmd = &cobra.Command{
 	Long:  `Exports the unencrypted private key for a host to a specified file or stdout.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
+		app := getApp(cmd)
+		hostID := args[0]
+		pemKey, err := app.ExportHostKey(cmd.Context(), hostID)
+		if err != nil {
+			return err
+		}
 
 		if exportKeyOutPath == "" || exportKeyOutPath == "-" {
-			pemKey, err := appCtx.App.ExportHostKey(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
 			fmt.Print(string(pemKey))
 		} else {
-			err := appCtx.App.ExportHostKeyToFile(cmd.Context(), args[0], exportKeyOutPath)
-			if err != nil {
-				return err
+			// Write with secure permissions (0600)
+			if err := os.WriteFile(exportKeyOutPath, pemKey, 0600); err != nil {
+				return fmt.Errorf("failed to write key to %s: %w", exportKeyOutPath, err)
 			}
-			fmt.Printf("✅ Unencrypted key for '%s' exported to %s\n", args[0], exportKeyOutPath)
+			fmt.Printf("✅ Unencrypted key for '%s' exported to %s\n", hostID, exportKeyOutPath)
 		}
 		return nil
 	},
@@ -259,8 +202,8 @@ var hostImportKeyCmd = &cobra.Command{
 	Short: "Import a pre-existing private key for a host",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.ImportHostKey(cmd.Context(), args[0], importHostKeyPath)
+		app := getApp(cmd)
+		err := app.ImportHostKey(cmd.Context(), args[0], importHostKeyPath)
 		if err != nil {
 			return err
 		}
@@ -279,8 +222,8 @@ var hostSignCSRCmd = &cobra.Command{
 	Use:   "sign-csr",
 	Short: "Sign an external Certificate Signing Request (CSR)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		certPEM, err := appCtx.App.SignCSR(cmd.Context(), csrPath, csrDays)
+		app := getApp(cmd)
+		certPEM, err := app.SignCSR(cmd.Context(), csrPath, csrDays)
 		if err != nil {
 			return err
 		}
@@ -303,8 +246,8 @@ var hostCleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Prune certificates/keys from the store for hosts no longer in hosts.yaml",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		pruned, err := appCtx.App.CleanHosts(cmd.Context(), forceClean)
+		app := getApp(cmd)
+		pruned, err := app.CleanHosts(cmd.Context(), forceClean)
 		if err != nil {
 			return err
 		}

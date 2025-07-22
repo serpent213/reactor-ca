@@ -19,8 +19,8 @@ var caCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new CA key and self-signed certificate",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.CreateCA(cmd.Context())
+		app := getApp(cmd)
+		err := app.CreateCA(cmd.Context())
 		if err != nil {
 			if err == domain.ErrCAAlreadyExists {
 				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
@@ -37,8 +37,8 @@ var caRenewCmd = &cobra.Command{
 	Use:   "renew",
 	Short: "Renew the CA certificate using the existing key",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.RenewCA(cmd.Context())
+		app := getApp(cmd)
+		err := app.RenewCA(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -59,7 +59,7 @@ The old CA key will be gone forever. All certificates previously issued by the o
 will no longer be trusted by clients that trust the new CA. You will need to
 re-issue and re-deploy all host certificates after this operation.`),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
+		app := getApp(cmd)
 		force, _ := cmd.Flags().GetBool("force")
 
 		if !force {
@@ -72,7 +72,7 @@ re-issue and re-deploy all host certificates after this operation.`),
 			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
 		}
 
-		err := appCtx.App.RekeyCA(cmd.Context(), force)
+		err := app.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err
 		}
@@ -86,8 +86,8 @@ var caInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Display detailed information about the CA certificate",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		info, err := appCtx.App.InfoCA(cmd.Context())
+		app := getApp(cmd)
+		info, err := app.InfoCA(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -105,8 +105,8 @@ var caImportCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import an existing CA certificate and private key",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.ImportCA(cmd.Context(), importCertPath, importKeyPath)
+		app := getApp(cmd)
+		err := app.ImportCA(cmd.Context(), importCertPath, importKeyPath)
 		if err != nil {
 			return err
 		}
@@ -120,8 +120,8 @@ var caPasswdCmd = &cobra.Command{
 	Use:   "passwd",
 	Short: "Change the master password for all encrypted keys in the store",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
-		err := appCtx.App.ChangePassword(cmd.Context())
+		app := getApp(cmd)
+		err := app.ChangePassword(cmd.Context())
 		if err != nil {
 			return err
 		}
