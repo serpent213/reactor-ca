@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/youmark/pkcs8"
 	"reactor.dev/reactor-ca/internal/domain"
+	"reactor.dev/reactor-ca/internal/infra/crypto/pkcs8"
 )
 
 // Service implements the domain.CryptoService interface.
