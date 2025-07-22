@@ -42,6 +42,8 @@ jobs:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     needs: ci
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -65,62 +67,14 @@ jobs:
         cd dist
         sha256sum * > checksums.txt
 
-    - name: Upload Linux AMD64 binary
-      uses: actions/upload-release-asset@v1
+    - name: Upload release assets
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/reactor-ca-linux-amd64
-        asset_name: reactor-ca-linux-amd64
-        asset_content_type: application/octet-stream
-
-    - name: Upload Linux ARM64 binary
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/reactor-ca-linux-arm64
-        asset_name: reactor-ca-linux-arm64
-        asset_content_type: application/octet-stream
-
-    - name: Upload macOS AMD64 binary
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/reactor-ca-darwin-amd64
-        asset_name: reactor-ca-darwin-amd64
-        asset_content_type: application/octet-stream
-
-    - name: Upload macOS ARM64 binary
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/reactor-ca-darwin-arm64
-        asset_name: reactor-ca-darwin-arm64
-        asset_content_type: application/octet-stream
-
-    - name: Upload Windows binary
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/reactor-ca-windows-amd64.exe
-        asset_name: reactor-ca-windows-amd64.exe
-        asset_content_type: application/octet-stream
-
-    - name: Upload checksums
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./dist/checksums.txt
-        asset_name: checksums.txt
-        asset_content_type: text/plain
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+          ./dist/reactor-ca-linux-amd64 \
+          ./dist/reactor-ca-linux-arm64 \
+          ./dist/reactor-ca-darwin-amd64 \
+          ./dist/reactor-ca-darwin-arm64 \
+          ./dist/reactor-ca-windows-amd64.exe \
+          ./dist/checksums.txt
