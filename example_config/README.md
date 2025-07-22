@@ -7,7 +7,7 @@ This directory contains example configuration files for ReactorCA. These files s
 To set up your own configuration, initialize a new ReactorCA instance:
 
 ```bash
-./reactor-ca init
+ca init
 ```
 
 This will create the necessary configuration files in the `config` directory with default values.
