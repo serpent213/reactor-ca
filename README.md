@@ -8,14 +8,37 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 
 - Create and manage a self-signed Certificate Authority
 - Generate and renew certificates for hosts
-- Strong key encryption with password protection
+- Strong key encryption with password protection (AES-256-GCM and PBKDF2)
 - Certificate inventory and expiration tracking
 - Certificate chain support (CA + host certificate)
 - Flexible password options (prompt, environment variable, file)
 - Export unencrypted private keys when needed
-- Simple deployment to target locations
+- Simple deployment to target locations via shell scripts
 - Run deployment scripts after certificate exports
 - Single statically-linked binary with no runtime dependencies
+
+## Motivation and Design Targets
+
+ReactorCA fills a gap in the homelab PKI space by providing:
+
+- **Command-line focused**: Unlike GUI-heavy tools like [XCA](https://www.hohnstaedt.de/xca/), ReactorCA is built for automation and scripting
+- **Modern implementation**: Addresses limitations of older tools like [easy-ca](https://github.com/redredgroovy/easy-ca) with updated cryptographic standards
+- **Plug & play**: Minimal configuration required to get started
+- **Secure by default**: Strong encryption, secure key storage, and safe deployment practices built-in
+
+## Cryptographic Implementation
+
+ReactorCA is built on proven cryptographic foundations:
+
+### Core Libraries
+- **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
+- **PKCS#8 Encryption**: Based on [Yutong Wang's pkcs8 library](https://github.com/youmark/pkcs8) with enhanced AES-GCM support
+
+### Key Protection
+Every `.key.enc` file is encrypted using:
+- **AES-256-GCM**: Authenticated encryption for private keys
+- **PBKDF2**: Strong key derivation with high iteration counts
+- **Secure storage**: Password-protected encryption at rest
 
 ## Installation
 
@@ -191,13 +214,14 @@ vim config/hosts.yaml
 ```yaml
 ca:
   # Subject details for the CA certificate
-  common_name: "Reactor Homelab CA"
-  organization: "Reactor Industries"
-  organization_unit: "IT Department"
-  country: "DE"
-  state: "Berlin"
-  locality: "Berlin"
-  email: "admin@reactor.dev"
+  subject:
+    common_name: "Reactor Homelab CA"
+    organization: "Reactor Industries"
+    organization_unit: "IT Department"
+    country: "DE"
+    state: "Berlin"
+    locality: "Berlin"
+    email: "admin@reactor.dev"
 
   # Certificate validity
   validity:
@@ -219,7 +243,8 @@ ca:
 ```yaml
 hosts:
   web-server-example:
-    common_name: "web.reactor.local"
+    subject:
+      common_name: "web.reactor.local"
     
     # Subject Alternative Names
     alternative_names:
@@ -238,15 +263,20 @@ hosts:
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
     
-    # Export paths (optional)
+    # Export paths (optional). These paths can be used in the deploy commands.
     export:
       cert: "/etc/ssl/certs/web-server.pem"
       chain: "/etc/ssl/certs/web-server-chain.pem"
     
-    # Deployment command (optional)
-    # Variables: ${cert}, ${chain}, ${private_key}
+    # Deployment commands (optional). Executed as a shell script.
+    # Variables:
+    # - ${cert}: Path to the exported certificate.
+    # - ${chain}: Path to the exported chain file.
+    # - ${private_key}: Path to a temporary, unencrypted private key file (securely handled).
     deploy:
-      command: "systemctl reload nginx"
+      commands:
+        - "echo 'Reloading NGINX...'"
+        - "systemctl reload nginx"
 ```
 
 ## Store Structure
@@ -255,7 +285,7 @@ hosts:
 store/
 ├── ca/
 │   ├── ca.crt         # CA certificate (PEM format)
-│   └── ca.key.enc     # Encrypted CA private key (PKCS#8)
+│   └── ca.key.enc     # Encrypted CA private key (PKCS#8, AES-256-GCM)
 ├── hosts/
 │   └── <host-id>/
 │       ├── cert.crt   # Host certificate (PEM format)
@@ -271,16 +301,16 @@ store/
 |-----------|----------|-------------|-----------|---------------|
 | RSA2048   | 2048-bit | Medium      | Good      | Excellent     |
 | RSA3072   | 3072-bit | Slow        | Strong    | Excellent     |
-| RSA4096   | 4096-bit | Slow        | Strong    | Excellent     |
+| RSA4096   | 4096-bit | Slow        | Very Strong| Excellent     |
 | ECP256    | P-256    | Fast        | Strong    | Good          |
-| ECP384    | P-384    | Medium      | Strong    | Good          |
-| ECP521    | P-521    | Medium      | Very Strong | Good        |
+| ECP384    | P-384    | Medium      | Very Strong| Good          |
+| ECP521    | P-521    | Medium      | Very Strong| Good        |
 | ED25519   | 256-bit  | Very Fast   | Strong    | Modern only   |
 
 ### Supported Hash Algorithms
 
-- **SHA256**: Default, excellent compatibility
-- **SHA384**: Stronger, recommended for ECP384
+- **SHA256**: Good default, excellent compatibility
+- **SHA384**: Stronger, recommended for ECP384 and higher
 - **SHA512**: Strongest, for high-security environments
 
 ### Subject Alternative Name Types
@@ -311,9 +341,10 @@ ReactorCA supports multiple password sources (checked in order):
 
 ## Security Features
 
-- All private keys encrypted at rest with PKCS#8 + AES-256-CBC
+- All private keys encrypted at rest with PKCS#8 + AES-256-GCM
+- Strong key derivation function (PBKDF2) with high iteration count
 - Temporary files use secure permissions (0600) and automatic cleanup
-- Command execution prevents shell injection vulnerabilities
+- Deployment scripts are executed securely without exposing keys
 - Master password required for all private key operations
 
 ## Development Environment
@@ -336,4 +367,3 @@ ReactorCA is designed for homelab use and has some intentional limitations:
 - No certificate revocation (CRL/OCSP) support
 - No PKCS#12 bundle creation
 - No automated renewal daemon (use cron/systemd timers)
-- Deployment commands use simple space-splitting (no complex shell syntax)
