@@ -168,7 +168,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 	if err == nil {
 		t.Fatal("`export-key` succeeded with wrong password, but should have failed")
 	}
-	if !strings.Contains(stderr, "failed to decrypt") {
+	if !strings.Contains(stderr, "incorrect password") {
 		t.Errorf("Expected decryption error, got: %s", stderr)
 	}
 }
@@ -300,7 +300,8 @@ hosts:
       common_name: "deploy.reactor.test"
     validity: { days: 15 }
     deploy:
-      command: "echo DEPLOYED > deployment.flag"
+      commands:
+        - "echo DEPLOYED > deployment.flag"
 `
 	e.writeConfig("hosts.yaml", deployHostYAML)
 	e.runWithCheck(testPassword, "host", "issue", "deploy-target", "--deploy")

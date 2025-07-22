@@ -1,11 +1,14 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,18 +55,8 @@ func (a *Application) ValidateConfig(ctx context.Context) error {
 	if _, err := a.configLoader.LoadCA(); err != nil {
 		return fmt.Errorf("invalid ca.yaml: %w", err)
 	}
-	hostsCfg, err := a.configLoader.LoadHosts()
-	if err != nil {
+	if _, err := a.configLoader.LoadHosts(); err != nil {
 		return fmt.Errorf("invalid hosts.yaml: %w", err)
-	}
-
-	// Validate deploy configurations
-	for hostID, hostCfg := range hostsCfg.Hosts {
-		hasCommand := hostCfg.Deploy.Command != ""
-		hasCommands := len(hostCfg.Deploy.Commands) > 0
-		if hasCommand && hasCommands {
-			return fmt.Errorf("invalid deploy configuration for host '%s': %w", hostID, domain.ErrInvalidDeployConfig)
-		}
 	}
 
 	a.logger.Log("Configuration files are valid.")
@@ -149,7 +142,10 @@ func (a *Application) RenewCA(ctx context.Context) error {
 
 	key, err := a.cryptoSvc.DecryptPrivateKey(encryptedKeyData, password)
 	if err != nil {
-		return err
+		if errors.Is(err, domain.ErrIncorrectPassword) {
+			return err // Return the specific error for better UX
+		}
+		return fmt.Errorf("failed to decrypt CA key: %w", err)
 	}
 
 	a.logger.Log("Creating new self-signed root certificate...")
@@ -173,7 +169,7 @@ func (a *Application) RenewCA(ctx context.Context) error {
 func (a *Application) RekeyCA(ctx context.Context, force bool) error {
 	a.logger.Log("Re-keying CA. This will replace the existing CA key and certificate.")
 	if !force {
-		confirmed, err := a.passwordProvider.Confirm("This is a destructive action. Are you sure you want to proceed? [y/N]: ")
+		confirmed, err := a.passwordProvider.Confirm("Are you sure you want to proceed? [y/N]: ")
 		if err != nil {
 			return err
 		}
@@ -250,6 +246,14 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 		return err
 	}
 
+	// Create a backup before proceeding
+	backupPath, err := a.backupStore("passwd-change")
+	if err != nil {
+		return fmt.Errorf("failed to create store backup before password change: %w", err)
+	}
+	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
+	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
+
 	fmt.Println("Enter current master password:")
 	oldPassword, err := a.passwordProvider.GetMasterPassword(ctx, cfg.CA.Password)
 	if err != nil {
@@ -267,11 +271,11 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 		return fmt.Errorf("failed to list keys in store: %w", err)
 	}
 
-	type decryptedKey struct {
+	type reEncryptedKey struct {
 		path string
 		key  []byte
 	}
-	reEncryptedKeys := make([]decryptedKey, 0, len(keyPaths))
+	reEncryptedKeys := make([]reEncryptedKey, 0, len(keyPaths))
 
 	a.logger.Log(fmt.Sprintf("Decrypting %d keys with old password...", len(keyPaths)))
 	for _, path := range keyPaths {
@@ -281,6 +285,9 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 		}
 		key, err := a.cryptoSvc.DecryptPrivateKey(encryptedPEM, oldPassword)
 		if err != nil {
+			if errors.Is(err, domain.ErrIncorrectPassword) {
+				return fmt.Errorf("%w for key %s. Aborting. No changes have been made", err, filepath.Base(path))
+			}
 			return fmt.Errorf("failed to decrypt key %s: %w. Aborting password change", filepath.Base(path), err)
 		}
 
@@ -289,17 +296,17 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 			return fmt.Errorf("failed to re-encrypt key %s: %w", path, err)
 		}
 
-		reEncryptedKeys = append(reEncryptedKeys, decryptedKey{path: path, key: reEncrypted})
+		reEncryptedKeys = append(reEncryptedKeys, reEncryptedKey{path: path, key: reEncrypted})
 	}
 
 	a.logger.Log("All keys decrypted successfully. Writing re-encrypted keys back to store...")
 	for _, item := range reEncryptedKeys {
 		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
-			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. Error: %w", item.path, err)
+			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", item.path, err)
 		}
 	}
 
-	a.logger.Log("Password change complete.")
+	a.logger.Log("Password change complete. Backup can be removed if everything is working.")
 	return nil
 }
 
@@ -349,6 +356,9 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 	}
 	caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData, password)
 	if err != nil {
+		if errors.Is(err, domain.ErrIncorrectPassword) {
+			return err
+		}
 		return fmt.Errorf("failed to decrypt CA key: %w", err)
 	}
 
@@ -386,6 +396,9 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 		}
 		hostKey, err = a.cryptoSvc.DecryptPrivateKey(hostKeyData, password)
 		if err != nil {
+			if errors.Is(err, domain.ErrIncorrectPassword) {
+				return err
+			}
 			return fmt.Errorf("failed to decrypt host key: %w", err)
 		}
 	}
@@ -454,26 +467,11 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	if !ok {
 		return domain.ErrHostNotFoundInConfig
 	}
-	// Validate deploy configuration
-	hasCommand := hostCfg.Deploy.Command != ""
-	hasCommands := len(hostCfg.Deploy.Commands) > 0
 
-	if !hasCommand && !hasCommands {
+	if len(hostCfg.Deploy.Commands) == 0 {
 		return domain.ErrNoDeployCommand
 	}
-	if hasCommand && hasCommands {
-		return domain.ErrInvalidDeployConfig
-	}
-
-	// Build command list
-	var commands []string
-	if hasCommand {
-		commands = append(commands, hostCfg.Deploy.Command)
-	} else {
-		commands = append(commands, hostCfg.Deploy.Commands...)
-	}
-
-	a.logger.Log(fmt.Sprintf("Running %d deploy command(s) for '%s'", len(commands), hostID))
+	a.logger.Log(fmt.Sprintf("Running %d deploy command(s) for '%s'", len(hostCfg.Deploy.Commands), hostID))
 
 	// Get unencrypted key
 	caCfg, err := a.configLoader.LoadCA()
@@ -513,41 +511,66 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 		return fmt.Errorf("failed to close temp key file: %w", err)
 	}
 
-	// Create temp file for chain
-	hostCert, err := a.store.LoadHostCert(hostID)
-	if err != nil {
-		return err
-	}
-	caCert, err := a.store.LoadCACert()
-	if err != nil {
-		return err
-	}
-	hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
-	caCertPEM := a.cryptoSvc.EncodeCertificateToPEM(caCert)
-	chain := bytes.Join([][]byte{hostCertPEM, caCertPEM}, []byte{})
-
-	tempChainFile, err := os.CreateTemp("", "reactor-ca-chain-*.pem")
-	if err != nil {
-		return fmt.Errorf("failed to create temp chain file: %w", err)
-	}
-	defer os.Remove(tempChainFile.Name())
-	if _, err := tempChainFile.Write(chain); err != nil {
-		return fmt.Errorf("failed to write to temp chain file: %w", err)
-	}
-	if err := tempChainFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp chain file: %w", err)
-	}
-
 	// Variable substitution
+	certPath := a.resolvePath(hostCfg.Export.Cert)
+	chainPath := a.resolvePath(hostCfg.Export.Chain)
+
+	// If export paths are not defined, we must create temporary files for them too.
+	if certPath == a.rootPath { // Heuristic: empty export path resolves to root
+		hostCert, err := a.store.LoadHostCert(hostID)
+		if err != nil {
+			return err
+		}
+		hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
+		tempCertFile, err := os.CreateTemp("", "reactor-ca-cert-*.pem")
+		if err != nil {
+			return fmt.Errorf("failed to create temp cert file: %w", err)
+		}
+		defer os.Remove(tempCertFile.Name())
+		if _, err := tempCertFile.Write(hostCertPEM); err != nil {
+			return fmt.Errorf("failed to write to temp cert file: %w", err)
+		}
+		if err := tempCertFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp cert file: %w", err)
+		}
+		certPath = tempCertFile.Name()
+	}
+	if chainPath == a.rootPath { // Heuristic: empty export path resolves to root
+		hostCert, err := a.store.LoadHostCert(hostID)
+		if err != nil {
+			return err
+		}
+		caCert, err := a.store.LoadCACert()
+		if err != nil {
+			return err
+		}
+		chainPEM := bytes.Join([][]byte{
+			a.cryptoSvc.EncodeCertificateToPEM(hostCert),
+			a.cryptoSvc.EncodeCertificateToPEM(caCert),
+		}, []byte{})
+
+		tempChainFile, err := os.CreateTemp("", "reactor-ca-chain-*.pem")
+		if err != nil {
+			return fmt.Errorf("failed to create temp chain file: %w", err)
+		}
+		defer os.Remove(tempChainFile.Name())
+		if _, err := tempChainFile.Write(chainPEM); err != nil {
+			return fmt.Errorf("failed to write to temp chain file: %w", err)
+		}
+		if err := tempChainFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp chain file: %w", err)
+		}
+		chainPath = tempChainFile.Name()
+	}
+
 	replacer := strings.NewReplacer(
-		"${cert}", a.store.GetHostCertPath(hostID),
-		"${chain}", tempChainFile.Name(),
+		"${cert}", certPath,
+		"${chain}", chainPath,
 		"${private_key}", tempKeyFile.Name(),
 	)
 
-	// Apply variable substitution to all commands
 	var substitutedCommands []string
-	for _, cmd := range commands {
+	for _, cmd := range hostCfg.Deploy.Commands {
 		substitutedCommands = append(substitutedCommands, replacer.Replace(cmd))
 	}
 
@@ -555,6 +578,7 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	shellScript := "set -euo pipefail\n" + strings.Join(substitutedCommands, "\n")
 
 	// Execute via shell
+	a.logger.Log(fmt.Sprintf("Executing deploy script for '%s':\n%s", hostID, shellScript))
 	output, err := a.commander.Execute("bash", "-c", shellScript)
 	if err != nil {
 		return fmt.Errorf("deploy command failed: %w\nOutput:\n%s", err, string(output))
@@ -788,4 +812,45 @@ func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMod
 		return err
 	}
 	return os.WriteFile(path, data, perm)
+}
+
+func (a *Application) backupStore(reason string) (string, error) {
+	storeDir := filepath.Join(a.rootPath, "store")
+	backupFileName := fmt.Sprintf("store-backup-%s-%s.zip", time.Now().UTC().Format("20060102150405"), reason)
+	backupFilePath := filepath.Join(a.rootPath, backupFileName)
+
+	backupFile, err := os.Create(backupFilePath)
+	if err != nil {
+		return "", err
+	}
+	defer backupFile.Close()
+
+	zipWriter := zip.NewWriter(backupFile)
+	defer zipWriter.Close()
+
+	err = filepath.Walk(storeDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(storeDir, path)
+		if err != nil {
+			return err
+		}
+		zipFile, err := zipWriter.Create(filepath.ToSlash(relPath))
+		if err != nil {
+			return err
+		}
+		fsFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer fsFile.Close()
+		_, err = io.Copy(zipFile, fsFile)
+		return err
+	})
+
+	return backupFilePath, err
 }

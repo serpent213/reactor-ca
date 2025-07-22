@@ -73,6 +73,5 @@ type ExportConfig struct {
 
 // DeployConfig defines the command(s) to run after issuance.
 type DeployConfig struct {
-	Command  string   `yaml:"command"`
 	Commands []string `yaml:"commands"`
 }

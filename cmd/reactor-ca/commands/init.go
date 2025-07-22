@@ -156,15 +156,22 @@ hosts:
     # The parent directory will be created if it doesn't exist.
     export:
       # Path to save the host certificate (PEM format).
-      # cert: "/path/to/export/web-server/cert.pem"
+      cert: "/tmp/reactor-ca/exports/web-server/cert.pem"
       # Path to save the full chain (host certificate + CA certificate).
-      # chain: "/path/to/export/web-server/chain.pem"
+      chain: "/tmp/reactor-ca/exports/web-server/chain.pem"
 
-    # Optional: A command to run after the certificate has been issued and exported.
-    # Useful for reloading services that use the certificate.
-    # NOTE: Complex shell features like '&&' or '|' are NOT supported.
-    # For multiple steps, use a script.
-    # Variables: ${cert}, ${chain}, ${private_key} will be replaced with absolute paths.
-    # deploy:
-    #   command: "systemctl reload nginx"
+    # Optional: A list of commands to run after the certificate has been issued and exported.
+    # These are executed as a shell script using 'bash -c'.
+    # Variables:
+    # - ${cert}: Absolute path to the exported certificate file.
+    # - ${chain}: Absolute path to the exported chain file.
+    # - ${private_key}: Absolute path to a temporary, unencrypted private key file.
+    #   This file is created with secure permissions and is automatically deleted after the script runs.
+    deploy:
+      commands:
+        # - "scp ${chain} ${cert} user@host:/etc/ssl/certs/"
+        # - "ssh user@host -- 'systemctl reload nginx'"
+        - "echo 'Deployment for web-server-example would run now.'"
+        - "echo 'Cert Path: ${cert}'"
+        - "echo 'Key Path: ${private_key}'"
 `

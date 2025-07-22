@@ -129,14 +129,18 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 	return x509.ParseCertificate(derBytes)
 }
 
-// EncryptPrivateKey encrypts a private key using PKCS#8 and AES-256-CBC.
+// EncryptPrivateKey encrypts a private key using PKCS#8 and AES-256-GCM with PBKDF2.
 func (s *Service) EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error) {
+	// Using AES-256-GCM as it's a modern, authenticated encryption cipher.
+	// Bumping KDF parameters for future-proofing.
 	opts := pkcs8.Opts{
-		Cipher: pkcs8.AES256CBC,
+		Cipher: pkcs8.AES256GCM,
 		KDFOpts: pkcs8.PBKDF2Opts{
-			SaltSize:       16,
-			IterationCount: 100000,
-			HMACHash:       crypto.SHA256,
+			SaltSize: 16,
+			// Increased iterations for better brute-force resistance.
+			IterationCount: 600000,
+			// Using SHA-256 for the KDF's HMAC (well supported by youmark/pkcs8).
+			HMACHash: crypto.SHA256,
 		},
 	}
 
@@ -160,7 +164,11 @@ func (s *Service) DecryptPrivateKey(pemData, password []byte) (crypto.Signer, er
 
 	key, err := pkcs8.ParsePKCS8PrivateKey(block.Bytes, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt and parse private key: %w", err)
+		// Check for incorrect password error from youmark/pkcs8 library
+		if err.Error() == "pkcs8: incorrect password" {
+			return nil, domain.ErrIncorrectPassword
+		}
+		return nil, fmt.Errorf("failed to parse/decrypt private key: %w", err)
 	}
 
 	signer, ok := key.(crypto.Signer)

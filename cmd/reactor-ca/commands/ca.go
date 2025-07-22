@@ -2,8 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"reactor.dev/reactor-ca/internal/domain"
 )
 
 var caCmd = &cobra.Command{
@@ -19,6 +22,9 @@ var caCreateCmd = &cobra.Command{
 		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
 		err := appCtx.App.CreateCA(cmd.Context())
 		if err != nil {
+			if err == domain.ErrCAAlreadyExists {
+				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
+			}
 			return err
 		}
 		fmt.Println("✅ CA created successfully.")
@@ -45,14 +51,32 @@ var caRenewCmd = &cobra.Command{
 var caRekeyCmd = &cobra.Command{
 	Use:   "rekey",
 	Short: "Create a new key and a new self-signed certificate, retiring the old ones",
+	Long: strings.TrimSpace(`
+Create a new key and a new self-signed certificate, retiring the old ones.
+
+WARNING: This is a destructive operation.
+The old CA key will be gone forever. All certificates previously issued by the old CA
+will no longer be trusted by clients that trust the new CA. You will need to
+re-issue and re-deploy all host certificates after this operation.`),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		appCtx := cmd.Context().Value(appContextKey).(*AppContext)
 		force, _ := cmd.Flags().GetBool("force")
+
+		if !force {
+			yellow := color.New(color.FgYellow).SprintFunc()
+			red := color.New(color.FgRed).SprintFunc()
+
+			fmt.Println(yellow("You are about to perform a CA re-key operation."))
+			fmt.Println(yellow("This will generate a new private key and certificate for your root CA."))
+			fmt.Println(red("This action is irreversible and will invalidate all previously issued certificates."))
+			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
+		}
+
 		err := appCtx.App.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err
 		}
-		fmt.Println("✅ CA re-keyed successfully.")
+		color.Green("✅ CA re-keyed successfully. Remember to re-issue all host certificates.")
 		return nil
 	},
 }
