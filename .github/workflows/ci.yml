@@ -65,7 +65,7 @@ jobs:
         cd dist
         sha256sum * > checksums.txt
 
-    - name: Upload release artifacts
+    - name: Upload Linux AMD64 binary
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,6 +73,16 @@ jobs:
         upload_url: ${{ github.event.release.upload_url }}
         asset_path: ./dist/reactor-ca-linux-amd64
         asset_name: reactor-ca-linux-amd64
+        asset_content_type: application/octet-stream
+
+    - name: Upload Linux ARM64 binary
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./dist/reactor-ca-linux-arm64
+        asset_name: reactor-ca-linux-arm64
         asset_content_type: application/octet-stream
 
     - name: Upload macOS AMD64 binary
