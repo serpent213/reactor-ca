@@ -85,7 +85,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openssl failed to read CA cert: %v", err)
 	}
-	if !strings.Contains(out, "CN=Reactor Test CA") {
+	if !strings.Contains(out, "CN = Reactor Test CA") && !strings.Contains(out, "CN=Reactor Test CA") {
 		t.Errorf("CA cert has wrong subject: %s", out)
 	}
 
@@ -273,7 +273,7 @@ func TestE2E_ImportAndSign(t *testing.T) {
 
 	// Verify the subject and public key match the original CSR/key
 	out, _ = e.runOpenSSL("x509", "-in", "signed.crt", "-noout", "-subject")
-	if !strings.Contains(out, "CN=csr.reactor.local") {
+	if !strings.Contains(out, "CN = csr.reactor.local") && !strings.Contains(out, "CN=csr.reactor.local") {
 		t.Error("Signed cert has wrong subject")
 	}
 
