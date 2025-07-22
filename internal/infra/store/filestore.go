@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"reactor.dev/reactor-ca/internal/domain"
+	"github.com/serpent213/reactor-ca/internal/domain"
 )
 
 // FileStore implements the domain.Store interface using the local filesystem.

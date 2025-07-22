@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/serpent213/reactor-ca/internal/domain"
 	"gopkg.in/yaml.v3"
-	"reactor.dev/reactor-ca/internal/domain"
 )
 
 // YAMLConfigLoader implements the domain.ConfigLoader interface for YAML files.

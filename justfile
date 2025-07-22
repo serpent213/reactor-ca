@@ -7,9 +7,9 @@ help:
 build mode="debug":
     #!/usr/bin/env bash
     if [ "{{mode}}" = "release" ]; then
-        go build -ldflags="-s -w" -v ./cmd/reactor-ca
+        go build -ldflags="-s -w" -v ./cmd/ca
     else
-        go build -v ./cmd/reactor-ca
+        go build -v ./cmd/ca
     fi
 
 debug: (build "debug")

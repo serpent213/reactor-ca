@@ -10,7 +10,7 @@ ReactorCA is a Go-based CLI tool for managing a private PKI (Public Key Infrastr
 
 The project follows Clean Architecture principles with clear separation of concerns:
 
-- `cmd/reactor-ca/` - CLI commands and entry point
+- `cmd/ca/` - CLI commands and entry point
 - `internal/app/` - Application service layer (business logic orchestration)
 - `internal/domain/` - Core domain interfaces, types, and errors
 - `internal/infra/` - Infrastructure implementations (crypto, storage, config loading)
@@ -54,16 +54,16 @@ just check
 ### CLI Usage Pattern
 ```bash
 # Initialize a new PKI environment
-./reactor-ca init
+./ca init
 
 # Create CA
-./reactor-ca ca create
+./ca ca create
 
 # Issue host certificate
-./reactor-ca host issue web-server
+./ca host issue web-server
 
 # Use custom root directory
-./reactor-ca --root /path/to/pki ca create
+./ca --root /path/to/pki ca create
 ```
 
 ## Key Components

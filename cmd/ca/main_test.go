@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"reactor.dev/reactor-ca/internal/domain"
+	"github.com/serpent213/reactor-ca/internal/domain"
 )
 
 var (
@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 		reactorCABin += ".exe"
 	}
 
-	buildCmd := exec.Command("go", "build", "-o", reactorCABin, "reactor.dev/reactor-ca/cmd/reactor-ca")
+	buildCmd := exec.Command("go", "build", "-o", reactorCABin, "github.com/serpent213/reactor-ca/cmd/ca")
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		log.Fatalf("Failed to build reactor-ca binary: %v\n%s", err, string(output))
 	}

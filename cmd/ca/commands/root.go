@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/serpent213/reactor-ca/internal/app"
+	"github.com/serpent213/reactor-ca/internal/infra/config"
+	"github.com/serpent213/reactor-ca/internal/infra/crypto"
+	"github.com/serpent213/reactor-ca/internal/infra/exec"
+	"github.com/serpent213/reactor-ca/internal/infra/logging"
+	"github.com/serpent213/reactor-ca/internal/infra/password"
+	"github.com/serpent213/reactor-ca/internal/infra/store"
 	"github.com/spf13/cobra"
-	"reactor.dev/reactor-ca/internal/app"
-	"reactor.dev/reactor-ca/internal/infra/config"
-	"reactor.dev/reactor-ca/internal/infra/crypto"
-	"reactor.dev/reactor-ca/internal/infra/exec"
-	"reactor.dev/reactor-ca/internal/infra/logging"
-	"reactor.dev/reactor-ca/internal/infra/password"
-	"reactor.dev/reactor-ca/internal/infra/store"
 )
 
 // AppContext holds all the dependencies for the application.

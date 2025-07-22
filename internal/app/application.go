@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"reactor.dev/reactor-ca/internal/domain"
+	"github.com/serpent213/reactor-ca/internal/domain"
 )
 
 // Application orchestrates the application's use cases.

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
-	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var forceInit bool

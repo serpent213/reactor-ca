@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/serpent213/reactor-ca/internal/domain"
+	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
-	"reactor.dev/reactor-ca/internal/domain"
-	"reactor.dev/reactor-ca/internal/ui"
 )
 
 var hostCmd = &cobra.Command{

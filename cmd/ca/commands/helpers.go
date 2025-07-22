@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/serpent213/reactor-ca/internal/app"
+	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
-	"reactor.dev/reactor-ca/internal/app"
-	"reactor.dev/reactor-ca/internal/ui"
 )
 
 // getApp retrieves the application context from the command.

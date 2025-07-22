@@ -49,9 +49,9 @@ Download the latest release for your platform from the [releases page](https://g
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-org/reactor-ca.git
+git clone https://github.com/serpent213/reactor-ca.git
 cd reactor-ca
-go build -o reactor-ca ./cmd/reactor-ca
+go build -o ca ./cmd/ca
 ```
 
 ## Quick Start
@@ -61,7 +61,7 @@ go build -o reactor-ca ./cmd/reactor-ca
 First, create the default config files:
 
 ```bash
-./reactor-ca init
+ca init
 ```
 
 This creates default configuration files in the `config/` directory. Edit them according to your needs.
@@ -71,7 +71,7 @@ This creates default configuration files in the `config/` directory. Edit them a
 After editing the configuration, create the CA:
 
 ```bash
-./reactor-ca ca create
+ca ca create
 ```
 
 This creates a self-signed CA certificate and private key (encrypted with the password you provide).
@@ -81,7 +81,7 @@ This creates a self-signed CA certificate and private key (encrypted with the pa
 To issue a certificate for a host defined in your hosts.yaml:
 
 ```bash
-./reactor-ca host issue web-server-example
+ca host issue web-server-example
 ```
 
 ### 4. List Certificates
@@ -89,7 +89,7 @@ To issue a certificate for a host defined in your hosts.yaml:
 To list all certificates with their expiration dates:
 
 ```bash
-./reactor-ca host list
+ca host list
 ```
 
 ### 5. Deploy Certificate
@@ -97,7 +97,7 @@ To list all certificates with their expiration dates:
 To run the deployment command for a host:
 
 ```bash
-./reactor-ca host deploy web-server-example
+ca host deploy web-server-example
 ```
 
 ## CLI Reference
@@ -110,39 +110,39 @@ To run the deployment command for a host:
 
 | Command | Description |
 |---------|-------------|
-| `reactor-ca ca create` | Create a new CA key and self-signed certificate |
-| `reactor-ca ca renew` | Renew the CA certificate using the existing key |
-| `reactor-ca ca rekey` | Create a new key and certificate, replacing the old ones |
-| `reactor-ca ca info` | Display detailed information about the CA certificate |
-| `reactor-ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
-| `reactor-ca ca passwd` | Change the master password for all encrypted keys |
+| `ca ca create` | Create a new CA key and self-signed certificate |
+| `ca ca renew` | Renew the CA certificate using the existing key |
+| `ca ca rekey` | Create a new key and certificate, replacing the old ones |
+| `ca ca info` | Display detailed information about the CA certificate |
+| `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
+| `ca ca passwd` | Change the master password for all encrypted keys |
 
 ### Host Certificate Management
 
 | Command | Description |
 |---------|-------------|
-| `reactor-ca host issue <host-id>` | Issue/renew a certificate for a host |
-| `reactor-ca host issue --all` | Issue/renew certificates for all hosts |
-| `reactor-ca host issue <host-id> --rekey` | Force generation of a new private key |
-| `reactor-ca host issue <host-id> --deploy` | Issue and deploy certificate in one step |
-| `reactor-ca host list` | List all host certificates with their status |
-| `reactor-ca host list --expired` | Show only expired certificates |
-| `reactor-ca host list --expiring-in 30` | Show certificates expiring in next 30 days |
-| `reactor-ca host list --json` | Output in JSON format |
-| `reactor-ca host info <host-id>` | Display detailed certificate information |
-| `reactor-ca host deploy <host-id>` | Run deployment command for a host |
-| `reactor-ca host deploy --all` | Deploy all host certificates |
-| `reactor-ca host export-key <host-id>` | Export unencrypted private key to stdout |
-| `reactor-ca host export-key <host-id> -o file.key` | Export private key to file |
-| `reactor-ca host import-key <host-id> --key <path>` | Import existing private key |
-| `reactor-ca host sign-csr --csr <path> --out <path>` | Sign external CSR |
-| `reactor-ca host clean` | Remove certificates for hosts no longer in config |
+| `ca host issue <host-id>` | Issue/renew a certificate for a host |
+| `ca host issue --all` | Issue/renew certificates for all hosts |
+| `ca host issue <host-id> --rekey` | Force generation of a new private key |
+| `ca host issue <host-id> --deploy` | Issue and deploy certificate in one step |
+| `ca host list` | List all host certificates with their status |
+| `ca host list --expired` | Show only expired certificates |
+| `ca host list --expiring-in 30` | Show certificates expiring in next 30 days |
+| `ca host list --json` | Output in JSON format |
+| `ca host info <host-id>` | Display detailed certificate information |
+| `ca host deploy <host-id>` | Run deployment command for a host |
+| `ca host deploy --all` | Deploy all host certificates |
+| `ca host export-key <host-id>` | Export unencrypted private key to stdout |
+| `ca host export-key <host-id> -o file.key` | Export private key to file |
+| `ca host import-key <host-id> --key <path>` | Import existing private key |
+| `ca host sign-csr --csr <path> --out <path>` | Sign external CSR |
+| `ca host clean` | Remove certificates for hosts no longer in config |
 
 ### Configuration Management
 
 | Command | Description |
 |---------|-------------|
-| `reactor-ca config validate` | Validate configuration files |
+| `ca config validate` | Validate configuration files |
 
 ## Common Workflows
 
@@ -150,26 +150,26 @@ To run the deployment command for a host:
 
 ```bash
 # Initialize configuration
-./reactor-ca init
+ca init
 
 # Edit configuration
 vim config/ca.yaml
 
 # Create the CA
-./reactor-ca ca create
+ca ca create
 
 # Edit host configuration
 vim config/hosts.yaml
 
 # Issue certificates
-./reactor-ca host issue web-server-example
+ca host issue web-server-example
 ```
 
 ### Import Existing CA
 
 ```bash
 # Initialize configuration (optional)
-./reactor-ca init
+ca init
 
 # Import existing CA
 ./reactor-ca ca import --cert path/to/ca.crt --key path/to/ca.key
@@ -178,20 +178,20 @@ vim config/hosts.yaml
 vim config/hosts.yaml
 
 # Issue certificates
-./reactor-ca host issue web-server-example
+ca host issue web-server-example
 ```
 
 ### Certificate Renewal
 
 ```bash
 # Renew a specific certificate
-./reactor-ca host issue web-server-example
+ca host issue web-server-example
 
 # Renew all certificates
 ./reactor-ca host issue --all
 
 # Renew and deploy
-./reactor-ca host issue web-server-example --deploy
+ca host issue web-server-example --deploy
 ```
 
 ### Key Rotation
@@ -201,7 +201,7 @@ vim config/hosts.yaml
 ./reactor-ca ca rekey
 
 # Rotate a specific host key and certificate
-./reactor-ca host issue web-server-example --rekey
+ca host issue web-server-example --rekey
 
 # Rotate all host keys and certificates
 ./reactor-ca host issue --all --rekey
@@ -356,7 +356,7 @@ This project uses `devenv.nix` for reproducible development:
 devenv shell
 
 # Build and test
-go build -v ./cmd/reactor-ca
+go build -v ./cmd/ca
 go test -v ./...
 ```
 

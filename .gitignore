@@ -1,3 +1,6 @@
+# Executable
+/ca
+
 # Ignore store and config directories
 /store/
 /config/
@@ -9,3 +12,6 @@
 
 # LLMs
 **/.claude/settings.local.json
+
+# Scratch
+/tmp/

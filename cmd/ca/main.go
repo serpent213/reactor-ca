@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"reactor.dev/reactor-ca/cmd/reactor-ca/commands"
+	"github.com/serpent213/reactor-ca/cmd/ca/commands"
 )
 
 func main() {
