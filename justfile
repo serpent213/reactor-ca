@@ -1,3 +1,4 @@
+version := "0.2.0"
 dirs := "./cmd ./internal"
 packages := "./cmd/... ./internal/..."
 
@@ -7,9 +8,9 @@ help:
 build mode="debug":
     #!/usr/bin/env bash
     if [ "{{mode}}" = "release" ]; then
-        go build -ldflags="-s -w" -v ./cmd/ca
+        go build -ldflags="-s -w -X main.version={{version}}" -v ./cmd/ca
     else
-        go build -v ./cmd/ca
+        go build -ldflags="-X main.version={{version}}-debug" -v ./cmd/ca
     fi
 
 build-cross platform="all":
@@ -18,19 +19,19 @@ build-cross platform="all":
     
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "linux" ]; then
         echo "Building for Linux x86_64..."
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/reactor-ca-linux-amd64 ./cmd/ca
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/ca-linux-amd64 ./cmd/ca
     fi
     
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "darwin" ]; then
         echo "Building for macOS x86_64..."
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/reactor-ca-darwin-amd64 ./cmd/ca
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/ca-darwin-amd64 ./cmd/ca
         echo "Building for macOS ARM64..."
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/reactor-ca-darwin-arm64 ./cmd/ca
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/ca-darwin-arm64 ./cmd/ca
     fi
     
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "windows" ]; then
         echo "Building for Windows x86_64..."
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/reactor-ca-windows-amd64.exe ./cmd/ca
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/ca-windows-amd64.exe ./cmd/ca
     fi
 
 debug: (build "debug")
