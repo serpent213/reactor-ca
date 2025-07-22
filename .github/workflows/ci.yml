@@ -77,4 +77,5 @@ jobs:
           ./dist/reactor-ca-darwin-amd64 \
           ./dist/reactor-ca-darwin-arm64 \
           ./dist/reactor-ca-windows-amd64.exe \
+          ./dist/reactor-ca-windows-arm64.exe \
           ./dist/checksums.txt
