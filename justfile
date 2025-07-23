@@ -49,7 +49,7 @@ release: (build "release")
 
 fmt:
     gofmt -s -w {{dirs}}
-    yamlfmt -quiet example_config/ .github/
+    go tool yamlfmt -quiet example_config/ .github/
 
 fmt-check:
     @echo "Checking Go formatting..."
@@ -59,7 +59,7 @@ fmt-check:
         exit 1; \
     fi
     @echo "Checking YAML formatting..."
-    @if ! yamlfmt -lint -quiet example_config/ .github/; then \
+    @if ! go tool yamlfmt -lint -quiet example_config/ .github/; then \
         echo "YAML files are not formatted. Run 'just fmt' to fix."; \
         exit 1; \
     fi
@@ -68,7 +68,7 @@ vet:
     go vet {{packages}}
 
 staticcheck:
-    staticcheck {{packages}}
+    go tool staticcheck {{packages}}
 
 lint: fmt-check vet staticcheck
 

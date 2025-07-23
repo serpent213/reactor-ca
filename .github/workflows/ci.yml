@@ -23,12 +23,6 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
-      - name: Install yamlfmt
-        run: go install github.com/google/yamlfmt/cmd/yamlfmt@latest
-
       - name: Run CI pipeline
         run: just ci
 
