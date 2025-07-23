@@ -90,8 +90,7 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		return err
 	}
 
-	a.logger.Log("Getting master password...")
-	password, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+	password, err := a.getNewMasterPasswordIfNeeded(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -138,8 +137,7 @@ func (a *Application) RenewCA(ctx context.Context) error {
 		return err
 	}
 
-	a.logger.Log("Getting master password...")
-	password, err := a.passwordProvider.GetMasterPassword(ctx, cfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -258,14 +256,12 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
 	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
 
-	fmt.Println("Enter current master password:")
-	oldPassword, err := a.passwordProvider.GetMasterPassword(ctx, cfg.Encryption.Password)
+	oldPassword, err := a.getMasterPasswordIfNeeded(ctx, cfg)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Enter new master password:")
-	newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+	newPassword, err := a.getNewMasterPasswordIfNeeded(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -349,7 +345,7 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 		return err
 	}
 
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return err
 	}
@@ -482,7 +478,7 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	if err != nil {
 		return err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return err
 	}
@@ -633,7 +629,7 @@ func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -672,7 +668,7 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 	if err != nil {
 		return err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return err
 	}
@@ -712,7 +708,7 @@ func (a *Application) SignCSR(ctx context.Context, csrPath string, validityDays 
 	if err != nil {
 		return nil, err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
+	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -842,6 +838,24 @@ func (a *Application) backupStore(reason string) (string, error) {
 	})
 
 	return backupFilePath, err
+}
+
+// getMasterPasswordIfNeeded gets the master password only when using password-based encryption.
+func (a *Application) getMasterPasswordIfNeeded(ctx context.Context, cfg *domain.CAConfig) ([]byte, error) {
+	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+		a.logger.Log("Getting master password...")
+		return a.passwordProvider.GetMasterPassword(ctx, cfg.Encryption.Password)
+	}
+	return nil, nil
+}
+
+// getNewMasterPasswordIfNeeded prompts for a new master password with confirmation only when using password-based encryption.
+func (a *Application) getNewMasterPasswordIfNeeded(ctx context.Context, cfg *domain.CAConfig) ([]byte, error) {
+	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+		a.logger.Log("Getting master password...")
+		return a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+	}
+	return nil, nil
 }
 
 // createIdentityProvider creates an identity provider based on configuration.

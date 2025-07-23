@@ -39,7 +39,7 @@ A new key is generated only if one does not already exist, unless --rekey is spe
 		return processHostCmd(cmd, args, "all",
 			"Issuing certificate for host '%s'...",
 			"Issuing certificates for all %d hosts...",
-			"  Successfully issued certificate for '%s'",
+			"Successfully issued certificate for '%s'",
 			action,
 		)
 	},
@@ -143,7 +143,7 @@ var hostDeployCmd = &cobra.Command{
 		return processHostCmd(cmd, args, "all",
 			"Deploying certificate for host '%s'...",
 			"Deploying certificates for all %d hosts...",
-			"  Successfully deployed certificate for '%s'",
+			"Successfully deployed certificate for '%s'",
 			action,
 		)
 	},
