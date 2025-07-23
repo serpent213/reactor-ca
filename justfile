@@ -1,4 +1,9 @@
-version := "0.2.0"
+###################################
+# ReactorCA
+# by Steffen Beyer in 2025
+###################################
+
+version := "0.3.0"
 dirs := "./cmd ./internal"
 packages := "./cmd/... ./internal/..."
 
