@@ -93,19 +93,21 @@ ca:
   # Supported: SHA256, SHA384, SHA512
   hash_algorithm: "SHA384"
 
-  # --- Password Management ---
-  # Defines how the master password for encrypting private keys is handled.
-  password:
-    # Minimum required password length during interactive prompts.
-    min_length: 12
+# --- Encryption Configuration ---
+# Defines how private keys are encrypted at rest using age.
+encryption:
+  # Provider: password | ssh (default) | plugin
+  provider: "ssh"
 
-    # Optional: Path to a file containing the master password.
-    # If set, the CLI will not prompt for a password.
-    # file: "/run/secrets/reactor_ca_password"
+  # SSH key-based encryption settings (using age-ssh)
+  ssh:
+    identity_file: "~/.ssh/id_ed25519"
+    recipients:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILmlSRRC4SIrIvVCIvH+H9GvhDxGbus907IJByMtgJIm user@host"
 
-    # Optional: Name of the environment variable containing the master password.
-    # This is checked if 'file' is not set or does not exist.
-    env_var: "REACTOR_CA_PASSWORD"
+  # Password-based encryption settings (using age scrypt)
+  # password:
+  #   min_length: 12
 `
 
 const defaultHostsYAML = `# ReactorCA: Host Certificate Configuration

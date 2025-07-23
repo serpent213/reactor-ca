@@ -17,9 +17,6 @@ ca:
   key_algorithm: "ECP384"
   hash_algorithm: "SHA384"
 
-  password:
-    min_length: 12
-    env_var: "REACTOR_CA_PASSWORD"
 
 # Apple Secure Enclave Configuration
 encryption:

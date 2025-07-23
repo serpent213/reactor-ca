@@ -5,11 +5,10 @@ import "time"
 // CAConfig holds the configuration for the root CA.
 type CAConfig struct {
 	CA struct {
-		Subject       SubjectConfig  `yaml:"subject"`
-		Validity      Validity       `yaml:"validity"`
-		KeyAlgorithm  KeyAlgorithm   `yaml:"key_algorithm"`
-		HashAlgorithm HashAlgorithm  `yaml:"hash_algorithm"`
-		Password      PasswordConfig `yaml:"password"`
+		Subject       SubjectConfig `yaml:"subject"`
+		Validity      Validity      `yaml:"validity"`
+		KeyAlgorithm  KeyAlgorithm  `yaml:"key_algorithm"`
+		HashAlgorithm HashAlgorithm `yaml:"hash_algorithm"`
 	} `yaml:"ca"`
 	Encryption EncryptionConfig `yaml:"encryption"`
 }

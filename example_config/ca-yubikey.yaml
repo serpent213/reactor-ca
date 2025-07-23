@@ -17,9 +17,6 @@ ca:
   key_algorithm: "ECP256"
   hash_algorithm: "SHA256"
 
-  password:
-    min_length: 12
-    env_var: "REACTOR_CA_PASSWORD"
 
 # YubiKey Configuration
 encryption:

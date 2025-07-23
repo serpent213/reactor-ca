@@ -29,19 +29,6 @@ ca:
   # Supported: SHA256, SHA384, SHA512
   hash_algorithm: "SHA384"
 
-  # --- Password Management ---
-  # Defines how the master password for encrypting private keys is handled.
-  password:
-    # Minimum required password length during interactive prompts.
-    min_length: 12
-
-    # Optional: Path to a file containing the master password.
-    # If set, the CLI will not prompt for a password.
-    # file: "/run/secrets/reactor_ca_password"
-
-    # Optional: Name of the environment variable containing the master password.
-    # This is checked if 'file' is not set or does not exist.
-    env_var: "REACTOR_CA_PASSWORD"
 
 # --- Encryption Configuration ---
 # Defines how private keys are encrypted at rest using age.
