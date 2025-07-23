@@ -78,7 +78,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 		t.Errorf("Expected success message from `ca create`, got: %s", stdout)
 	}
 	e.assertFileExists("store/ca/ca.crt")
-	e.assertFileExists("store/ca/ca.key.enc")
+	e.assertFileExists("store/ca/ca.key.age")
 
 	// 4. Validate CA cert with openssl
 	out, err := e.runOpenSSL("x509", "-in", "store/ca/ca.crt", "-noout", "-subject")
@@ -95,7 +95,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 		t.Fatalf("`host issue web-server` failed: %v\n%s", err, stderr)
 	}
 	e.assertFileExists("store/hosts/web-server/cert.crt")
-	e.assertFileExists("store/hosts/web-server/cert.key.enc")
+	e.assertFileExists("store/hosts/web-server/cert.key.age")
 	e.assertFileExists("exports/web-server.pem")
 	e.assertFileExists("exports/web-server-chain.pem")
 
@@ -183,14 +183,14 @@ func TestE2E_CAManagement(t *testing.T) {
 	// Create initial CA
 	e.runWithCheck(testPassword, "ca", "create")
 	certV1, _ := os.ReadFile(e.path("store/ca/ca.crt"))
-	keyV1, _ := os.ReadFile(e.path("store/ca/ca.key.enc"))
+	keyV1, _ := os.ReadFile(e.path("store/ca/ca.key.age"))
 
 	// 1. Renew the CA (new cert, same key)
 	// Add a small delay to ensure NotBefore/NotAfter timestamps change
 	time.Sleep(1 * time.Second)
 	e.runWithCheck(testPassword, "ca", "renew")
 	certV2, _ := os.ReadFile(e.path("store/ca/ca.crt"))
-	keyV2, _ := os.ReadFile(e.path("store/ca/ca.key.enc"))
+	keyV2, _ := os.ReadFile(e.path("store/ca/ca.key.age"))
 
 	if bytes.Equal(certV1, certV2) {
 		t.Error("`ca renew` did not change the certificate")
@@ -203,7 +203,7 @@ func TestE2E_CAManagement(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	e.runWithCheck(testPassword, "ca", "rekey", "--force")
 	certV3, _ := os.ReadFile(e.path("store/ca/ca.crt"))
-	keyV3, _ := os.ReadFile(e.path("store/ca/ca.key.enc"))
+	keyV3, _ := os.ReadFile(e.path("store/ca/ca.key.age"))
 
 	if bytes.Equal(certV2, certV3) {
 		t.Error("`ca rekey` did not change the certificate")
@@ -216,11 +216,11 @@ func TestE2E_CAManagement(t *testing.T) {
 	e.writeConfig("hosts.yaml", testHostsYAML)
 	e.runWithCheck(testPassword, "host", "issue", "web-server")
 	hostCertV1, _ := os.ReadFile(e.path("store/hosts/web-server/cert.crt"))
-	hostKeyV1, _ := os.ReadFile(e.path("store/hosts/web-server/cert.key.enc"))
+	hostKeyV1, _ := os.ReadFile(e.path("store/hosts/web-server/cert.key.age"))
 
 	e.runWithCheck(testPassword, "host", "issue", "web-server", "--rekey")
 	hostCertV2, _ := os.ReadFile(e.path("store/hosts/web-server/cert.crt"))
-	hostKeyV2, _ := os.ReadFile(e.path("store/hosts/web-server/cert.key.enc"))
+	hostKeyV2, _ := os.ReadFile(e.path("store/hosts/web-server/cert.key.age"))
 
 	if bytes.Equal(hostCertV1, hostCertV2) {
 		t.Error("`host issue --rekey` did not change the certificate")
@@ -248,7 +248,7 @@ func TestE2E_ImportAndSign(t *testing.T) {
 	// 2. Import the external CA
 	e.runWithCheck(testPassword, "ca", "import", "--cert", e.path("external_ca.crt"), "--key", e.path("external_ca.key"))
 	e.assertFileExists("store/ca/ca.crt")
-	e.assertFileExists("store/ca/ca.key.enc")
+	e.assertFileExists("store/ca/ca.key.age")
 
 	// 3. Issue a host cert to prove the imported CA works
 	e.writeConfig("hosts.yaml", testHostsYAML)
@@ -347,6 +347,9 @@ ca:
     days: 30
   key_algorithm: "ECP256"
   hash_algorithm: "SHA256"
+
+encryption:
+  provider: "password"
   password:
     min_length: 8
     env_var: "REACTOR_CA_PASSWORD"

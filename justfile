@@ -71,6 +71,10 @@ test: test-unit test-integration
 tidy:
     go mod tidy
 
+update:
+    go get -u ./...
+    go mod tidy
+
 check: lint build test tidy
 
 ci: lint tidy test release

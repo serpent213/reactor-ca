@@ -172,7 +172,7 @@ func TestCleanHosts(t *testing.T) {
 			}
 
 			// Create Application instance
-			application := app.NewApplication("", &mockLogger{}, mockCfgLoader, mockStore, nil, mockPwProvider, nil)
+			application := app.NewApplication("", &mockLogger{}, mockCfgLoader, mockStore, nil, mockPwProvider, nil, nil)
 
 			// Run the method
 			pruned, err := application.CleanHosts(context.Background(), tc.force)

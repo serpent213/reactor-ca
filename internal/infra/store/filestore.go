@@ -19,9 +19,9 @@ type FileStore struct {
 
 const (
 	caCertFile   = "ca.crt"
-	caKeyFile    = "ca.key.enc"
+	caKeyFile    = "ca.key.age"
 	hostCertFile = "cert.crt"
-	hostKeyFile  = "cert.key.enc"
+	hostKeyFile  = "cert.key.age"
 )
 
 // NewFileStore creates a new filesystem-based store.
@@ -196,7 +196,7 @@ func (s *FileStore) DeleteHost(hostID string) error {
 	return os.RemoveAll(filepath.Join(s.hostsPath, hostID))
 }
 
-// GetAllEncryptedKeyPaths finds all *.key.enc files in the store.
+// GetAllEncryptedKeyPaths finds all *.key.age files in the store.
 func (s *FileStore) GetAllEncryptedKeyPaths() ([]string, error) {
 	var paths []string
 

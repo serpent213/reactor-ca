@@ -8,7 +8,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 
 - Create and manage a self-signed Certificate Authority
 - Generate and renew certificates for hosts
-- Strong key encryption with password protection (AES-256-GCM and PBKDF2)
+- Strong key encryption with password protection (age encryption with scrypt)
 - Certificate inventory and expiration tracking
 - Certificate chain support (CA + host certificate)
 - Flexible password options (prompt, environment variable, file)
@@ -32,13 +32,13 @@ ReactorCA is built on proven cryptographic foundations:
 
 ### Core Libraries
 - **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
-- **PKCS#8 Encryption**: Based on [Yutong Wang's pkcs8 library](https://github.com/youmark/pkcs8) with enhanced AES-GCM support
+- **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
 
 ### Key Protection
-Every `.key.enc` file is encrypted using:
-- **AES-256-GCM**: Authenticated encryption for private keys
-- **PBKDF2**: Strong key derivation with high iteration counts
-- **Secure storage**: Password-protected encryption at rest
+Every `.key.age` file is encrypted using:
+- **ChaCha20-Poly1305**: Modern authenticated encryption for private keys
+- **scrypt**: Strong password-based key derivation
+- **age format**: Battle-tested encryption with simple, secure design
 
 ## Installation
 
@@ -236,6 +236,13 @@ ca:
     min_length: 12
     env_var: "REACTOR_CA_PASSWORD"  # Environment variable for password
     # file: "/path/to/password/file"  # Optional: password file path
+
+# Encryption configuration
+encryption:
+  provider: "password"  # password | ssh | yubikey (future)
+  password:
+    min_length: 12
+    env_var: "REACTOR_CA_PASSWORD"
 ```
 
 ### Hosts Configuration (`config/hosts.yaml`)
@@ -285,11 +292,11 @@ hosts:
 store/
 ├── ca/
 │   ├── ca.crt         # CA certificate (PEM format)
-│   └── ca.key.enc     # Encrypted CA private key (PKCS#8, AES-256-GCM)
+│   └── ca.key.age     # age-encrypted CA private key
 ├── hosts/
 │   └── <host-id>/
 │       ├── cert.crt   # Host certificate (PEM format)
-│       └── cert.key.enc # Encrypted host private key
+│       └── cert.key.age # age-encrypted host private key
 └── ca.log             # Operation log
 ```
 
@@ -341,11 +348,12 @@ ReactorCA supports multiple password sources (checked in order):
 
 ## Security Features
 
-- All private keys encrypted at rest with PKCS#8 + AES-256-GCM
-- Strong key derivation function (PBKDF2) with high iteration count
+- All private keys encrypted at rest with age (ChaCha20-Poly1305 + scrypt)
+- Modern authenticated encryption with strong password-based key derivation
 - Temporary files use secure permissions (0600) and automatic cleanup
 - Deployment scripts are executed securely without exposing keys
 - Master password required for all private key operations
+- Future extensibility for SSH keys and hardware tokens
 
 ## Development Environment
 

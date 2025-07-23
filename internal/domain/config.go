@@ -11,6 +11,7 @@ type CAConfig struct {
 		HashAlgorithm HashAlgorithm  `yaml:"hash_algorithm"`
 		Password      PasswordConfig `yaml:"password"`
 	} `yaml:"ca"`
+	Encryption EncryptionConfig `yaml:"encryption"`
 }
 
 // HostsConfig holds the configuration for all managed hosts.
@@ -74,4 +75,10 @@ type ExportConfig struct {
 // DeployConfig defines the command(s) to run after issuance.
 type DeployConfig struct {
 	Commands []string `yaml:"commands"`
+}
+
+// EncryptionConfig defines how private keys are encrypted.
+type EncryptionConfig struct {
+	Provider string         `yaml:"provider"`
+	Password PasswordConfig `yaml:"password"`
 }

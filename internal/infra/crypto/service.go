@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/serpent213/reactor-ca/internal/domain"
-	"github.com/serpent213/reactor-ca/internal/infra/crypto/pkcs8"
 )
 
 // Service implements the domain.CryptoService interface.
@@ -127,55 +126,6 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 		return nil, fmt.Errorf("failed to sign CSR: %w", err)
 	}
 	return x509.ParseCertificate(derBytes)
-}
-
-// EncryptPrivateKey encrypts a private key using PKCS#8 and AES-256-GCM with PBKDF2.
-func (s *Service) EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error) {
-	// Using AES-256-GCM as it's a modern, authenticated encryption cipher.
-	// Bumping KDF parameters for future-proofing.
-	opts := pkcs8.Opts{
-		Cipher: pkcs8.AES256GCM,
-		KDFOpts: pkcs8.PBKDF2Opts{
-			SaltSize: 16,
-			// Increased iterations for better brute-force resistance.
-			IterationCount: 600000,
-			// Using SHA-256 for the KDF's HMAC (well supported by youmark/pkcs8).
-			HMACHash: crypto.SHA256,
-		},
-	}
-
-	encryptedDER, err := pkcs8.MarshalPrivateKey(key, password, &opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-	}
-
-	return pem.EncodeToMemory(&pem.Block{
-		Type:  "ENCRYPTED PRIVATE KEY",
-		Bytes: encryptedDER,
-	}), nil
-}
-
-// DecryptPrivateKey decrypts a PEM-encoded private key.
-func (s *Service) DecryptPrivateKey(pemData, password []byte) (crypto.Signer, error) {
-	block, _ := pem.Decode(pemData)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block containing private key")
-	}
-
-	key, err := pkcs8.ParsePKCS8PrivateKey(block.Bytes, password)
-	if err != nil {
-		// Check for incorrect password error from youmark/pkcs8 library
-		if err.Error() == "pkcs8: incorrect password" {
-			return nil, domain.ErrIncorrectPassword
-		}
-		return nil, fmt.Errorf("failed to parse/decrypt private key: %w", err)
-	}
-
-	signer, ok := key.(crypto.Signer)
-	if !ok {
-		return nil, fmt.Errorf("parsed key is not a crypto.Signer")
-	}
-	return signer, nil
 }
 
 // EncodeCertificateToPEM encodes a certificate to PEM format.

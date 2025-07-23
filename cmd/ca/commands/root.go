@@ -58,9 +58,23 @@ suitable for homelab and small-to-medium business environments.`,
 		}
 		fileStore := store.NewFileStore(storePath)
 		configLoader := config.NewYAMLConfigLoader(configPath)
-		cryptoSvc := crypto.NewService()
 		passwordProvider := password.NewProvider()
 		commander := exec.NewCommander()
+
+		// Load configuration to determine encryption method
+		cfg, err := configLoader.LoadCA()
+		if err != nil {
+			return fmt.Errorf("failed to load CA configuration: %w", err)
+		}
+
+		// Create identity provider based on config
+		identityProvider, err := app.CreateIdentityProvider(cfg, passwordProvider)
+		if err != nil {
+			return fmt.Errorf("failed to create identity provider: %w", err)
+		}
+
+		// Create age-based crypto service
+		cryptoSvc := crypto.NewAgeService(identityProvider)
 
 		application := app.NewApplication(
 			rootPath,
@@ -70,6 +84,7 @@ suitable for homelab and small-to-medium business environments.`,
 			cryptoSvc,
 			passwordProvider,
 			commander,
+			identityProvider,
 		)
 
 		ctx := context.WithValue(cmd.Context(), appContextKey, &AppContext{App: application})

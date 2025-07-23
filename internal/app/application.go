@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/serpent213/reactor-ca/internal/domain"
+	"github.com/serpent213/reactor-ca/internal/infra/identity"
 )
 
 // Application orchestrates the application's use cases.
@@ -26,6 +27,7 @@ type Application struct {
 	cryptoSvc        domain.CryptoService
 	passwordProvider domain.PasswordProvider
 	commander        domain.Commander
+	identityProvider domain.IdentityProvider
 }
 
 // NewApplication creates a new Application instance.
@@ -37,6 +39,7 @@ func NewApplication(
 	cryptoSvc domain.CryptoService,
 	passwordProvider domain.PasswordProvider,
 	commander domain.Commander,
+	identityProvider domain.IdentityProvider,
 ) *Application {
 	return &Application{
 		rootPath:         rootPath,
@@ -46,6 +49,7 @@ func NewApplication(
 		cryptoSvc:        cryptoSvc,
 		passwordProvider: passwordProvider,
 		commander:        commander,
+		identityProvider: identityProvider,
 	}
 }
 
@@ -87,7 +91,7 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 	}
 
 	a.logger.Log("Getting master password...")
-	password, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.CA.Password.MinLength)
+	password, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 	if err != nil {
 		return err
 	}
@@ -135,7 +139,7 @@ func (a *Application) RenewCA(ctx context.Context) error {
 	}
 
 	a.logger.Log("Getting master password...")
-	password, err := a.passwordProvider.GetMasterPassword(ctx, cfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, cfg.Encryption.Password)
 	if err != nil {
 		return err
 	}
@@ -221,7 +225,7 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 	if err != nil {
 		return err
 	}
-	password, err := a.passwordProvider.GetPasswordForImport(ctx, cfg.CA.Password.MinLength)
+	password, err := a.passwordProvider.GetPasswordForImport(ctx, cfg.Encryption.Password.MinLength)
 	if err != nil {
 		return err
 	}
@@ -255,13 +259,13 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
 
 	fmt.Println("Enter current master password:")
-	oldPassword, err := a.passwordProvider.GetMasterPassword(ctx, cfg.CA.Password)
+	oldPassword, err := a.passwordProvider.GetMasterPassword(ctx, cfg.Encryption.Password)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("Enter new master password:")
-	newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.CA.Password.MinLength)
+	newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 	if err != nil {
 		return err
 	}
@@ -345,7 +349,7 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 		return err
 	}
 
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
 	if err != nil {
 		return err
 	}
@@ -478,7 +482,7 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	if err != nil {
 		return err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
 	if err != nil {
 		return err
 	}
@@ -629,7 +633,7 @@ func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +672,7 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 	if err != nil {
 		return err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
 	if err != nil {
 		return err
 	}
@@ -708,7 +712,7 @@ func (a *Application) SignCSR(ctx context.Context, csrPath string, validityDays 
 	if err != nil {
 		return nil, err
 	}
-	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.CA.Password)
+	password, err := a.passwordProvider.GetMasterPassword(ctx, caCfg.Encryption.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -838,4 +842,14 @@ func (a *Application) backupStore(reason string) (string, error) {
 	})
 
 	return backupFilePath, err
+}
+
+// createIdentityProvider creates an identity provider based on configuration.
+func CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	// For now, only support password provider since we're doing step 1
+	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+		return identity.NewPasswordProvider(cfg.Encryption.Password, passwordProvider), nil
+	}
+
+	return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
 }

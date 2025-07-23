@@ -42,3 +42,14 @@ ca:
     # Optional: Name of the environment variable containing the master password.
     # This is checked if 'file' is not set or does not exist.
     env_var: "REACTOR_CA_PASSWORD"
+
+# --- Encryption Configuration ---
+# Defines how private keys are encrypted at rest using age.
+encryption:
+  # Provider: password (default) | ssh | yubikey
+  provider: "password"
+  
+  # Password-based encryption settings (using age scrypt)
+  password:
+    min_length: 12
+    env_var: "REACTOR_CA_PASSWORD"
