@@ -125,33 +125,21 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 
 // RenewCA renews the CA certificate using the existing key.
 func (a *Application) RenewCA(ctx context.Context) error {
+	return a.withCAKey(ctx, func(caKey crypto.Signer) error {
+		return a.renewCAWithKey(caKey)
+	})
+}
+
+// renewCAWithKey implements the business logic for renewing the CA certificate.
+func (a *Application) renewCAWithKey(caKey crypto.Signer) error {
 	a.logger.Log("Renewing CA certificate...")
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
 	}
 
-	a.logger.Log("Loading existing CA key...")
-	encryptedKeyData, err := a.store.LoadCAKey()
-	if err != nil {
-		return err
-	}
-
-	password, err := a.getMasterPasswordIfNeeded(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	key, err := a.cryptoSvc.DecryptPrivateKey(encryptedKeyData, password)
-	if err != nil {
-		if errors.Is(err, domain.ErrIncorrectPassword) {
-			return err // Return the specific error for better UX
-		}
-		return fmt.Errorf("failed to decrypt CA key: %w", err)
-	}
-
 	a.logger.Log("Creating new self-signed root certificate...")
-	newCert, err := a.cryptoSvc.CreateRootCertificate(cfg, key)
+	newCert, err := a.cryptoSvc.CreateRootCertificate(cfg, caKey)
 	if err != nil {
 		return err
 	}
@@ -325,6 +313,13 @@ func (a *Application) GetAllHostIDs(ctx context.Context) ([]string, error) {
 
 // IssueHost creates or renews a certificate for a single host.
 func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shouldDeploy bool) error {
+	return a.withCAKey(ctx, func(caKey crypto.Signer) error {
+		return a.issueHostWithKey(ctx, hostID, caKey, rekey, shouldDeploy)
+	})
+}
+
+// issueHostWithKey implements the business logic for issuing a host certificate.
+func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey crypto.Signer, rekey, shouldDeploy bool) error {
 	a.logger.Log(fmt.Sprintf("Starting certificate issuance for host '%s'", hostID))
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
@@ -348,18 +343,6 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
 	if err != nil {
 		return err
-	}
-
-	caKeyData, err := a.store.LoadCAKey()
-	if err != nil {
-		return err
-	}
-	caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData, password)
-	if err != nil {
-		if errors.Is(err, domain.ErrIncorrectPassword) {
-			return err
-		}
-		return fmt.Errorf("failed to decrypt CA key: %w", err)
 	}
 
 	var hostKey crypto.Signer
@@ -459,6 +442,13 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 
 // DeployHost runs the deployment command for a host.
 func (a *Application) DeployHost(ctx context.Context, hostID string) error {
+	return a.withHostKey(ctx, hostID, func(hostKey crypto.Signer) error {
+		return a.deployHostWithKey(ctx, hostID, hostKey)
+	})
+}
+
+// deployHostWithKey implements the business logic for deploying a host certificate.
+func (a *Application) deployHostWithKey(ctx context.Context, hostID string, hostKey crypto.Signer) error {
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
 		return err
@@ -473,23 +463,6 @@ func (a *Application) DeployHost(ctx context.Context, hostID string) error {
 	}
 	a.logger.Log(fmt.Sprintf("Running %d deploy command(s) for '%s'", len(hostCfg.Deploy.Commands), hostID))
 
-	// Get unencrypted key
-	caCfg, err := a.configLoader.LoadCA()
-	if err != nil {
-		return err
-	}
-	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
-	if err != nil {
-		return err
-	}
-	hostKeyData, err := a.store.LoadHostKey(hostID)
-	if err != nil {
-		return err
-	}
-	hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData, password)
-	if err != nil {
-		return err
-	}
 	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(hostKey)
 	if err != nil {
 		return err
@@ -624,24 +597,22 @@ func (a *Application) InfoHost(ctx context.Context, hostID string) (string, erro
 
 // ExportHostKey returns the unencrypted private key for a host.
 func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte, error) {
+	var result []byte
+	err := a.withHostKey(ctx, hostID, func(hostKey crypto.Signer) error {
+		return a.exportHostKeyWithKey(hostID, hostKey, &result)
+	})
+	return result, err
+}
+
+// exportHostKeyWithKey implements the business logic for exporting a host key.
+func (a *Application) exportHostKeyWithKey(hostID string, hostKey crypto.Signer, result *[]byte) error {
 	a.logger.Log(fmt.Sprintf("Exporting private key for host '%s'", hostID))
-	caCfg, err := a.configLoader.LoadCA()
+	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(hostKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
-	if err != nil {
-		return nil, err
-	}
-	hostKeyData, err := a.store.LoadHostKey(hostID)
-	if err != nil {
-		return nil, err
-	}
-	hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData, password)
-	if err != nil {
-		return nil, err
-	}
-	return a.cryptoSvc.EncodeKeyToPEM(hostKey)
+	*result = keyPEM
+	return nil
 }
 
 // ImportHostKey imports an external key for a host.
@@ -687,47 +658,41 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 
 // SignCSR signs an external Certificate Signing Request.
 func (a *Application) SignCSR(ctx context.Context, csrPath string, validityDays int) ([]byte, error) {
+	var result []byte
+	err := a.withCAKey(ctx, func(caKey crypto.Signer) error {
+		return a.signCSRWithKey(csrPath, validityDays, caKey, &result)
+	})
+	return result, err
+}
+
+// signCSRWithKey implements the business logic for signing a CSR.
+func (a *Application) signCSRWithKey(csrPath string, validityDays int, caKey crypto.Signer, result *[]byte) error {
 	a.logger.Log(fmt.Sprintf("Signing CSR from %s", csrPath))
 	csrPEM, err := os.ReadFile(csrPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read CSR file: %w", err)
+		return fmt.Errorf("failed to read CSR file: %w", err)
 	}
 	csr, err := a.cryptoSvc.ParseCSR(csrPEM)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := csr.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("CSR signature is invalid: %w", err)
+		return fmt.Errorf("CSR signature is invalid: %w", err)
 	}
 
 	caCert, err := a.store.LoadCACert()
 	if err != nil {
-		return nil, err
-	}
-	caCfg, err := a.configLoader.LoadCA()
-	if err != nil {
-		return nil, err
-	}
-	password, err := a.getMasterPasswordIfNeeded(ctx, caCfg)
-	if err != nil {
-		return nil, err
-	}
-	caKeyData, err := a.store.LoadCAKey()
-	if err != nil {
-		return nil, err
-	}
-	caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData, password)
-	if err != nil {
-		return nil, err
+		return err
 	}
 
 	cert, err := a.cryptoSvc.SignCSR(csr, caCert, caKey, validityDays)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	a.logger.Log("CSR signed successfully.")
-	return a.cryptoSvc.EncodeCertificateToPEM(cert), nil
+	*result = a.cryptoSvc.EncodeCertificateToPEM(cert)
+	return nil
 }
 
 // CleanHosts removes hosts from the store that are no longer in the config.
@@ -856,6 +821,72 @@ func (a *Application) getNewMasterPasswordIfNeeded(ctx context.Context, cfg *dom
 		return a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 	}
 	return nil, nil
+}
+
+// loadCAKey loads and decrypts the CA private key.
+func (a *Application) loadCAKey(ctx context.Context) (crypto.Signer, error) {
+	cfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return nil, err
+	}
+	password, err := a.getMasterPasswordIfNeeded(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	keyData, err := a.store.LoadCAKey()
+	if err != nil {
+		return nil, err
+	}
+	caKey, err := a.cryptoSvc.DecryptPrivateKey(keyData, password)
+	if err != nil {
+		if errors.Is(err, domain.ErrIncorrectPassword) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to decrypt CA key: %w", err)
+	}
+	return caKey, nil
+}
+
+// loadHostKey loads and decrypts a host private key.
+func (a *Application) loadHostKey(ctx context.Context, hostID string) (crypto.Signer, error) {
+	cfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return nil, err
+	}
+	password, err := a.getMasterPasswordIfNeeded(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	hostKeyData, err := a.store.LoadHostKey(hostID)
+	if err != nil {
+		return nil, err
+	}
+	hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData, password)
+	if err != nil {
+		if errors.Is(err, domain.ErrIncorrectPassword) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to decrypt host key: %w", err)
+	}
+	return hostKey, nil
+}
+
+// withCAKey executes an operation with the CA private key.
+func (a *Application) withCAKey(ctx context.Context, operation func(crypto.Signer) error) error {
+	caKey, err := a.loadCAKey(ctx)
+	if err != nil {
+		return err
+	}
+	return operation(caKey)
+}
+
+// withHostKey executes an operation with a host private key.
+func (a *Application) withHostKey(ctx context.Context, hostID string, operation func(crypto.Signer) error) error {
+	hostKey, err := a.loadHostKey(ctx, hostID)
+	if err != nil {
+		return err
+	}
+	return operation(hostKey)
 }
 
 // createIdentityProvider creates an identity provider based on configuration.
