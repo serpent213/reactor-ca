@@ -49,11 +49,18 @@ release: (build "release")
 
 fmt:
     gofmt -s -w {{dirs}}
+    yamlfmt -quiet example_config/ .github/
 
 fmt-check:
+    @echo "Checking Go formatting..."
     @if [ -n "$(gofmt -s -l {{dirs}})" ]; then \
         echo "Code is not formatted. Run 'just fmt' to fix."; \
         gofmt -s -l {{dirs}}; \
+        exit 1; \
+    fi
+    @echo "Checking YAML formatting..."
+    @if ! yamlfmt -lint -quiet example_config/ .github/; then \
+        echo "YAML files are not formatted. Run 'just fmt' to fix."; \
         exit 1; \
     fi
 

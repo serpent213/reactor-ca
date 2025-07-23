@@ -35,7 +35,7 @@ hosts:
         - "openvpn.reactor.local"
       ip:
         - "192.168.1.200"
-        - "2001:db8::1"  # IPv6 example
+        - "2001:db8::1" # IPv6 example
     validity:
       years: 2
     key_algorithm: "ECP384"
@@ -98,7 +98,7 @@ hosts:
         - "127.0.0.1"
         - "192.168.1.50"
     validity:
-      months: 6  # Shorter validity for dev environments
+      months: 6 # Shorter validity for dev environments
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
     export:
