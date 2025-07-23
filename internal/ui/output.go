@@ -65,3 +65,25 @@ func FormatCertStatus(daysRemaining int64) string {
 		return green("✓") + fmt.Sprintf(" %d days", daysRemaining)
 	}
 }
+
+// GetColoredLogo returns the ReactorCA ASCII art logo with Reactor in cyan and CA in gray
+func GetColoredLogo() string {
+	gray := color.New(color.FgHiBlack).SprintFunc()
+
+	// Split each line at the boundary between "Reactor" and "CA"
+	lines := []struct{ left, right string }{
+		{" ______                                    ", "______"},
+		{"(_____ \\                  _               ", "/ _____)  /\\"},
+		{" _____) ) ____ ____  ____| |_  ___   ____", "| /       /  \\"},
+		{"(_____ ( / _  ) _  |/ ___)  _)/ _ \\ / ___) ", "|      / /\\ \\"},
+		{"      | ( (/ ( ( | ( (___| |_| |_| | |   ", "| \\_____| |__| |"},
+		{"      |_|\\____)_||_|\\____)\\___}___/|_|    ", "\\______)______|"},
+	}
+
+	var result strings.Builder
+	for _, line := range lines {
+		result.WriteString(cyan(line.left) + gray(line.right) + "\n")
+	}
+
+	return result.String()
+}

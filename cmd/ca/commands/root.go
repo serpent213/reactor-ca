@@ -13,6 +13,7 @@ import (
 	"github.com/serpent213/reactor-ca/internal/infra/logging"
 	"github.com/serpent213/reactor-ca/internal/infra/password"
 	"github.com/serpent213/reactor-ca/internal/infra/store"
+	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -25,9 +26,10 @@ type AppContext struct {
 var appContextKey = &struct{}{}
 
 var rootCmd = &cobra.Command{
-	Use:   "reactor-ca",
+	Use:   "ca",
 	Short: "ReactorCA is a tool for managing a private PKI.",
-	Long: `ReactorCA provides a secure, reliable, and user-friendly Command-Line
+	Long: ui.GetColoredLogo() + `
+ReactorCA provides a secure, reliable, and user-friendly Command-Line
 Interface (CLI) for managing a private Public Key Infrastructure (PKI)
 suitable for homelab and small-to-medium business environments.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

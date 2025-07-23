@@ -1,8 +1,15 @@
+     ______                                    ______
+    (_____ \                  _               / _____)  /\
+     _____) ) ____ ____  ____| |_  ___   ____| /       /  \
+    (_____ ( / _  ) _  |/ ___)  _)/ _ \ / ___) |      / /\ \
+          | ( (/ ( ( | ( (___| |_| |_| | |   | \_____| |__| |
+          |_|\____)_||_|\____)\___)___/|_|    \______)______|
+
 # ReactorCA
 
-A Go CLI tool to manage a homelab Certificate Authority.
+A Go CLI tool to manage a homelab/small-office Certificate Authority.
 
-Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year.
+Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month.
 
 ## Features
 
@@ -14,7 +21,6 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 - Flexible password options (prompt, environment variable, file)
 - Export unencrypted private keys when needed
 - Simple deployment to target locations via shell scripts
-- Run deployment scripts after certificate exports
 - Single statically-linked binary with no runtime dependencies
 
 ## Motivation and Design Targets
