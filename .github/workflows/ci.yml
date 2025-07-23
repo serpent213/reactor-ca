@@ -2,44 +2,44 @@ name: CI
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [master, develop]
   pull_request:
-    branches: [ master, develop ]
+    branches: [master, develop]
   release:
-    types: [ created ]
+    types: [created]
 
 jobs:
   ci:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
 
-    - name: Install just
-      uses: extractions/setup-just@v2
+      - name: Install just
+        uses: extractions/setup-just@v2
 
-    - name: Install staticcheck
-      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
-    - name: Install yamlfmt
-      run: go install github.com/google/yamlfmt/cmd/yamlfmt@latest
+      - name: Install yamlfmt
+        run: go install github.com/google/yamlfmt/cmd/yamlfmt@latest
 
-    - name: Run CI pipeline
-      run: just ci
+      - name: Run CI pipeline
+        run: just ci
 
-    - name: Upload test artifacts
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: |
-          **/*test.log
-          **/*coverage.out
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/*test.log
+            **/*coverage.out
 
   release:
     if: github.event_name == 'release'
@@ -49,33 +49,33 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
 
-    - name: Install just
-      uses: extractions/setup-just@v2
+      - name: Install just
+        uses: extractions/setup-just@v2
 
-    - name: Build cross-platform binaries
-      run: just build-cross
+      - name: Build cross-platform binaries
+        run: just build-cross
 
-    - name: Create checksums
-      run: |
-        cd dist
-        sha256sum * > checksums.txt
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
 
-    - name: Upload release assets
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release upload ${{ github.event.release.tag_name }} \
-          ./dist/reactor-ca-linux-amd64 \
-          ./dist/reactor-ca-linux-arm64 \
-          ./dist/reactor-ca-darwin-amd64 \
-          ./dist/reactor-ca-darwin-arm64 \
-          ./dist/reactor-ca-windows-amd64.exe \
-          ./dist/reactor-ca-windows-arm64.exe \
-          ./dist/checksums.txt
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          gh release upload ${{ github.event.release.tag_name }} \
+            ./dist/reactor-ca-linux-amd64 \
+            ./dist/reactor-ca-linux-arm64 \
+            ./dist/reactor-ca-darwin-amd64 \
+            ./dist/reactor-ca-darwin-arm64 \
+            ./dist/reactor-ca-windows-amd64.exe \
+            ./dist/reactor-ca-windows-arm64.exe \
+            ./dist/checksums.txt
