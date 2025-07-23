@@ -846,10 +846,16 @@ func (a *Application) backupStore(reason string) (string, error) {
 
 // createIdentityProvider creates an identity provider based on configuration.
 func CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
-	// For now, only support password provider since we're doing step 1
-	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+	switch cfg.Encryption.Provider {
+	case "", "password":
 		return identity.NewPasswordProvider(cfg.Encryption.Password, passwordProvider), nil
+	case "ssh":
+		provider := identity.NewSSHProvider(cfg.Encryption.SSH)
+		if err := provider.Validate(); err != nil {
+			return nil, fmt.Errorf("SSH provider validation failed: %w", err)
+		}
+		return provider, nil
+	default:
+		return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
 	}
-
-	return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
 }

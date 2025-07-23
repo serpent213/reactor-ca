@@ -81,4 +81,11 @@ type DeployConfig struct {
 type EncryptionConfig struct {
 	Provider string         `yaml:"provider"`
 	Password PasswordConfig `yaml:"password"`
+	SSH      SSHConfig      `yaml:"ssh"`
+}
+
+// SSHConfig defines SSH key-based encryption configuration.
+type SSHConfig struct {
+	IdentityFile string   `yaml:"identity_file"`
+	Recipients   []string `yaml:"recipients"`
 }

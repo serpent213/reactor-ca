@@ -2,7 +2,9 @@
 {
   # https://devenv.sh/packages/
   packages = with pkgs; [
+    # Test support
     openssl
+    openssh
   ];
 
   # https://devenv.sh/languages/

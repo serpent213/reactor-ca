@@ -1,9 +1,7 @@
-     ______                                    ______
-    (_____ \                  _               / _____)  /\
-     _____) ) ____ ____  ____| |_  ___   ____| /       /  \
-    (_____ ( / _  ) _  |/ ___)  _)/ _ \ / ___) |      / /\ \
-          | ( (/ ( ( | ( (___| |_| |_| | |   | \_____| |__| |
-          |_|\____)_||_|\____)\___)___/|_|    \______)______|
+![ReactorCA](docs/assets/help_screen.webp)
+
+![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
+[![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 
 # ReactorCA
 
@@ -15,10 +13,12 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 
 - Create and manage a self-signed Certificate Authority
 - Generate and renew certificates for hosts
-- Strong key encryption with password protection (age encryption with scrypt)
+- Strong key encryption with multiple providers:
+  - Password-based encryption using age with scrypt key derivation
+  - SSH key-based encryption using existing SSH identities (age-ssh)
 - Certificate inventory and expiration tracking
 - Certificate chain support (CA + host certificate)
-- Flexible password options (prompt, environment variable, file)
+- Flexible authentication options (interactive prompt, environment variable, file, SSH keys)
 - Export unencrypted private keys when needed
 - Simple deployment to target locations via shell scripts
 - Single statically-linked binary with no runtime dependencies
@@ -39,12 +39,21 @@ ReactorCA is built on proven cryptographic foundations:
 ### Core Libraries
 - **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
 - **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
+- **age-ssh**: SSH key integration allowing use of existing SSH identities for key encryption/decryption
 
 ### Key Protection
-Every `.key.age` file is encrypted using:
+Every `.key.age` file is encrypted using one of two methods:
+
+**Password-based encryption**:
 - **ChaCha20-Poly1305**: Modern authenticated encryption for private keys
 - **scrypt**: Strong password-based key derivation
 - **age format**: Battle-tested encryption with simple, secure design
+
+**SSH key-based encryption** (age-ssh):
+- Uses existing SSH private keys as age identities
+- SSH public keys serve as age recipients
+- Leverages proven SSH key infrastructure
+- Supports Ed25519, RSA, and ECDSA SSH keys
 
 ## Installation
 
@@ -249,6 +258,11 @@ encryption:
   password:
     min_length: 12
     env_var: "REACTOR_CA_PASSWORD"
+  ssh:
+    identity_file: "~/.ssh/id_ed25519"  # SSH private key for decryption
+    recipients:  # SSH public keys for encryption
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample user@host"
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgExample user@host"
 ```
 
 ### Hosts Configuration (`config/hosts.yaml`)
@@ -344,22 +358,32 @@ alternative_names:
     - "https://example.com"
 ```
 
-## Password Management
+## Key Protection and Authentication
 
-ReactorCA supports multiple password sources (checked in order):
+ReactorCA supports multiple encryption providers for private key protection:
 
+### Password-based Encryption (default)
+Password sources are checked in order:
 1. **Password File**: Specified in `ca.yaml` under `password.file`
 2. **Environment Variable**: Set via `REACTOR_CA_PASSWORD` (or custom env var)
 3. **Interactive Prompt**: Secure terminal input (fallback)
 
+### SSH Key-based Encryption (age-ssh)
+Uses existing SSH infrastructure for key protection:
+- **Identity File**: Your SSH private key (e.g., `~/.ssh/id_ed25519`)
+- **Recipients**: SSH public keys that can decrypt the private keys
+- **Supports**: Ed25519, RSA, and ECDSA SSH keys
+- **No passwords required**: Leverages SSH agent or unlocked SSH keys
+
 ## Security Features
 
-- All private keys encrypted at rest with age (ChaCha20-Poly1305 + scrypt)
-- Modern authenticated encryption with strong password-based key derivation
-- Temporary files use secure permissions (0600) and automatic cleanup
-- Deployment scripts are executed securely without exposing keys
-- Master password required for all private key operations
-- Future extensibility for SSH keys and hardware tokens
+- **Multiple encryption providers**: Password-based (scrypt + ChaCha20-Poly1305) or SSH key-based (age-ssh)
+- **Modern authenticated encryption**: All private keys encrypted at rest with age format
+- **SSH key integration**: Leverage existing SSH infrastructure without additional passwords
+- **Secure file handling**: Temporary files use 0600 permissions with automatic cleanup
+- **Safe deployment**: Scripts executed securely without exposing private keys
+- **Flexible authentication**: Choose between password prompts or SSH key-based access
+- **Future extensibility**: Designed for hardware tokens and other authentication methods
 
 ## Development Environment
 
