@@ -6,7 +6,7 @@ import (
 
 	"filippo.io/age"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // PasswordProvider implements IdentityProvider using scrypt-based age encryption.

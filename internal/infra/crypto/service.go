@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // Service implements the domain.CryptoService interface.

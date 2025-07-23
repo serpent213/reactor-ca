@@ -1,4 +1,4 @@
-module github.com/serpent213/reactor-ca
+module reactor.de/reactor-ca
 
 go 1.24
 

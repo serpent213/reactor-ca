@@ -5,7 +5,7 @@
 
 # ReactorCA
 
-A Go CLI tool to manage a homelab/small-office Certificate Authority.
+A Go CLI tool to manage a homelab/small-office Certificate Authority with [age](https://age-encryption.org/) encrypted private keys.
 
 Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month.
 
@@ -40,8 +40,6 @@ ReactorCA is built on proven cryptographic foundations:
 ### Core Libraries
 - **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
 - **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
-- **age-ssh**: SSH key integration allowing use of existing SSH identities for key encryption/decryption
-- **age plugins**: Hardware token integration for Secure Enclave, YubiKey, and other supported devices
 
 ### Key Protection
 Every `.key.age` file is encrypted using one of two methods:

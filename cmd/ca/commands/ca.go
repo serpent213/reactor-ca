@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/serpent213/reactor-ca/internal/domain"
-	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
+	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 var caCmd = &cobra.Command{

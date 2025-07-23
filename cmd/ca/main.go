@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/serpent213/reactor-ca/cmd/ca/commands"
+	"reactor.de/reactor-ca/cmd/ca/commands"
 )
 
 var version = "dev"

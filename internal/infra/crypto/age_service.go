@@ -10,7 +10,7 @@ import (
 
 	"filippo.io/age"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // AgeService implements the domain.CryptoService interface using age encryption.

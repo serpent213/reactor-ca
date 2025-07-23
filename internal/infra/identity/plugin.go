@@ -9,8 +9,8 @@ import (
 	"filippo.io/age"
 	"filippo.io/age/plugin"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
-	"github.com/serpent213/reactor-ca/internal/ui"
+	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 // PluginProvider implements domain.IdentityProvider using age plugins.

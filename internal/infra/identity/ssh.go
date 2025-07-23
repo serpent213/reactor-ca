@@ -9,7 +9,7 @@ import (
 	"filippo.io/age"
 	"filippo.io/age/agessh"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // SSHProvider implements domain.IdentityProvider using SSH keys for age encryption.

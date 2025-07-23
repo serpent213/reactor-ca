@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
 	"golang.org/x/term"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // Provider implements the domain.PasswordProvider interface.

@@ -1,8 +1,8 @@
 package commands
 
 import (
-	"github.com/serpent213/reactor-ca/internal/ui"
 	"github.com/spf13/cobra"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 var configCmd = &cobra.Command{

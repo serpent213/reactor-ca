@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/serpent213/reactor-ca/internal/domain"
-	"github.com/serpent213/reactor-ca/internal/infra/identity"
+	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/identity"
 )
 
 // Test data using real age-plugin-se values (test-only keys, safe to share)

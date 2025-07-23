@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/serpent213/reactor-ca/internal/app"
-	"github.com/serpent213/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // --- Mocks ---
