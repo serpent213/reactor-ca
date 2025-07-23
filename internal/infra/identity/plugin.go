@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"filippo.io/age"
 	"filippo.io/age/plugin"
@@ -17,6 +18,10 @@ import (
 type PluginProvider struct {
 	config domain.PluginConfig
 	ui     *plugin.ClientUI
+
+	// Session-scoped identity cache to avoid repeated hardware interactions
+	mu             sync.Mutex
+	cachedIdentity age.Identity
 }
 
 // NewPluginProvider creates a new age plugin-based identity provider.
@@ -28,7 +33,17 @@ func NewPluginProvider(config domain.PluginConfig) *PluginProvider {
 }
 
 // GetIdentity returns the plugin-based age identity for decryption.
+// Uses session-scoped caching to avoid repeated hardware interactions.
 func (p *PluginProvider) GetIdentity() (age.Identity, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Return cached identity if available
+	if p.cachedIdentity != nil {
+		return p.cachedIdentity, nil
+	}
+
+	// Load identity from file
 	identityPath := p.expandPath(p.config.IdentityFile)
 
 	identityData, err := os.ReadFile(identityPath)
@@ -61,6 +76,8 @@ func (p *PluginProvider) GetIdentity() (age.Identity, error) {
 		return nil, fmt.Errorf("failed to create plugin identity from %q: %w", identityPath, err)
 	}
 
+	// Cache the identity for this session
+	p.cachedIdentity = identity
 	return identity, nil
 }
 
@@ -85,6 +102,14 @@ func (p *PluginProvider) GetRecipients() ([]age.Recipient, error) {
 	}
 
 	return recipients, nil
+}
+
+// ClearIdentityCache clears the cached identity, forcing re-authentication on next use.
+// This is useful when the identity might have changed or for testing purposes.
+func (p *PluginProvider) ClearIdentityCache() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cachedIdentity = nil
 }
 
 // Validate checks the plugin provider configuration.

@@ -83,6 +83,7 @@ type IdentityProvider interface {
 	GetIdentity() (age.Identity, error)
 	GetRecipients() ([]age.Recipient, error)
 	Validate() error
+	ClearIdentityCache()
 }
 
 // HostInfo is a DTO for listing hosts.

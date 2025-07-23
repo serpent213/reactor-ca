@@ -91,6 +91,11 @@ func (s *SSHProvider) Validate() error {
 	return nil
 }
 
+// ClearIdentityCache is a no-op for SSH provider as it doesn't cache identities.
+func (s *SSHProvider) ClearIdentityCache() {
+	// No-op: SSH provider creates fresh identities on each call
+}
+
 // expandPath expands ~ to the user's home directory.
 func (s *SSHProvider) expandPath(path string) string {
 	if !strings.HasPrefix(path, "~/") {
