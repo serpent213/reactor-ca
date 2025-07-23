@@ -1,0 +1,63 @@
+# ReactorCA: Certificate Authority Configuration with YubiKey
+# This example demonstrates using age-plugin-yubikey for hardware token-based encryption.
+
+ca:
+  subject:
+    common_name: "Reactor Homelab CA"
+    organization: "Reactor Industries"
+    organization_unit: "IT Department"
+    country: "US"
+    state: "New York"
+    locality: "New York"
+    email: "admin@reactor.dev"
+
+  validity:
+    years: 10
+
+  key_algorithm: "ECP256"
+  hash_algorithm: "SHA256"
+
+  password:
+    min_length: 12
+    env_var: "REACTOR_CA_PASSWORD"
+
+# YubiKey Configuration
+encryption:
+  provider: "plugin"
+
+  plugin:
+    # Path to the age-plugin-yubikey identity file
+    # Generated during yubikey setup process
+    identity_file: "~/.age/yubikey-identity.txt"
+
+    # YubiKey recipient (public key)
+    # Example format - replace with your actual YubiKey public key
+    recipients:
+      - "age1yubikey1qwt50d05nh5vutpdzmlg5wn80xq5negm4uj9ghv0snvdd3yysf5yw3rhl3t"
+
+# Setup Instructions:
+# 1. Install age-plugin-yubikey:
+#    Download from: https://github.com/str4d/age-plugin-yubikey/releases
+#
+# 2. Generate a YubiKey identity:
+#    age-plugin-yubikey --generate
+#
+# 3. Export the identity:
+#    age-plugin-yubikey --identity > ~/.age/yubikey-identity.txt
+#
+# 4. Get the recipient string:
+#    age-plugin-yubikey --list-all
+#
+# 5. Update the recipients list above with your YubiKey's public key
+#
+# 6. Initialize your CA:
+#    ./ca init --config ca-yubikey.yaml
+#
+# 7. Create your CA (will prompt for YubiKey touch):
+#    ./ca ca create
+#
+# Notes:
+# - Requires YubiKey 4 or later with PIV support
+# - Each operation will require a physical touch of the YubiKey
+# - Keep your YubiKey secure - loss means loss of access to private keys
+# - Consider keeping a backup age recipient for recovery purposes

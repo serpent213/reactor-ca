@@ -855,6 +855,12 @@ func CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.Passwo
 			return nil, fmt.Errorf("SSH provider validation failed: %w", err)
 		}
 		return provider, nil
+	case "plugin":
+		provider := identity.NewPluginProvider(cfg.Encryption.Plugin)
+		if err := provider.Validate(); err != nil {
+			return nil, fmt.Errorf("plugin provider validation failed: %w", err)
+		}
+		return provider, nil
 	default:
 		return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
 	}

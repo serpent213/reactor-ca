@@ -1,0 +1,60 @@
+# ReactorCA: Certificate Authority Configuration with Apple Secure Enclave
+# This example demonstrates using age-plugin-se for hardware-backed private key encryption.
+
+ca:
+  subject:
+    common_name: "Reactor Homelab CA"
+    organization: "Reactor Industries"
+    organization_unit: "IT Department"
+    country: "US"
+    state: "California"
+    locality: "San Francisco"
+    email: "admin@reactor.dev"
+
+  validity:
+    years: 10
+
+  key_algorithm: "ECP384"
+  hash_algorithm: "SHA384"
+
+  password:
+    min_length: 12
+    env_var: "REACTOR_CA_PASSWORD"
+
+# Apple Secure Enclave Configuration
+encryption:
+  provider: "plugin"
+
+  plugin:
+    # Path to the age-plugin-se identity file
+    # Generated with: age-plugin-se keygen --access-control=any-biometry -o ~/.age/se-identity.txt
+    identity_file: "~/.age/se-identity.txt"
+
+    # Secure Enclave recipient (public key from identity generation)
+    # Example format - replace with your actual public key
+    recipients:
+      - "age1se1qgg72x2qfk9wg3wh0qg9u0v7l5dkq4jx69fv80p6wdus3ftg6flwg5dz2dp"
+
+# Setup Instructions:
+# 1. Install age-plugin-se:
+#    brew install age-plugin-se
+#
+# 2. Generate a Secure Enclave identity:
+#    age-plugin-se keygen --access-control=any-biometry -o ~/.age/se-identity.txt
+#
+# 3. Copy the public key from the output and update the recipients list above
+#
+# 4. Initialize your CA:
+#    ./ca init --config ca-secure-enclave.yaml
+#
+# 5. Create your CA (will prompt for Touch ID/Face ID):
+#    ./ca ca create
+#
+# Access Control Options:
+# - none: No authentication required
+# - passcode: Device passcode required
+# - any-biometry: Touch ID or Face ID required
+# - any-biometry-and-passcode: Both biometry and passcode required
+# - any-biometry-or-passcode: Either biometry or passcode required
+# - current-biometry: Current enrolled biometry required
+# - current-biometry-and-passcode: Current biometry and passcode required

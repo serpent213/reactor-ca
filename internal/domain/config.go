@@ -82,10 +82,18 @@ type EncryptionConfig struct {
 	Provider string         `yaml:"provider"`
 	Password PasswordConfig `yaml:"password"`
 	SSH      SSHConfig      `yaml:"ssh"`
+	Plugin   PluginConfig   `yaml:"plugin"`
 }
 
 // SSHConfig defines SSH key-based encryption configuration.
 type SSHConfig struct {
 	IdentityFile string   `yaml:"identity_file"`
 	Recipients   []string `yaml:"recipients"`
+}
+
+// PluginConfig defines age plugin-based encryption configuration.
+// Works with any age-plugin-* binary (secure-enclave, yubikey, tpm, etc.)
+type PluginConfig struct {
+	IdentityFile string   `yaml:"identity_file"` // Path to age identity file
+	Recipients   []string `yaml:"recipients"`    // Plugin recipient strings
 }

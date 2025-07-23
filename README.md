@@ -16,6 +16,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 - Strong key encryption with multiple providers:
   - Password-based encryption using age with scrypt key derivation
   - SSH key-based encryption using existing SSH identities (age-ssh)
+  - Hardware token encryption using age plugins (Secure Enclave, YubiKey, etc.)
 - Certificate inventory and expiration tracking
 - Certificate chain support (CA + host certificate)
 - Flexible authentication options (interactive prompt, environment variable, file, SSH keys)
@@ -40,6 +41,7 @@ ReactorCA is built on proven cryptographic foundations:
 - **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
 - **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
 - **age-ssh**: SSH key integration allowing use of existing SSH identities for key encryption/decryption
+- **age plugins**: Hardware token integration for Secure Enclave, YubiKey, and other supported devices
 
 ### Key Protection
 Every `.key.age` file is encrypted using one of two methods:
@@ -54,6 +56,12 @@ Every `.key.age` file is encrypted using one of two methods:
 - SSH public keys serve as age recipients
 - Leverages proven SSH key infrastructure
 - Supports Ed25519, RSA, and ECDSA SSH keys
+
+**Hardware token encryption** (age plugins):
+- Uses age-plugin-* binaries for hardware token support
+- Secure Enclave integration (macOS)
+- YubiKey support
+- Future-proof plugin architecture for new hardware
 
 ## Installation
 
@@ -254,7 +262,7 @@ ca:
 
 # Encryption configuration
 encryption:
-  provider: "password"  # password | ssh | yubikey (future)
+  provider: "password"  # password | ssh | plugin
   password:
     min_length: 12
     env_var: "REACTOR_CA_PASSWORD"
@@ -263,6 +271,11 @@ encryption:
     recipients:  # SSH public keys for encryption
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample user@host"
       - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgExample user@host"
+  plugin:
+    identity_file: "~/.age/plugin-identity.txt"  # age plugin identity
+    recipients:  # age plugin recipients
+      - "age1se1qgg72x2qfk9wg3wh0qg9u0v7l5dkq4jx69fv80p6wdus3ftg6flwgjgtev8"  # Secure Enclave
+      - "age1yubikey1qgg72x2qfk9wg3wh0qg9u0v7l5dkq4jx69fv80p6wdus3ftg6flwgjgtev8"  # YubiKey
 ```
 
 ### Hosts Configuration (`config/hosts.yaml`)
@@ -375,32 +388,40 @@ Uses existing SSH infrastructure for key protection:
 - **Supports**: Ed25519, RSA, and ECDSA SSH keys
 - **No passwords required**: Leverages SSH agent or unlocked SSH keys
 
+### Hardware Token Encryption (age plugins)
+Uses age plugins for hardware-backed key protection:
+- **Identity File**: Plugin identity file (e.g., `~/.age/plugin-identity.txt`)
+- **Recipients**: Hardware token public keys (e.g., Secure Enclave, YubiKey)
+- **Supports**: Any age-plugin-* binary (secure-enclave, yubikey, tpm, etc.)
+- **Hardware security**: Private keys never leave the secure hardware
+
 ## Security Features
 
-- **Multiple encryption providers**: Password-based (scrypt + ChaCha20-Poly1305) or SSH key-based (age-ssh)
+- **Multiple encryption providers**: Password-based (scrypt + ChaCha20-Poly1305), SSH key-based (age-ssh), or hardware token-based (age plugins)
 - **Modern authenticated encryption**: All private keys encrypted at rest with age format
 - **SSH key integration**: Leverage existing SSH infrastructure without additional passwords
+- **Hardware token support**: Secure Enclave, YubiKey, and other age plugin-compatible devices
 - **Secure file handling**: Temporary files use 0600 permissions with automatic cleanup
 - **Safe deployment**: Scripts executed securely without exposing private keys
-- **Flexible authentication**: Choose between password prompts or SSH key-based access
-- **Future extensibility**: Designed for hardware tokens and other authentication methods
+- **Flexible authentication**: Choose between passwords, SSH keys, or hardware tokens
+- **Future extensibility**: Plugin architecture supports new hardware tokens and authentication methods
 
 ## Development Environment
 
-This project uses `devenv.nix` for reproducible development:
+This project uses `devenv.nix` for reproducible development and *Just* as build helper:
 
 ```bash
 # Enter development shell
 devenv shell
 
-# Build and test
-go build -v ./cmd/ca
-go test -v ./...
+# Build, lint and test
+just build
+just lint
+just test
+./ca --version
 ```
 
 ## Limitations
-
-ReactorCA is designed for homelab use and has some intentional limitations:
 
 - No certificate revocation (CRL/OCSP) support
 - No PKCS#12 bundle creation

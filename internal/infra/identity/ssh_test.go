@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/serpent213/reactor-ca/internal/domain"
@@ -214,7 +215,7 @@ func TestSSHProvider_ValidationErrors(t *testing.T) {
 				t.Error("Expected validation error, got nil")
 				return
 			}
-			if !contains(err.Error(), tt.errMsg) {
+			if !strings.Contains(err.Error(), tt.errMsg) {
 				t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
 			}
 		})
@@ -242,7 +243,7 @@ func TestSSHProvider_InvalidKeyFile(t *testing.T) {
 	if err == nil {
 		t.Error("Expected validation error for invalid key file, got nil")
 	}
-	if !contains(err.Error(), "not a valid SSH private key") {
+	if !strings.Contains(err.Error(), "not a valid SSH private key") {
 		t.Errorf("Expected error about invalid SSH key, got: %v", err)
 	}
 }
@@ -261,19 +262,4 @@ func generateRSATestKey(keyPath string) error {
 func runCommand(args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 	return cmd.Run()
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr[:] ||
-		len(s) > len(substr) && s[len(s)-len(substr):] == substr ||
-		(len(substr) < len(s) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

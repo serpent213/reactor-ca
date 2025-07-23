@@ -23,6 +23,13 @@ Private Key Encryption (age format)
 - Supports Ed25519, RSA-2048+, and ECDSA P-256/384/521 SSH keys
 - Leverages battle-tested SSH key infrastructure and agent integration
 
+**Hardware token encryption** (age plugins):
+- Uses age-plugin-* binaries for hardware-backed encryption
+- Private keys never leave secure hardware (Secure Enclave, YubiKey, TPM)
+- Plugin recipients provide hardware-generated public keys
+- Cryptographic operations performed within secure element
+- Supports biometric and PIN-based access controls
+
 **Common foundation**:
 - [Age format](https://age-encryption.org/): Battle-tested design and library by Filippo Valsorda, used by major projects
 - ChaCha20-Poly1305 authenticated encryption in both modes
@@ -49,6 +56,12 @@ Authentication Security
 - Relies on SSH key security practices and SSH agent protection
 - No additional password requirements beyond SSH key access
 - SSH key strength follows standard SSH security recommendations
+
+**Hardware token mode** (age plugins):
+- Private keys generated and stored within secure hardware
+- Access controlled by hardware security policies (biometrics, PIN, presence)
+- Immune to key extraction attacks - cryptographic operations isolated in secure element
+- Plugin security depends on underlying hardware token implementation
 
 ## Dependencies
 
