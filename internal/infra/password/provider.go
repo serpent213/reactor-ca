@@ -62,3 +62,21 @@ func (p *Provider) GetPasswordForImport(ctx context.Context, minLength int) ([]b
 	fmt.Println("Enter a new master password to encrypt the imported private key.")
 	return p.GetNewMasterPassword(ctx, minLength)
 }
+
+// StaticPasswordProvider implements domain.PasswordProvider with a pre-set password.
+// Used during re-encryption to provide the new password to the identity provider.
+type StaticPasswordProvider struct {
+	Password []byte
+}
+
+func (s *StaticPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
+	return s.Password, nil
+}
+
+func (s *StaticPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+	return s.Password, nil
+}
+
+func (s *StaticPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
+	return s.Password, nil
+}

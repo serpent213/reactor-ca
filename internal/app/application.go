@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
+	cryptoService "reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/identity"
+	"reactor.de/reactor-ca/internal/infra/password"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 // Application orchestrates the application's use cases.
@@ -231,31 +234,71 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 	return nil
 }
 
-// ChangePassword re-encrypts all keys in the store with a new password.
-func (a *Application) ChangePassword(ctx context.Context) error {
-	a.logger.Log("Starting password change process...")
+// ReencryptKeys re-encrypts all keys in the store with new encryption parameters.
+// For password mode: prompts for new password
+// For SSH/plugin mode: uses current configuration (allowing manual recipient updates)
+func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
+	a.logger.Log("Starting key re-encryption process...")
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
 	}
 
 	// Create a backup before proceeding
-	backupPath, err := a.backupStore("passwd-change")
+	backupPath, err := a.backupStore("reencrypt")
 	if err != nil {
-		return fmt.Errorf("failed to create store backup before password change: %w", err)
+		return fmt.Errorf("failed to create store backup before re-encryption: %w", err)
 	}
 	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
 	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
 
-	oldPassword, err := a.getMasterPasswordIfNeeded(ctx, cfg)
-	if err != nil {
-		return err
+	// For password mode: prompt for new password
+	// For SSH/plugin mode: user manually updates config, then we reload it
+	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+		ui.Info("Password encryption detected - prompting for new password")
+		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+		if err != nil {
+			return fmt.Errorf("failed to get new password: %w", err)
+		}
+		// Temporarily set the new password for this operation
+		a.passwordProvider = &password.StaticPasswordProvider{Password: newPassword}
+	} else {
+		ui.Info("%s encryption detected - using current configuration", cfg.Encryption.Provider)
+		ui.Info("Make sure you've updated ca.yaml with any recipient changes before running this command")
 	}
 
-	newPassword, err := a.getNewMasterPasswordIfNeeded(ctx, cfg)
+	// Reload config (to pick up any manual changes) and create new identity provider
+	cfg, err = a.configLoader.LoadCA()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to reload CA config: %w", err)
 	}
+
+	newIdentityProvider, err := CreateIdentityProvider(cfg, a.passwordProvider)
+	if err != nil {
+		return fmt.Errorf("failed to create new identity provider: %w", err)
+	}
+
+	// Perform round-trip validation unless forced to skip
+	if !force {
+		if err := cryptoService.ValidateProviderRoundTrip(newIdentityProvider); err != nil {
+			a.logger.Log(fmt.Sprintf("Round-trip validation failed: %v", err))
+
+			ui.Warning("Round-trip validation failed: %v", err)
+			ui.Warning("This means you may not be able to decrypt your keys after re-encryption.")
+
+			// Prompt user for confirmation
+			confirmed, promptErr := a.userInteraction.Confirm("Do you want to proceed anyway? (y/N): ")
+			if promptErr != nil {
+				return fmt.Errorf("failed to get user confirmation: %w", promptErr)
+			}
+			if !confirmed {
+				return fmt.Errorf("operation cancelled by user")
+			}
+		}
+	}
+
+	// Create new crypto service with new identity provider
+	newCryptoSvc := cryptoService.NewAgeService(newIdentityProvider)
 
 	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
@@ -268,21 +311,24 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 	}
 	reEncryptedKeys := make([]reEncryptedKey, 0, len(keyPaths))
 
-	a.logger.Log(fmt.Sprintf("Decrypting %d keys with old password...", len(keyPaths)))
+	a.logger.Log(fmt.Sprintf("Decrypting %d keys with current encryption...", len(keyPaths)))
 	for _, path := range keyPaths {
 		encryptedPEM, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read key %s: %w", path, err)
 		}
-		key, err := a.cryptoSvc.DecryptPrivateKey(encryptedPEM, oldPassword)
+
+		// Decrypt with current crypto service
+		key, err := a.cryptoSvc.DecryptPrivateKey(encryptedPEM, nil)
 		if err != nil {
 			if errors.Is(err, domain.ErrIncorrectPassword) {
 				return fmt.Errorf("%w for key %s. Aborting. No changes have been made", err, filepath.Base(path))
 			}
-			return fmt.Errorf("failed to decrypt key %s: %w. Aborting password change", filepath.Base(path), err)
+			return fmt.Errorf("failed to decrypt key %s: %w. Aborting re-encryption", filepath.Base(path), err)
 		}
 
-		reEncrypted, err := a.cryptoSvc.EncryptPrivateKey(key, newPassword)
+		// Re-encrypt with new crypto service (age service doesn't use password parameter)
+		reEncrypted, err := newCryptoSvc.EncryptPrivateKey(key, nil)
 		if err != nil {
 			return fmt.Errorf("failed to re-encrypt key %s: %w", path, err)
 		}
@@ -297,7 +343,7 @@ func (a *Application) ChangePassword(ctx context.Context) error {
 		}
 	}
 
-	a.logger.Log("Password change complete. Backup can be removed if everything is working.")
+	a.logger.Log("Key re-encryption complete. Backup can be removed if everything is working.")
 	return nil
 }
 

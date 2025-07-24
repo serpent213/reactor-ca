@@ -116,17 +116,25 @@ var caImportCmd = &cobra.Command{
 	},
 }
 
-// ca passwd
-var caPasswdCmd = &cobra.Command{
-	Use:   "passwd",
-	Short: "Change the master password for all encrypted keys in the store",
+// ca reencrypt
+var caReencryptCmd = &cobra.Command{
+	Use:   "reencrypt",
+	Short: "Re-encrypt all keys with new password or updated recipients",
+	Long: strings.TrimSpace(`
+Re-encrypt all private keys in the store with new encryption parameters:
+- For password encryption: change the master password
+- For SSH/plugin encryption: update recipient lists
+
+A round-trip validation test is performed to ensure you can decrypt
+the re-encrypted keys. Use --force to bypass validation failures.`),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		app := getApp(cmd)
-		err := app.ChangePassword(cmd.Context())
+		force, _ := cmd.Flags().GetBool("force")
+		err := app.ReencryptKeys(cmd.Context(), force)
 		if err != nil {
 			return err
 		}
-		ui.Success("Master password changed successfully for all keys")
+		ui.Success("All keys re-encrypted successfully")
 		return nil
 	},
 }
@@ -138,11 +146,12 @@ func init() {
 	_ = caImportCmd.MarkFlagRequired("key")
 
 	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
+	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation")
 
 	caCmd.AddCommand(caCreateCmd)
 	caCmd.AddCommand(caRenewCmd)
 	caCmd.AddCommand(caRekeyCmd)
 	caCmd.AddCommand(caInfoCmd)
 	caCmd.AddCommand(caImportCmd)
-	caCmd.AddCommand(caPasswdCmd)
+	caCmd.AddCommand(caReencryptCmd)
 }

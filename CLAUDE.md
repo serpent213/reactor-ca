@@ -40,7 +40,7 @@ just fmt
 just lint
 
 # Run tests
-just test              # All tests
+just test             # All tests
 just test-unit        # Unit tests only
 just test-integration # Integration tests only
 

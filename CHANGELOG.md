@@ -21,3 +21,11 @@ Breaking change!
 ### Removed
 - **PKCS#8 implementation**: Removed legacy PKCS#8 encryption code and tests
 - **Stale password config**: Dropped legacy password configuration options
+
+## [0.2.0] - 2025-07-23
+
+- Rewrite in Go
+
+## [0.1.0] - 2025-05-03
+
+- Prototype in Python
