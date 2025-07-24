@@ -90,6 +90,21 @@ type IdentityProvider interface {
 	ClearIdentityCache()
 }
 
+// IdentityProviderFactory creates identity providers based on configuration.
+type IdentityProviderFactory interface {
+	CreateIdentityProvider(cfg *CAConfig, passwordProvider PasswordProvider) (IdentityProvider, error)
+}
+
+// CryptoServiceFactory creates crypto services with specific identity providers.
+type CryptoServiceFactory interface {
+	CreateCryptoService(identityProvider IdentityProvider) CryptoService
+}
+
+// ValidationService performs round-trip validation of identity providers.
+type ValidationService interface {
+	ValidateProviderRoundTrip(provider IdentityProvider) error
+}
+
 // HostInfo is a DTO for listing hosts.
 type HostInfo struct {
 	ID            string    `json:"id"`

@@ -10,13 +10,10 @@ import (
 	"fmt"
 
 	"reactor.de/reactor-ca/internal/domain"
-	"reactor.de/reactor-ca/internal/ui"
 )
 
 // ValidateProviderRoundTrip performs a test encrypt/decrypt to ensure the provider works.
 func ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
-	ui.Action("Performing round-trip validation test...")
-
 	// Generate a test ECDSA private key
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -43,7 +40,6 @@ func ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
 		return fmt.Errorf("round-trip validation failed: keys don't match after encrypt/decrypt cycle")
 	}
 
-	ui.Action("Round-trip validation successful")
 	return nil
 }
 

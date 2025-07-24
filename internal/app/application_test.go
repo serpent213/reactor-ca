@@ -20,16 +20,6 @@ import (
 	"reactor.de/reactor-ca/internal/domain"
 )
 
-// TestMode represents different test configuration modes for createTestApp
-type TestMode int
-
-const (
-	TestModePassword TestMode = iota
-	TestModeSSHValid
-	TestModeSSHInvalidIdentity
-	TestModeSSHMismatchedRecipients
-)
-
 // --- Domain Mocks ---
 
 type mockConfigLoader struct {
@@ -217,6 +207,7 @@ func TestCleanHosts(t *testing.T) {
 			application := app.NewApplication(
 				"", &mockLogger{}, mockCfgLoader, mockStore, nil,
 				mockPwProvider, mockUserInt, nil, nil,
+				&mockIdentityProviderFactory{}, &mockCryptoServiceFactory{}, &mockValidationService{},
 			)
 
 			// Run the method
@@ -343,7 +334,43 @@ func (m *mockCommander) Execute(name string, args ...string) ([]byte, error) {
 	return nil, nil
 }
 
+type mockIdentityProviderFactory struct{}
+
+func (m *mockIdentityProviderFactory) CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	return &mockIdentityProvider{}, nil
+}
+
+type mockCryptoServiceFactory struct {
+	cryptoSvc domain.CryptoService
+}
+
+func (m *mockCryptoServiceFactory) CreateCryptoService(identityProvider domain.IdentityProvider) domain.CryptoService {
+	if m.cryptoSvc != nil {
+		return m.cryptoSvc
+	}
+	return &mockCryptoService{}
+}
+
+type mockValidationService struct {
+	validateError error
+}
+
+func (m *mockValidationService) ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
+	return m.validateError
+}
+
 // --- Test Helpers ---
+
+// TestMode represents different test configuration modes for createTestApp
+type TestMode int
+
+const (
+	TestModePassword TestMode = iota
+	TestModeSSHValid
+	TestModeSSHInvalidIdentity
+	TestModeSSHMismatchedRecipients
+	TestModePlugin
+)
 
 func generateTestKey() crypto.Signer {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -411,12 +438,34 @@ func setupSSHKeys(t *testing.T, testRoot string, mode TestMode) domain.SSHConfig
 	}
 }
 
-func createTestApp(t *testing.T, mode TestMode, keyPaths []string, mockOptions map[string]interface{}) (*app.Application, *mockStore, string) {
+func setupPluginConfig(t *testing.T, testRoot string) domain.PluginConfig {
+	// Create mock plugin identity
+	identityFile := filepath.Join(testRoot, "plugin_identity.txt")
+	mockIdentityData := []byte("AGE-PLUGIN-TEST-1Q2FHQTVK4W7RQVHX2LQGZ8LQGZ8LQGZ8LQGZ8LQGZ8LQG")
+	if err := os.WriteFile(identityFile, mockIdentityData, 0600); err != nil {
+		t.Fatalf("failed to create mock plugin identity: %v", err)
+	}
+
+	return domain.PluginConfig{
+		IdentityFile: identityFile,
+		Recipients: []string{
+			"age1test2fhqtvk4w7rqvhx2lqgz8lqgz8lqgz8lqgz8lqgz8lqg",
+		},
+	}
+}
+
+type testAppConfig struct {
+	mode        TestMode
+	keyPaths    []string
+	mockOptions map[string]interface{}
+}
+
+func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockStore, string) {
 	testRoot := createTestDir(t)
 
 	// Create mock key files
-	absolutePaths := make([]string, len(keyPaths))
-	for i, path := range keyPaths {
+	absolutePaths := make([]string, len(config.keyPaths))
+	for i, path := range config.keyPaths {
 		absolutePaths[i] = filepath.Join(testRoot, path)
 		dir := filepath.Dir(absolutePaths[i])
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -435,14 +484,17 @@ func createTestApp(t *testing.T, mode TestMode, keyPaths []string, mockOptions m
 		},
 	}
 
-	switch mode {
+	switch config.mode {
 	case TestModePassword:
 		cfg.Encryption.Provider = "password"
 	case TestModeSSHValid, TestModeSSHInvalidIdentity, TestModeSSHMismatchedRecipients:
 		cfg.Encryption.Provider = "ssh"
-		cfg.Encryption.SSH = setupSSHKeys(t, testRoot, mode)
+		cfg.Encryption.SSH = setupSSHKeys(t, testRoot, config.mode)
+	case TestModePlugin:
+		cfg.Encryption.Provider = "plugin"
+		cfg.Encryption.Plugin = setupPluginConfig(t, testRoot)
 	default:
-		t.Fatalf("unknown test mode: %d", mode)
+		t.Fatalf("unknown test mode: %d", config.mode)
 	}
 
 	// Setup mocks
@@ -450,34 +502,39 @@ func createTestApp(t *testing.T, mode TestMode, keyPaths []string, mockOptions m
 		encryptedKeyPaths: absolutePaths,
 		keyData:           make(map[string][]byte),
 	}
-	if updateError, ok := mockOptions["updateKeyError"]; ok {
+	if updateError, ok := config.mockOptions["updateKeyError"]; ok {
 		mockStore.updateKeyError = updateError.(error)
 	}
 
 	mockCrypto := &mockCryptoService{}
-	if decryptError, ok := mockOptions["decryptError"]; ok {
+	if decryptError, ok := config.mockOptions["decryptError"]; ok {
 		mockCrypto.decryptError = decryptError.(error)
 	}
 
 	mockUserInt := &mockUserInteraction{confirmResponse: true}
-	if confirmResponse, ok := mockOptions["confirmResponse"]; ok {
+	if confirmResponse, ok := config.mockOptions["confirmResponse"]; ok {
 		mockUserInt.confirmResponse = confirmResponse.(bool)
 	}
 
-	mockIdentity := &mockIdentityProvider{}
-	if validateError, ok := mockOptions["validateError"]; ok {
-		mockIdentity.validateError = validateError.(error)
+	mockValidation := &mockValidationService{}
+	if validateError, ok := config.mockOptions["validateError"]; ok {
+		mockValidation.validateError = validateError.(error)
 	}
 
 	mockPwProvider := &mockPasswordProvider{newPassword: []byte("new-password")}
 	mockCfgLoader := &mockConfigLoader{ca: cfg}
 
-	app := app.NewApplication(
+	// Create factories that can produce different types of providers/services based on test mode
+	mockIdentityFactory := &mockIdentityProviderFactory{}
+	mockCryptoFactory := &mockCryptoServiceFactory{cryptoSvc: mockCrypto}
+
+	application := app.NewApplication(
 		testRoot, &mockLogger{}, mockCfgLoader, mockStore, mockCrypto,
-		mockPwProvider, mockUserInt, &mockCommander{}, mockIdentity,
+		mockPwProvider, mockUserInt, &mockCommander{}, nil,
+		mockIdentityFactory, mockCryptoFactory, mockValidation,
 	)
 
-	return app, mockStore, testRoot
+	return application, mockStore, testRoot
 }
 
 // --- ReencryptKeys Tests ---
@@ -489,7 +546,11 @@ func TestReencryptKeys_PasswordChange_Success(t *testing.T) {
 		"store/hosts/web2/cert.key.age",
 	}
 
-	app, mockStore, testRoot := createTestApp(t, TestModePassword, keyPaths, map[string]interface{}{})
+	app, mockStore, testRoot := createTestApp(t, testAppConfig{
+		mode:        TestModePassword,
+		keyPaths:    keyPaths,
+		mockOptions: map[string]interface{}{},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)
@@ -519,11 +580,14 @@ func TestReencryptKeys_PasswordChange_Success(t *testing.T) {
 
 func TestReencryptKeys_PasswordChange_WrongOldPassword(t *testing.T) {
 	keyPaths := []string{"store/ca/ca.key.age"}
-	mockOptions := map[string]interface{}{
-		"decryptError": domain.ErrIncorrectPassword,
-	}
 
-	app, mockStore, _ := createTestApp(t, TestModePassword, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:     TestModePassword,
+		keyPaths: keyPaths,
+		mockOptions: map[string]interface{}{
+			"decryptError": domain.ErrIncorrectPassword,
+		},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)
@@ -541,11 +605,15 @@ func TestReencryptKeys_PasswordChange_WrongOldPassword(t *testing.T) {
 
 func TestReencryptKeys_AgeSsh_UserNotInRecipients_Warning(t *testing.T) {
 	keyPaths := []string{"store/ca/ca.key.age"}
-	mockOptions := map[string]interface{}{
-		"confirmResponse": true,
-	}
 
-	app, mockStore, _ := createTestApp(t, TestModeSSHMismatchedRecipients, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:     TestModeSSHMismatchedRecipients,
+		keyPaths: keyPaths,
+		mockOptions: map[string]interface{}{
+			"validateError":   errors.New("SSH identity not found in recipients"),
+			"confirmResponse": true,
+		},
+	})
 
 	// Execute without force flag - should prompt user
 	err := app.ReencryptKeys(context.Background(), false)
@@ -563,11 +631,15 @@ func TestReencryptKeys_AgeSsh_UserNotInRecipients_Warning(t *testing.T) {
 
 func TestReencryptKeys_AgeSsh_ValidationFailure_UserDeclines(t *testing.T) {
 	keyPaths := []string{"store/ca/ca.key.age"}
-	mockOptions := map[string]interface{}{
-		"confirmResponse": false,
-	}
 
-	app, mockStore, _ := createTestApp(t, TestModeSSHInvalidIdentity, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:     TestModeSSHInvalidIdentity,
+		keyPaths: keyPaths,
+		mockOptions: map[string]interface{}{
+			"validateError":   errors.New("round-trip validation failed"),
+			"confirmResponse": false,
+		},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)
@@ -592,11 +664,12 @@ func TestReencryptKeys_AgeSsh_ValidRecipients_Success(t *testing.T) {
 		"store/ca/ca.key.age",
 		"store/hosts/server1/cert.key.age",
 	}
-	mockOptions := map[string]interface{}{
-		// No errors - valid recipients
-	}
 
-	app, mockStore, _ := createTestApp(t, TestModeSSHValid, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:        TestModeSSHValid,
+		keyPaths:    keyPaths,
+		mockOptions: map[string]interface{}{},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)
@@ -614,9 +687,14 @@ func TestReencryptKeys_AgeSsh_ValidRecipients_Success(t *testing.T) {
 
 func TestReencryptKeys_AgeSsh_RoundTripFailure_ForceSkip(t *testing.T) {
 	keyPaths := []string{"store/ca/ca.key.age"}
-	mockOptions := map[string]interface{}{}
 
-	app, mockStore, _ := createTestApp(t, TestModeSSHInvalidIdentity, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:     TestModeSSHInvalidIdentity,
+		keyPaths: keyPaths,
+		mockOptions: map[string]interface{}{
+			"validateError": errors.New("round-trip validation failed"),
+		},
+	})
 
 	// Execute with force=true to skip validation
 	err := app.ReencryptKeys(context.Background(), true)
@@ -632,11 +710,40 @@ func TestReencryptKeys_AgeSsh_RoundTripFailure_ForceSkip(t *testing.T) {
 	}
 }
 
+func TestReencryptKeys_Plugin_Success(t *testing.T) {
+	keyPaths := []string{
+		"store/ca/ca.key.age",
+		"store/hosts/device1/cert.key.age",
+	}
+
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:        TestModePlugin,
+		keyPaths:    keyPaths,
+		mockOptions: map[string]interface{}{},
+	})
+
+	// Execute
+	err := app.ReencryptKeys(context.Background(), false)
+
+	// Should succeed
+	if err != nil {
+		t.Errorf("expected success with plugin provider, got %v", err)
+	}
+
+	// Verify keys were re-encrypted
+	if len(mockStore.keyData) != 2 {
+		t.Errorf("expected 2 keys to be re-encrypted, got %d", len(mockStore.keyData))
+	}
+}
+
 func TestReencryptKeys_NoKeysToReencrypt(t *testing.T) {
 	keyPaths := []string{} // No keys to re-encrypt
-	mockOptions := map[string]interface{}{}
 
-	app, mockStore, _ := createTestApp(t, TestModePassword, keyPaths, mockOptions)
+	app, mockStore, _ := createTestApp(t, testAppConfig{
+		mode:        TestModePassword,
+		keyPaths:    keyPaths,
+		mockOptions: map[string]interface{}{},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)
@@ -654,11 +761,14 @@ func TestReencryptKeys_NoKeysToReencrypt(t *testing.T) {
 
 func TestReencryptKeys_PartialFailure_StoreUpdateError(t *testing.T) {
 	keyPaths := []string{"store/ca/ca.key.age"}
-	mockOptions := map[string]interface{}{
-		"updateKeyError": errors.New("disk full"),
-	}
 
-	app, _, _ := createTestApp(t, TestModePassword, keyPaths, mockOptions)
+	app, _, _ := createTestApp(t, testAppConfig{
+		mode:     TestModePassword,
+		keyPaths: keyPaths,
+		mockOptions: map[string]interface{}{
+			"updateKeyError": errors.New("disk full"),
+		},
+	})
 
 	// Execute
 	err := app.ReencryptKeys(context.Background(), false)

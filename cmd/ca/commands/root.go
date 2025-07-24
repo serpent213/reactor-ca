@@ -11,6 +11,7 @@ import (
 	"reactor.de/reactor-ca/internal/infra/config"
 	"reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/exec"
+	"reactor.de/reactor-ca/internal/infra/identity"
 	"reactor.de/reactor-ca/internal/infra/logging"
 	"reactor.de/reactor-ca/internal/infra/password"
 	"reactor.de/reactor-ca/internal/infra/store"
@@ -70,8 +71,13 @@ suitable for homelab and small-to-medium business environments.`,
 			return fmt.Errorf("failed to load CA configuration: %w", err)
 		}
 
+		// Create factories
+		identityProviderFactory := identity.NewFactory()
+		cryptoServiceFactory := crypto.NewServiceFactory()
+		validationService := crypto.NewValidationService()
+
 		// Create identity provider based on config
-		identityProvider, err := app.CreateIdentityProvider(cfg, passwordProvider)
+		identityProvider, err := identityProviderFactory.CreateIdentityProvider(cfg, passwordProvider)
 		if err != nil {
 			return fmt.Errorf("failed to create identity provider: %w", err)
 		}
@@ -89,6 +95,9 @@ suitable for homelab and small-to-medium business environments.`,
 			userInteraction,
 			commander,
 			identityProvider,
+			identityProviderFactory,
+			cryptoServiceFactory,
+			validationService,
 		)
 
 		ctx := context.WithValue(cmd.Context(), appContextKey, &AppContext{App: application})

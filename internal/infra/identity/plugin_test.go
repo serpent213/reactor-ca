@@ -1,3 +1,5 @@
+//go:build integration
+
 package identity_test
 
 import (

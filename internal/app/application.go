@@ -15,23 +15,23 @@ import (
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
-	cryptoService "reactor.de/reactor-ca/internal/infra/crypto"
-	"reactor.de/reactor-ca/internal/infra/identity"
-	"reactor.de/reactor-ca/internal/infra/password"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
 // Application orchestrates the application's use cases.
 type Application struct {
-	rootPath         string
-	logger           domain.Logger
-	configLoader     domain.ConfigLoader
-	store            domain.Store
-	cryptoSvc        domain.CryptoService
-	passwordProvider domain.PasswordProvider
-	userInteraction  domain.UserInteraction
-	commander        domain.Commander
-	identityProvider domain.IdentityProvider
+	rootPath                string
+	logger                  domain.Logger
+	configLoader            domain.ConfigLoader
+	store                   domain.Store
+	cryptoSvc               domain.CryptoService
+	passwordProvider        domain.PasswordProvider
+	userInteraction         domain.UserInteraction
+	commander               domain.Commander
+	identityProvider        domain.IdentityProvider
+	identityProviderFactory domain.IdentityProviderFactory
+	cryptoServiceFactory    domain.CryptoServiceFactory
+	validationService       domain.ValidationService
 }
 
 // NewApplication creates a new Application instance.
@@ -45,17 +45,23 @@ func NewApplication(
 	userInteraction domain.UserInteraction,
 	commander domain.Commander,
 	identityProvider domain.IdentityProvider,
+	identityProviderFactory domain.IdentityProviderFactory,
+	cryptoServiceFactory domain.CryptoServiceFactory,
+	validationService domain.ValidationService,
 ) *Application {
 	return &Application{
-		rootPath:         rootPath,
-		logger:           logger,
-		configLoader:     configLoader,
-		store:            store,
-		cryptoSvc:        cryptoSvc,
-		passwordProvider: passwordProvider,
-		userInteraction:  userInteraction,
-		commander:        commander,
-		identityProvider: identityProvider,
+		rootPath:                rootPath,
+		logger:                  logger,
+		configLoader:            configLoader,
+		store:                   store,
+		cryptoSvc:               cryptoSvc,
+		passwordProvider:        passwordProvider,
+		userInteraction:         userInteraction,
+		commander:               commander,
+		identityProvider:        identityProvider,
+		identityProviderFactory: identityProviderFactory,
+		cryptoServiceFactory:    cryptoServiceFactory,
+		validationService:       validationService,
 	}
 }
 
@@ -252,16 +258,15 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
 	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
 
-	// For password mode: prompt for new password
-	// For SSH/plugin mode: user manually updates config, then we reload it
+	// Create new password provider for this operation if needed
+	var newPasswordProvider domain.PasswordProvider = a.passwordProvider
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
 		ui.Info("Password encryption detected - prompting for new password")
 		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return fmt.Errorf("failed to get new password: %w", err)
 		}
-		// Temporarily set the new password for this operation
-		a.passwordProvider = &password.StaticPasswordProvider{Password: newPassword}
+		newPasswordProvider = &fixedPasswordProvider{password: newPassword}
 	} else {
 		ui.Info("%s encryption detected - using current configuration", cfg.Encryption.Provider)
 		ui.Info("Make sure you've updated ca.yaml with any recipient changes before running this command")
@@ -273,16 +278,16 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 		return fmt.Errorf("failed to reload CA config: %w", err)
 	}
 
-	newIdentityProvider, err := CreateIdentityProvider(cfg, a.passwordProvider)
+	newIdentityProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, newPasswordProvider)
 	if err != nil {
 		return fmt.Errorf("failed to create new identity provider: %w", err)
 	}
 
 	// Perform round-trip validation unless forced to skip
 	if !force {
-		if err := cryptoService.ValidateProviderRoundTrip(newIdentityProvider); err != nil {
+		ui.Action("Performing round-trip validation test...")
+		if err := a.validationService.ValidateProviderRoundTrip(newIdentityProvider); err != nil {
 			a.logger.Log(fmt.Sprintf("Round-trip validation failed: %v", err))
-
 			ui.Warning("Round-trip validation failed: %v", err)
 			ui.Warning("This means you may not be able to decrypt your keys after re-encryption.")
 
@@ -294,12 +299,19 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 			if !confirmed {
 				return fmt.Errorf("operation cancelled by user")
 			}
+		} else {
+			ui.Action("Round-trip validation successful")
 		}
 	}
 
 	// Create new crypto service with new identity provider
-	newCryptoSvc := cryptoService.NewAgeService(newIdentityProvider)
+	newCryptoSvc := a.cryptoServiceFactory.CreateCryptoService(newIdentityProvider)
 
+	return a.reencryptKeysWithService(newCryptoSvc)
+}
+
+// reencryptKeysWithService handles the actual key re-encryption process.
+func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService) error {
 	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
 		return fmt.Errorf("failed to list keys in store: %w", err)
@@ -315,7 +327,7 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	for _, path := range keyPaths {
 		encryptedPEM, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("failed to read key %s: %w", path, err)
+			return fmt.Errorf("failed to read key file %s: %w", filepath.Base(path), err)
 		}
 
 		// Decrypt with current crypto service
@@ -327,10 +339,10 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 			return fmt.Errorf("failed to decrypt key %s: %w. Aborting re-encryption", filepath.Base(path), err)
 		}
 
-		// Re-encrypt with new crypto service (age service doesn't use password parameter)
+		// Re-encrypt with new crypto service
 		reEncrypted, err := newCryptoSvc.EncryptPrivateKey(key, nil)
 		if err != nil {
-			return fmt.Errorf("failed to re-encrypt key %s: %w", path, err)
+			return fmt.Errorf("failed to re-encrypt key %s: %w", filepath.Base(path), err)
 		}
 
 		reEncryptedKeys = append(reEncryptedKeys, reEncryptedKey{path: path, key: reEncrypted})
@@ -339,12 +351,29 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	a.logger.Log("All keys decrypted successfully. Writing re-encrypted keys back to store...")
 	for _, item := range reEncryptedKeys {
 		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
-			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", item.path, err)
+			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", filepath.Base(item.path), err)
 		}
 	}
 
 	a.logger.Log("Key re-encryption complete. Backup can be removed if everything is working.")
 	return nil
+}
+
+// fixedPasswordProvider implements domain.PasswordProvider with a pre-set password.
+type fixedPasswordProvider struct {
+	password []byte
+}
+
+func (f *fixedPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
+	return f.password, nil
+}
+
+func (f *fixedPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+	return f.password, nil
+}
+
+func (f *fixedPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
+	return f.password, nil
 }
 
 // GetAllHostIDs returns a list of all host IDs from the configuration.
@@ -936,26 +965,4 @@ func (a *Application) withHostKey(ctx context.Context, hostID string, operation 
 		return err
 	}
 	return operation(hostKey)
-}
-
-// createIdentityProvider creates an identity provider based on configuration.
-func CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
-	switch cfg.Encryption.Provider {
-	case "", "password":
-		return identity.NewPasswordProvider(cfg.Encryption.Password, passwordProvider), nil
-	case "ssh":
-		provider := identity.NewSSHProvider(cfg.Encryption.SSH)
-		if err := provider.Validate(); err != nil {
-			return nil, fmt.Errorf("SSH provider validation failed: %w", err)
-		}
-		return provider, nil
-	case "plugin":
-		provider := identity.NewPluginProvider(cfg.Encryption.Plugin)
-		if err := provider.Validate(); err != nil {
-			return nil, fmt.Errorf("plugin provider validation failed: %w", err)
-		}
-		return provider, nil
-	default:
-		return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
-	}
 }
