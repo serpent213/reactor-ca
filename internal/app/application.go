@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -689,6 +692,9 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 		var notAfter time.Time
 		var daysRemaining int64
 
+		var keyAlgorithm, hashAlgorithm string
+		var keyLength int
+
 		if isStored && isConfigured {
 			// Host is both stored and configured
 			status = domain.HostStatusIssued
@@ -700,6 +706,9 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 			commonName = cert.Subject.CommonName
 			notAfter = cert.NotAfter
 			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
+			keyAlgorithm = cert.PublicKeyAlgorithm.String()
+			keyLength = getKeyLength(cert.PublicKey)
+			hashAlgorithm = cert.SignatureAlgorithm.String()
 		} else if isStored && !isConfigured {
 			// Host exists in store but not in config (orphaned)
 			status = domain.HostStatusOrphaned
@@ -711,6 +720,9 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 			commonName = cert.Subject.CommonName
 			notAfter = cert.NotAfter
 			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
+			keyAlgorithm = cert.PublicKeyAlgorithm.String()
+			keyLength = getKeyLength(cert.PublicKey)
+			hashAlgorithm = cert.SignatureAlgorithm.String()
 		} else {
 			// Host is configured but not stored
 			status = domain.HostStatusConfigured
@@ -725,6 +737,9 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 			NotAfter:      notAfter,
 			DaysRemaining: daysRemaining,
 			Status:        status,
+			KeyAlgorithm:  keyAlgorithm,
+			KeyLength:     keyLength,
+			HashAlgorithm: hashAlgorithm,
 		})
 	}
 
@@ -990,4 +1005,18 @@ func (a *Application) withHostKey(ctx context.Context, hostID string, operation 
 		return err
 	}
 	return operation(hostKey)
+}
+
+// getKeyLength extracts the key length in bits from a public key
+func getKeyLength(publicKey crypto.PublicKey) int {
+	switch key := publicKey.(type) {
+	case *rsa.PublicKey:
+		return key.Size() * 8 // RSA key size is in bytes, convert to bits
+	case *ecdsa.PublicKey:
+		return key.Curve.Params().BitSize
+	case ed25519.PublicKey:
+		return 256 // Ed25519 is always 256 bits
+	default:
+		return 0 // Unknown key type
+	}
 }

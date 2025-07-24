@@ -111,6 +111,9 @@ type HostInfo struct {
 	NotAfter      time.Time  `json:"not_after"`
 	DaysRemaining int64      `json:"days_remaining"`
 	Status        HostStatus `json:"status"`
+	KeyAlgorithm  string     `json:"key_algorithm"`
+	KeyLength     int        `json:"key_length"`
+	HashAlgorithm string     `json:"hash_algorithm"`
 }
 
 // HostStatus represents the status of a host certificate

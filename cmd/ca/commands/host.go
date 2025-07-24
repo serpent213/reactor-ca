@@ -12,6 +12,9 @@ import (
 	"reactor.de/reactor-ca/internal/ui"
 )
 
+// hostTableColumnWidths defines the column widths for the host list table
+var hostTableColumnWidths = []int{18, 8, 7, 13, 25}
+
 var hostCmd = &cobra.Command{
 	Use:   "host",
 	Short: "Manage host certificates",
@@ -101,26 +104,38 @@ func printHostTable(list []*domain.HostInfo) {
 	}
 
 	// Header
-	ui.PrintTableHeader("HOST ID", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
+	ui.PrintTableHeaderWithWidths(hostTableColumnWidths, "HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
 
 	for _, h := range list {
-		var expiresStr, statusStr string
+		var expiresStr, statusStr, keyAlgoStr, keyLenStr, hashAlgoStr string
 
 		if h.Status == domain.HostStatusConfigured {
 			expiresStr = "-"
 			statusStr = ui.FormatHostStatus(string(h.Status))
+			keyAlgoStr = "-"
+			keyLenStr = "-"
+			hashAlgoStr = "-"
 		} else if h.Status == domain.HostStatusOrphaned {
 			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
 			statusStr = ui.FormatHostStatus(string(h.Status))
+			keyAlgoStr = h.KeyAlgorithm
+			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
+			hashAlgoStr = h.HashAlgorithm
 		} else {
 			// Issued hosts show normal certificate expiry info
 			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
 			statusStr = ui.FormatCertStatus(h.DaysRemaining)
+			keyAlgoStr = h.KeyAlgorithm
+			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
+			hashAlgoStr = h.HashAlgorithm
 		}
 
-		fmt.Printf("%-30s | %-25s | %s\n",
-			h.ID,
-			expiresStr,
+		fmt.Printf("%-*s | %-*s | %-*s | %-*s | %-*s | %s\n",
+			hostTableColumnWidths[0], h.ID,
+			hostTableColumnWidths[1], keyAlgoStr,
+			hostTableColumnWidths[2], keyLenStr,
+			hostTableColumnWidths[3], hashAlgoStr,
+			hostTableColumnWidths[4], expiresStr,
 			statusStr)
 	}
 }

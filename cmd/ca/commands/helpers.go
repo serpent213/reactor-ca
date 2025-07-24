@@ -104,7 +104,6 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 	}
 
 	if isAll {
-		fmt.Println()
 		if hasErrors {
 			ui.Warning("Done, but with errors")
 		} else {

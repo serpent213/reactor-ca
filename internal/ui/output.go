@@ -52,9 +52,19 @@ func PrintBlock(text string) {
 	fmt.Println(text)
 }
 
-// PrintTableHeader prints a styled table header with border
-func PrintTableHeader(columns ...string) {
-	header := strings.Join(columns, " | ")
+// PrintTableHeaderWithWidths prints a styled table header with border using specified column widths
+func PrintTableHeaderWithWidths(columnWidths []int, columns ...string) {
+	var formattedColumns []string
+	for i, col := range columns {
+		if i < len(columnWidths) {
+			formattedColumns = append(formattedColumns, fmt.Sprintf("%-*s", columnWidths[i], col))
+		} else {
+			// Last column is variable width
+			formattedColumns = append(formattedColumns, col)
+		}
+	}
+
+	header := strings.Join(formattedColumns, " | ")
 	fmt.Printf("%s\n", bold(cyan(header)))
 	fmt.Println(cyan(strings.Repeat("─", len(header))))
 }
