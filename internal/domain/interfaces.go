@@ -106,8 +106,18 @@ type ValidationService interface {
 
 // HostInfo is a DTO for listing hosts.
 type HostInfo struct {
-	ID            string    `json:"id"`
-	CommonName    string    `json:"common_name"`
-	NotAfter      time.Time `json:"not_after"`
-	DaysRemaining int64     `json:"days_remaining"`
+	ID            string     `json:"id"`
+	CommonName    string     `json:"common_name"`
+	NotAfter      time.Time  `json:"not_after"`
+	DaysRemaining int64      `json:"days_remaining"`
+	Status        HostStatus `json:"status"`
 }
+
+// HostStatus represents the status of a host certificate
+type HostStatus string
+
+const (
+	HostStatusIssued     HostStatus = "issued"     // Certificate exists in store and is configured
+	HostStatusConfigured HostStatus = "configured" // Defined in config but no certificate in store
+	HostStatusOrphaned   HostStatus = "orphaned"   // Certificate exists in store but not in config
+)

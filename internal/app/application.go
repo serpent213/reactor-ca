@@ -642,28 +642,92 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	return nil
 }
 
-// ListHosts returns information about all host certificates in the store.
+// ListHosts returns information about all hosts (configured and/or stored).
 func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error) {
-	a.logger.Log("Listing hosts from store...")
-	hostIDs, err := a.store.ListHostIDs()
+	a.logger.Log("Listing hosts from config and store...")
+
+	// Load configured hosts
+	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
 		return nil, err
 	}
-	infoList := make([]*domain.HostInfo, 0, len(hostIDs))
-	for _, id := range hostIDs {
-		cert, err := a.store.LoadHostCert(id)
-		if err != nil {
-			a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", id, err))
-			continue
+
+	// Get hosts from store
+	storeHostIDs, err := a.store.ListHostIDs()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create sets for efficient lookup
+	configuredHosts := make(map[string]domain.HostConfig)
+	for id, cfg := range hostsCfg.Hosts {
+		configuredHosts[id] = cfg
+	}
+
+	storedHosts := make(map[string]bool)
+	for _, id := range storeHostIDs {
+		storedHosts[id] = true
+	}
+
+	// Collect all unique host IDs
+	allHostIDs := make(map[string]bool)
+	for id := range configuredHosts {
+		allHostIDs[id] = true
+	}
+	for id := range storedHosts {
+		allHostIDs[id] = true
+	}
+
+	infoList := make([]*domain.HostInfo, 0, len(allHostIDs))
+
+	for hostID := range allHostIDs {
+		_, isConfigured := configuredHosts[hostID]
+		isStored := storedHosts[hostID]
+
+		var status domain.HostStatus
+		var commonName string
+		var notAfter time.Time
+		var daysRemaining int64
+
+		if isStored && isConfigured {
+			// Host is both stored and configured
+			status = domain.HostStatusIssued
+			cert, err := a.store.LoadHostCert(hostID)
+			if err != nil {
+				a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
+				continue
+			}
+			commonName = cert.Subject.CommonName
+			notAfter = cert.NotAfter
+			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
+		} else if isStored && !isConfigured {
+			// Host exists in store but not in config (orphaned)
+			status = domain.HostStatusOrphaned
+			cert, err := a.store.LoadHostCert(hostID)
+			if err != nil {
+				a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
+				continue
+			}
+			commonName = cert.Subject.CommonName
+			notAfter = cert.NotAfter
+			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
+		} else {
+			// Host is configured but not stored
+			status = domain.HostStatusConfigured
+			hostCfg := configuredHosts[hostID]
+			commonName = hostCfg.Subject.CommonName
+			// For configured-only hosts, no certificate dates available
 		}
-		daysRemaining := int64(time.Until(cert.NotAfter).Hours() / 24)
+
 		infoList = append(infoList, &domain.HostInfo{
-			ID:            id,
-			CommonName:    cert.Subject.CommonName,
-			NotAfter:      cert.NotAfter,
+			ID:            hostID,
+			CommonName:    commonName,
+			NotAfter:      notAfter,
 			DaysRemaining: daysRemaining,
+			Status:        status,
 		})
 	}
+
 	return infoList, nil
 }
 

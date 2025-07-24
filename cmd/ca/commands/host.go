@@ -96,7 +96,7 @@ func filterHostList(list []*domain.HostInfo, expired bool, expiringIn int) []*do
 
 func printHostTable(list []*domain.HostInfo) {
 	if len(list) == 0 {
-		ui.Info("No host certificates found in the store.")
+		ui.Info("No hosts found.")
 		return
 	}
 
@@ -104,10 +104,24 @@ func printHostTable(list []*domain.HostInfo) {
 	ui.PrintTableHeader("HOST ID", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
 
 	for _, h := range list {
+		var expiresStr, statusStr string
+
+		if h.Status == domain.HostStatusConfigured {
+			expiresStr = "-"
+			statusStr = ui.FormatHostStatus(string(h.Status))
+		} else if h.Status == domain.HostStatusOrphaned {
+			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
+			statusStr = ui.FormatHostStatus(string(h.Status))
+		} else {
+			// Issued hosts show normal certificate expiry info
+			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
+			statusStr = ui.FormatCertStatus(h.DaysRemaining)
+		}
+
 		fmt.Printf("%-30s | %-25s | %s\n",
 			h.ID,
-			h.NotAfter.UTC().Format(time.RFC3339),
-			ui.FormatCertStatus(h.DaysRemaining))
+			expiresStr,
+			statusStr)
 	}
 }
 

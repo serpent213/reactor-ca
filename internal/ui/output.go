@@ -72,6 +72,20 @@ func FormatCertStatus(daysRemaining int64) string {
 	}
 }
 
+// FormatHostStatus returns a formatted host status with appropriate symbol and color
+func FormatHostStatus(status string) string {
+	switch status {
+	case "issued":
+		return green("✓") + " ISSUED"
+	case "configured":
+		return yellow("○") + " CONFIGURED"
+	case "orphaned":
+		return red("!") + " ORPHANED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // GetColoredLogo returns the ReactorCA ASCII art logo with Reactor in cyan and CA in gray
 func GetColoredLogo() string {
 	gray := color.New(color.FgHiBlack).SprintFunc()
