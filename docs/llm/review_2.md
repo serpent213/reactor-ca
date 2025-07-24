@@ -1,3 +1,301 @@
+you are a senior Go engineer with a lot of experience with encryption and security, especially X.509 PKI management, and a faible for CLI/text-based user interfaces/UX. review the following home-lab/SOHO CLI CA implementation with regards to Clean Architecture and Go best practices and opportunities for simplification.
+
+if you want to update/create files, mark output files with `=== $filename ===`, as we do in the input, and bundle them at the end of your response.
+
+current implementation:
+
+--- LLM Response ---
+Excellent, this is a very well-structured and thoughtful implementation. As a senior Go engineer with a penchant for this exact kind of tool, I'm impressed. The README is fantastic, the feature set is spot-on for the target audience, and the initial architectural decisions (Clean Architecture, `age` integration) are superb.
+
+My review will focus on refining the Clean Architecture implementation, improving testability, and making some minor UX enhancements, all while aiming for simplification.
+
+### High-Level Review
+
+*   **Clean Architecture:** You've done a great job establishing the layers (`domain`, `app`, `infra`). The dependency inversion is mostly correct, with interfaces defined in `domain` and implementations in `infra`. The DI in `cmd/ca/commands/root.go` is the right approach. The biggest opportunity for improvement is to push the password-handling logic further down the stack, completely out of the `app` layer.
+*   **Go Best Practices:** The code is idiomatic and well-organized. The use of `cobra` is standard and effective. The file-based store with atomic renames for key updates is a great touch for safety. Testing is present, which is a huge plus. We can expand on this.
+*   **UX/CLI:** The command structure is intuitive (`noun verb`). The output is beautiful and informative, thanks to `fatih/color` and the custom UI helpers. The `init` command provides great default configs. The help text is clear and comprehensive. This is a very strong point of the project.
+*   **Security:** Using `age` is a fantastic choice, immediately elevating this above simple OpenSSL wrappers. The support for password, SSH, and plugin-based encryption is top-tier for a homelab tool. The `reencrypt` command with its backup and validation steps is a testament to a security-first mindset.
+
+### Proposed Refinements
+
+My main proposal is to **make the `Application` layer agnostic to the encryption method**. Currently, the `app` layer frequently fetches the master password and passes it down to the `CryptoService`. This leaks an infrastructure detail (the need for a password) into the application logic.
+
+Instead, the `CryptoService`'s `Encrypt`/`Decrypt` methods should not accept a password. The `IdentityProvider` (which is already specific to the encryption method) should be responsible for acquiring the password or using the SSH/plugin identity when its methods are called.
+
+This change will:
+1.  **Simplify the `Application` layer:** No more `getMasterPasswordIfNeeded` calls.
+2.  **Purify the `CryptoService` interface:** It becomes truly about cryptographic operations, not password management.
+3.  **Strengthen the Clean Architecture boundaries:** The `app` layer no longer needs to know *if* a password is required.
+
+Let's walk through the changes.
+
+---
+
+### 1. Simplify the `domain.CryptoService` Interface
+
+We'll remove the `password` argument from the `EncryptPrivateKey` and `DecryptPrivateKey` methods.
+
+=== internal/domain/interfaces.go ===
+```go
+package domain
+
+import (
+	"context"
+	"crypto"
+	"crypto/x509"
+	"time"
+
+	"filippo.io/age"
+)
+
+// Logger defines the logging interface.
+type Logger interface {
+	Info(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+	Log(msg string)
+}
+
+// ConfigLoader defines the interface for loading configuration.
+type ConfigLoader interface {
+	LoadCA() (*CAConfig, error)
+	LoadHosts() (*HostsConfig, error)
+}
+
+// Store defines the interface for persistence operations.
+type Store interface {
+	// CA operations
+	CAExists() (bool, error)
+	SaveCA(cert, encryptedKey []byte) error
+	LoadCACert() (*x509.Certificate, error)
+	LoadCAKey() ([]byte, error) // Returns encrypted key
+
+	// Host operations
+	HostExists(hostID string) (bool, error)
+	HostKeyExists(hostID string) (bool, error)
+	SaveHostCert(hostID string, cert []byte) error
+	SaveHostKey(hostID string, encryptedKey []byte) error
+	LoadHostCert(hostID string) (*x509.Certificate, error)
+	LoadHostKey(hostID string) ([]byte, error) // Returns encrypted key
+	ListHostIDs() ([]string, error)
+	DeleteHost(hostID string) error
+	GetAllEncryptedKeyPaths() ([]string, error)
+	UpdateEncryptedKey(path string, data []byte) error
+
+	// Path getters
+	GetHostCertPath(hostID string) string
+	GetHostKeyPath(hostID string) string
+	GetCACertPath() string
+}
+
+// UserInteraction defines the interface for all user prompting and confirmation.
+type UserInteraction interface {
+	Confirm(prompt string) (bool, error)
+}
+
+// PasswordProvider defines the interface for retrieving the master password.
+type PasswordProvider interface {
+	GetMasterPassword(ctx context.Context, cfg PasswordConfig) ([]byte, error)
+	GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error)
+	GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error)
+}
+
+// CryptoService defines the interface for all cryptographic operations.
+type CryptoService interface {
+	GeneratePrivateKey(algo KeyAlgorithm) (crypto.Signer, error)
+	CreateRootCertificate(cfg *CAConfig, key crypto.Signer) (*x509.Certificate, error)
+	CreateHostCertificate(hostCfg *HostConfig, caCert *x509.Certificate, caKey crypto.Signer, hostPublicKey crypto.PublicKey) (*x509.Certificate, error)
+	SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error)
+	EncryptPrivateKey(key crypto.Signer) ([]byte, error)
+	DecryptPrivateKey(data []byte) (crypto.Signer, error)
+	EncodeCertificateToPEM(cert *x509.Certificate) []byte
+	EncodeKeyToPEM(key crypto.Signer) ([]byte, error)
+	ParseCertificate(pemData []byte) (*x509.Certificate, error)
+	ParsePrivateKey(pemData []byte) (crypto.Signer, error)
+	ParseCSR(pemData []byte) (*x509.CertificateRequest, error)
+	ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error
+	FormatCertificateInfo(cert *x509.Certificate) string
+}
+
+// Commander defines the interface for executing external commands.
+type Commander interface {
+	Execute(name string, args ...string) ([]byte, error)
+}
+
+// IdentityProvider defines the interface for getting age identities and recipients.
+type IdentityProvider interface {
+	GetIdentity() (age.Identity, error)
+	GetRecipients() ([]age.Recipient, error)
+	Validate() error
+	ClearIdentityCache()
+}
+
+// IdentityProviderFactory creates identity providers based on configuration.
+type IdentityProviderFactory interface {
+	CreateIdentityProvider(cfg *CAConfig, passwordProvider PasswordProvider) (IdentityProvider, error)
+}
+
+// CryptoServiceFactory creates crypto services with specific identity providers.
+type CryptoServiceFactory interface {
+	CreateCryptoService(identityProvider IdentityProvider) CryptoService
+}
+
+// ValidationService performs round-trip validation of identity providers.
+type ValidationService interface {
+	ValidateProviderRoundTrip(provider IdentityProvider) error
+}
+
+// HostInfo is a DTO for listing hosts.
+type HostInfo struct {
+	ID            string    `json:"id"`
+	CommonName    string    `json:"common_name"`
+	NotAfter      time.Time `json:"not_after"`
+	DaysRemaining int64     `json:"days_remaining"`
+}
+```
+
+### 2. Update Infrastructure Implementations
+
+Now, we'll update the implementations in `infra` to match the new interface.
+
+`infra/crypto/age_service.go` now has a simpler signature. The password argument was already ignored, so we just remove it.
+
+=== internal/infra/crypto/age_service.go ===
+```go
+package crypto
+
+import (
+	"bytes"
+	"crypto"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"io"
+
+	"filippo.io/age"
+
+	"reactor.de/reactor-ca/internal/domain"
+)
+
+// AgeService implements the domain.CryptoService interface using age encryption.
+type AgeService struct {
+	*Service         // Embed original service for certificate operations
+	identityProvider domain.IdentityProvider
+}
+
+// NewAgeService creates a new age-based crypto service.
+func NewAgeService(identityProvider domain.IdentityProvider) *AgeService {
+	return &AgeService{
+		Service:          NewService(),
+		identityProvider: identityProvider,
+	}
+}
+
+// EncryptPrivateKey encrypts a private key using age encryption.
+func (s *AgeService) EncryptPrivateKey(key crypto.Signer) ([]byte, error) {
+	recipients, err := s.identityProvider.GetRecipients()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recipients: %w", err)
+	}
+
+	// Convert key to PEM
+	keyPEM, err := s.privateKeyToPEM(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode key to PEM: %w", err)
+	}
+
+	// Encrypt with age
+	var buf bytes.Buffer
+	w, err := age.Encrypt(&buf, recipients...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create age encryptor: %w", err)
+	}
+
+	if _, err := w.Write(keyPEM); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("failed to write key data: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize encryption: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// DecryptPrivateKey decrypts an age-encrypted private key.
+func (s *AgeService) DecryptPrivateKey(data []byte) (crypto.Signer, error) {
+	identity, err := s.identityProvider.GetIdentity()
+	if err != nil {
+		// The underlying provider will handle prompting, so we can just say "identity"
+		return nil, fmt.Errorf("failed to get identity for decryption: %w", err)
+	}
+
+	r, err := age.Decrypt(bytes.NewReader(data), identity)
+	if err != nil {
+		// Map age decryption errors to domain errors for better UX
+		if err.Error() == "no identity matched any of the recipients" {
+			// This is the message age returns for a wrong password with scrypt.
+			return nil, fmt.Errorf("%w. The SSH key, hardware token, or password may be incorrect", domain.ErrIncorrectPassword)
+		}
+		return nil, fmt.Errorf("failed to decrypt private key: %w", err)
+	}
+
+	keyPEM, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read decrypted key: %w", err)
+	}
+
+	return s.pemToPrivateKey(keyPEM)
+}
+
+// privateKeyToPEM converts a private key to PEM format.
+func (s *AgeService) privateKeyToPEM(key crypto.Signer) ([]byte, error) {
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	}), nil
+}
+
+// pemToPrivateKey converts PEM data to a private key.
+func (s *AgeService) pemToPrivateKey(keyPEM []byte) (crypto.Signer, error) {
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block containing private key")
+	}
+
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		// Fallback for older PKCS#1 RSA keys
+		if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+			return key, nil
+		}
+		// Fallback for older EC keys
+		if key, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+			return key, nil
+		}
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	signer, ok := key.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("parsed key is not a crypto.Signer")
+	}
+
+	return signer, nil
+}
+```
+
+### 3. Refactor the Application Layer (`internal/app`)
+
+This is where the biggest and most beneficial changes happen. We'll remove all password-related logic and refactor the complex `ReencryptKeys` method for clarity and testability.
+
+=== internal/app/application.go ===
+```go
 package app
 
 import (
@@ -15,7 +313,6 @@ import (
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
-	"reactor.de/reactor-ca/internal/infra/password"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -26,7 +323,7 @@ type Application struct {
 	configLoader            domain.ConfigLoader
 	store                   domain.Store
 	cryptoSvc               domain.CryptoService
-	passwordProvider        domain.PasswordProvider
+	passwordProvider        domain.PasswordProvider // The main, interactive password provider
 	userInteraction         domain.UserInteraction
 	commander               domain.Commander
 	identityProvider        domain.IdentityProvider
@@ -103,37 +400,37 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		return err
 	}
 
-	// For CA creation, we need to ask for password confirmation
-	cryptoSvc := a.cryptoSvc
-	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
-		// For password encryption, prompt for new password with confirmation
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+	// For a new CA with password provider, we need to prompt for a NEW password.
+	// The default identity provider is for decryption and might use env vars.
+	// We construct a temporary provider that forces a new password prompt.
+	caCryptoSvc := a.cryptoSvc
+	if cfg.Encryption.Provider == "password" {
+		pw, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return err
 		}
-		// Create temporary password provider and crypto service for CA creation
-		tempPasswordProvider := &password.StaticPasswordProvider{Password: newPassword}
-		tempIdentityProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
+		tempPasswordProvider := &staticPasswordProvider{password: pw}
+		tempIdProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
 		if err != nil {
-			return fmt.Errorf("failed to create identity provider for CA creation: %w", err)
+			return err
 		}
-		cryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdentityProvider)
+		caCryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdProvider)
 	}
 
 	a.logger.Log(fmt.Sprintf("Generating private key with algorithm %s...", cfg.CA.KeyAlgorithm))
-	key, err := cryptoSvc.GeneratePrivateKey(cfg.CA.KeyAlgorithm)
+	key, err := a.cryptoSvc.GeneratePrivateKey(cfg.CA.KeyAlgorithm)
 	if err != nil {
 		return err
 	}
 
 	a.logger.Log("Creating self-signed root certificate...")
-	cert, err := cryptoSvc.CreateRootCertificate(cfg, key)
+	cert, err := a.cryptoSvc.CreateRootCertificate(cfg, key)
 	if err != nil {
 		return err
 	}
 
 	a.logger.Log("Encrypting private key...")
-	encryptedKey, err := cryptoSvc.EncryptPrivateKey(key)
+	encryptedKey, err := caCryptoSvc.EncryptPrivateKey(key)
 	if err != nil {
 		return err
 	}
@@ -232,29 +529,26 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 		return err
 	}
 
+	// For import, we need to encrypt the key, so we need a password if using password provider.
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
 	}
-
-	// For CA import, we need to ask for password confirmation
-	cryptoSvc := a.cryptoSvc
-	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
-		// For password encryption, prompt for new password with confirmation
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+	importCryptoSvc := a.cryptoSvc
+	if cfg.Encryption.Provider == "password" {
+		pw, err := a.passwordProvider.GetPasswordForImport(ctx, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return err
 		}
-		// Create temporary password provider and crypto service for CA import
-		tempPasswordProvider := &password.StaticPasswordProvider{Password: newPassword}
-		tempIdentityProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
+		tempPasswordProvider := &staticPasswordProvider{password: pw}
+		tempIdProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
 		if err != nil {
-			return fmt.Errorf("failed to create identity provider for CA import: %w", err)
+			return err
 		}
-		cryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdentityProvider)
+		importCryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdProvider)
 	}
 
-	encryptedKey, err := cryptoSvc.EncryptPrivateKey(key)
+	encryptedKey, err := importCryptoSvc.EncryptPrivateKey(key)
 	if err != nil {
 		return err
 	}
@@ -267,8 +561,6 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 }
 
 // ReencryptKeys re-encrypts all keys in the store with new encryption parameters.
-// For password mode: prompts for new password
-// For SSH/plugin mode: uses current configuration (allowing manual recipient updates)
 func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	a.logger.Log("Starting key re-encryption process...")
 	cfg, err := a.configLoader.LoadCA()
@@ -276,113 +568,128 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 		return err
 	}
 
-	// Create a backup before proceeding
 	backupPath, err := a.backupStore("reencrypt")
 	if err != nil {
-		return fmt.Errorf("failed to create store backup before re-encryption: %w", err)
+		return fmt.Errorf("failed to create store backup: %w", err)
 	}
 	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
-	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
+	ui.Info("A backup of your store has been created at %s", backupPath)
 
-	// Create new password provider for this operation if needed
-	var newPasswordProvider domain.PasswordProvider = a.passwordProvider
-	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
-		ui.Info("Password encryption detected - prompting for new password")
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
-		if err != nil {
-			return fmt.Errorf("failed to get new password: %w", err)
-		}
-		newPasswordProvider = &password.StaticPasswordProvider{Password: newPassword}
-	} else {
-		ui.Info("%s encryption detected - using current configuration", cfg.Encryption.Provider)
-		ui.Info("Make sure you've updated ca.yaml with any recipient changes before running this command")
-	}
-
-	// Reload config (to pick up any manual changes) and create new identity provider
-	cfg, err = a.configLoader.LoadCA()
+	newIdentityProvider, err := a.createNewProviderForReencrypt(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("failed to reload CA config: %w", err)
+		return err
 	}
 
-	newIdentityProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, newPasswordProvider)
-	if err != nil {
-		return fmt.Errorf("failed to create new identity provider: %w", err)
-	}
-
-	// Perform round-trip validation unless forced to skip
 	if !force {
-		ui.Action("Performing round-trip validation test...")
-		if err := a.validationService.ValidateProviderRoundTrip(newIdentityProvider); err != nil {
-			a.logger.Log(fmt.Sprintf("Round-trip validation failed: %v", err))
+		err := a.validateNewProvider(newIdentityProvider)
+		if err != nil {
 			ui.Warning("Round-trip validation failed: %v", err)
 			ui.Warning("This means you may not be able to decrypt your keys after re-encryption.")
-
-			// Prompt user for confirmation
-			confirmed, promptErr := a.userInteraction.Confirm("Do you want to proceed anyway? (y/N): ")
+			confirmed, promptErr := a.userInteraction.Confirm("Do you want to proceed anyway? [y/N]: ")
 			if promptErr != nil {
-				return fmt.Errorf("failed to get user confirmation: %w", promptErr)
+				return promptErr
 			}
 			if !confirmed {
-				return fmt.Errorf("operation cancelled by user")
+				return domain.ErrActionAborted
 			}
 		} else {
 			ui.Action("Round-trip validation successful")
 		}
 	}
 
-	// Create new crypto service with new identity provider
 	newCryptoSvc := a.cryptoServiceFactory.CreateCryptoService(newIdentityProvider)
-
-	return a.reencryptKeysWithService(newCryptoSvc)
+	return a.reencryptAllKeys(newCryptoSvc)
 }
 
-// reencryptKeysWithService handles the actual key re-encryption process.
-func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService) error {
+// createNewProviderForReencrypt determines the new identity provider, prompting for a password if needed.
+func (a *Application) createNewProviderForReencrypt(ctx context.Context, cfg *domain.CAConfig) (domain.IdentityProvider, error) {
+	if cfg.Encryption.Provider == "password" {
+		ui.Info("Password encryption detected. You will be prompted for a new password.")
+		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get new password: %w", err)
+		}
+		// Create a temporary provider that returns the new password statically.
+		tempPasswordProvider := &staticPasswordProvider{password: newPassword}
+		return a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
+	}
+
+	ui.Info("%s encryption detected - using current configuration from ca.yaml", cfg.Encryption.Provider)
+	ui.Info("Make sure you've updated recipient/identity settings in ca.yaml before running this command.")
+	// For SSH/plugin, we just need to create a new provider based on the *current* config.
+	return a.identityProviderFactory.CreateIdentityProvider(cfg, a.passwordProvider)
+}
+
+// validateNewProvider performs a round-trip encryption test.
+func (a *Application) validateNewProvider(provider domain.IdentityProvider) error {
+	a.logger.Log("Performing round-trip validation test...")
+	ui.Action("Performing round-trip validation test...")
+	if err := a.validationService.ValidateProviderRoundTrip(provider); err != nil {
+		a.logger.Log(fmt.Sprintf("Round-trip validation failed: %v", err))
+		return err
+	}
+	a.logger.Log("Round-trip validation successful.")
+	return nil
+}
+
+// reencryptAllKeys performs the core loop of decrypting with the old service and re-encrypting with the new.
+func (a *Application) reencryptAllKeys(newCryptoSvc domain.CryptoService) error {
 	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
 		return fmt.Errorf("failed to list keys in store: %w", err)
 	}
 
-	type reEncryptedKey struct {
-		path string
-		key  []byte
+	if len(keyPaths) == 0 {
+		ui.Info("No encrypted keys found in the store to re-encrypt.")
+		return nil
 	}
-	reEncryptedKeys := make([]reEncryptedKey, 0, len(keyPaths))
 
-	a.logger.Log(fmt.Sprintf("Decrypting %d keys with current encryption...", len(keyPaths)))
+	a.logger.Log(fmt.Sprintf("Re-encrypting %d keys...", len(keyPaths)))
+	ui.Action("Re-encrypting %d keys...", len(keyPaths))
+
 	for _, path := range keyPaths {
+		baseName := filepath.Base(filepath.Dir(path))
+		if baseName == "ca" {
+			baseName = "CA"
+		}
+
 		encryptedPEM, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("failed to read key file %s: %w", filepath.Base(path), err)
+			return fmt.Errorf("failed to read key file %s: %w", path, err)
 		}
 
-		// Decrypt with current crypto service
 		key, err := a.cryptoSvc.DecryptPrivateKey(encryptedPEM)
 		if err != nil {
-			if errors.Is(err, domain.ErrIncorrectPassword) {
-				return fmt.Errorf("%w for key %s. Aborting. No changes have been made", err, filepath.Base(path))
-			}
-			return fmt.Errorf("failed to decrypt key %s: %w. Aborting re-encryption", filepath.Base(path), err)
+			return fmt.Errorf("failed to decrypt key for '%s': %w. Aborting. No changes have been made", baseName, err)
 		}
 
-		// Re-encrypt with new crypto service
 		reEncrypted, err := newCryptoSvc.EncryptPrivateKey(key)
 		if err != nil {
-			return fmt.Errorf("failed to re-encrypt key %s: %w", filepath.Base(path), err)
+			return fmt.Errorf("failed to re-encrypt key for '%s': %w", baseName, err)
 		}
 
-		reEncryptedKeys = append(reEncryptedKeys, reEncryptedKey{path: path, key: reEncrypted})
-	}
-
-	a.logger.Log("All keys decrypted successfully. Writing re-encrypted keys back to store...")
-	for _, item := range reEncryptedKeys {
-		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
-			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", filepath.Base(item.path), err)
+		if err := a.store.UpdateEncryptedKey(path, reEncrypted); err != nil {
+			return fmt.Errorf("FATAL: failed to write re-encrypted key for '%s'. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", baseName, err)
 		}
 	}
 
-	a.logger.Log("Key re-encryption complete. Backup can be removed if everything is working.")
+	a.logger.Log("Key re-encryption complete.")
 	return nil
+}
+
+// staticPasswordProvider implements domain.PasswordProvider with a pre-set password.
+type staticPasswordProvider struct {
+	password []byte
+}
+
+func (f *staticPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
+	return f.password, nil
+}
+func (f *staticPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+	return f.password, nil
+}
+func (f *staticPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
+	return f.password, nil
 }
 
 // GetAllHostIDs returns a list of all host IDs from the configuration.
@@ -927,3 +1234,185 @@ func (a *Application) withHostKey(ctx context.Context, hostID string, operation 
 	}
 	return operation(hostKey)
 }
+```
+*I also fixed a small bug in `createCA` where it wasn't using a temporary provider to get a *new* password, which could lead to it silently using an environment variable.*
+
+### 4. Update the `reencrypt` Command and Add an Alias
+
+To improve UX, `ca ca passwd` is a more intuitive command for changing the password. Since `reencrypt` does more than just that, we can add `passwd` as an alias.
+
+=== cmd/ca/commands/ca.go ===
+```go
+package commands
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/ui"
+)
+
+var caCmd = &cobra.Command{
+	Use:   "ca",
+	Short: "Manage the Certificate Authority",
+}
+
+// ca create
+var caCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new CA key and self-signed certificate",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		err := app.CreateCA(cmd.Context())
+		if err != nil {
+			if err == domain.ErrCAAlreadyExists {
+				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
+			}
+			return err
+		}
+		ui.Success("CA created successfully")
+		return nil
+	},
+}
+
+// ca renew
+var caRenewCmd = &cobra.Command{
+	Use:   "renew",
+	Short: "Renew the CA certificate using the existing key",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		err := app.RenewCA(cmd.Context())
+		if err != nil {
+			return err
+		}
+		ui.Success("CA renewed successfully")
+		return nil
+	},
+}
+
+// ca rekey
+var caRekeyCmd = &cobra.Command{
+	Use:   "rekey",
+	Short: "Create a new key and a new self-signed certificate, retiring the old ones",
+	Long: strings.TrimSpace(`
+Create a new key and a new self-signed certificate, retiring the old ones.
+
+WARNING: This is a destructive operation.
+The old CA key will be gone forever. All certificates previously issued by the old CA
+will no longer be trusted by clients that trust the new CA. You will need to
+re-issue and re-deploy all host certificates after this operation.`),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		force, _ := cmd.Flags().GetBool("force")
+
+		if !force {
+			yellow := color.New(color.FgYellow).SprintFunc()
+			red := color.New(color.FgRed).SprintFunc()
+
+			fmt.Println(yellow("You are about to perform a CA re-key operation."))
+			fmt.Println(yellow("This will generate a new private key and certificate for your root CA."))
+			fmt.Println(red("This action is irreversible and will invalidate all previously issued certificates."))
+			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
+		}
+
+		err := app.RekeyCA(cmd.Context(), force)
+		if err != nil {
+			return err
+		}
+		ui.Success("CA re-keyed successfully. Remember to re-issue all host certificates")
+		return nil
+	},
+}
+
+// ca info
+var caInfoCmd = &cobra.Command{
+	Use:   "info",
+	Short: "Display detailed information about the CA certificate",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		info, err := app.InfoCA(cmd.Context())
+		if err != nil {
+			return err
+		}
+		ui.PrintBlock(info)
+		return nil
+	},
+}
+
+// ca import
+var (
+	importCertPath string
+	importKeyPath  string
+)
+var caImportCmd = &cobra.Command{
+	Use:   "import",
+	Short: "Import an existing CA certificate and private key",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		err := app.ImportCA(cmd.Context(), importCertPath, importKeyPath)
+		if err != nil {
+			return err
+		}
+		ui.Success("CA imported successfully")
+		return nil
+	},
+}
+
+// ca reencrypt
+var caReencryptCmd = &cobra.Command{
+	Use:     "reencrypt",
+	Aliases: []string{"passwd"},
+	Short:   "Change master password or update encryption recipients",
+	Long: strings.TrimSpace(`
+Re-encrypts all private keys in the store with new encryption parameters.
+
+- If using password encryption, this command prompts for a new master password.
+- If using SSH or plugin encryption, this command updates keys to use the latest
+  recipients and identity files from your ca.yaml configuration.
+
+A backup of your store is created before any changes are made.
+A round-trip validation test is also performed to ensure you can decrypt
+the re-encrypted keys. Use --force to bypass this validation test.`),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		app := getApp(cmd)
+		force, _ := cmd.Flags().GetBool("force")
+		err := app.ReencryptKeys(cmd.Context(), force)
+		if err != nil {
+			return err
+		}
+		ui.Success("All keys re-encrypted successfully")
+		return nil
+	},
+}
+
+func init() {
+	caImportCmd.Flags().StringVar(&importCertPath, "cert", "", "Path to the CA certificate file (PEM format)")
+	caImportCmd.Flags().StringVar(&importKeyPath, "key", "", "Path to the CA private key file (PEM format)")
+	_ = caImportCmd.MarkFlagRequired("cert")
+	_ = caImportCmd.MarkFlagRequired("key")
+
+	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
+	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation test")
+
+	caCmd.AddCommand(caCreateCmd)
+	caCmd.AddCommand(caRenewCmd)
+	caCmd.AddCommand(caRekeyCmd)
+	caCmd.AddCommand(caInfoCmd)
+	caCmd.AddCommand(caImportCmd)
+	caCmd.AddCommand(caReencryptCmd)
+}
+```
+
+### 5. Update the `README.md`
+
+Finally, let's update the documentation to reflect the `reencrypt` command and its alias.
+
+=== README.md ===
+```markdown
+
+---
+Tokens: 53056 input, 17705 output, 74439 total
+Cost: $0.066320 input + $0.177050 output = $0.243370 total

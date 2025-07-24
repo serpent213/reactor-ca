@@ -33,7 +33,7 @@ func TestIssueHost_NewHost(t *testing.T) {
 		// Use real crypto service for this
 		return cryptosvc.NewService().GeneratePrivateKey(algo)
 	}
-	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(key crypto.Signer, password []byte) ([]byte, error) {
+	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(key crypto.Signer) ([]byte, error) {
 		return testhelper.DummyEncryptedKey, nil
 	}
 	mocks.Store.SaveHostKeyFunc = func(id string, encryptedKey []byte) error {
@@ -52,7 +52,7 @@ func TestIssueHost_NewHost(t *testing.T) {
 		return nil
 	}
 	// Use real function to decrypt the CA key
-	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d, p []byte) (crypto.Signer, error) { return testCAKey, nil }
+	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d []byte) (crypto.Signer, error) { return testCAKey, nil }
 
 	// Act
 	err := app.IssueHost(context.Background(), hostID, false, false)
@@ -85,7 +85,7 @@ func TestIssueHost_RenewHost(t *testing.T) {
 		return testhelper.DummyEncryptedKey, nil // Return some dummy encrypted data
 	}
 	// Decrypt should return our known host key
-	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(data, password []byte) (crypto.Signer, error) {
+	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(data []byte) (crypto.Signer, error) {
 		// The first call will be to decrypt the CA key, second for the host key
 		if string(data) == string(testhelper.DummyEncryptedKey) {
 			return existingHostKey, nil
@@ -134,8 +134,8 @@ func TestIssueHost_RekeyHost(t *testing.T) {
 		newKeyGenerated = true
 		return realCrypto.GeneratePrivateKey(algo)
 	}
-	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(k crypto.Signer, p []byte) ([]byte, error) { return testhelper.DummyEncryptedKey, nil }
-	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d, p []byte) (crypto.Signer, error) { return testCAKey, nil } // Only CA key is decrypted
+	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(k crypto.Signer) ([]byte, error) { return testhelper.DummyEncryptedKey, nil }
+	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d []byte) (crypto.Signer, error) { return testCAKey, nil } // Only CA key is decrypted
 	mocks.Store.SaveHostKeyFunc = func(id string, k []byte) error { return nil }
 	mocks.Store.SaveHostCertFunc = func(id string, c []byte) error { return nil }
 
@@ -176,8 +176,8 @@ func TestIssueHost_Deploy(t *testing.T) {
 	mocks.Store.LoadCACertFunc = func() (*x509.Certificate, error) { return testCACert, nil }
 	mocks.Store.HostKeyExistsMap = map[string]bool{hostID: false}
 	mocks.CryptoSvc.GeneratePrivateKeyFunc = func(a domain.KeyAlgorithm) (crypto.Signer, error) { return hostKey, nil }
-	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(k crypto.Signer, p []byte) ([]byte, error) { return testhelper.DummyEncryptedKey, nil }
-	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d, p []byte) (crypto.Signer, error) {
+	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(k crypto.Signer) ([]byte, error) { return testhelper.DummyEncryptedKey, nil }
+	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d []byte) (crypto.Signer, error) {
 		// 1st decrypt CA key, 2nd decrypt host key for deploy
 		if string(d) == "" { // simple heuristic for test
 			return testCAKey, nil

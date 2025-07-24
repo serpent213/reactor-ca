@@ -421,15 +421,15 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 
 	mockCrypto := &testhelper.MockCryptoService{}
 	if decryptError, ok := config.mockOptions["decryptError"]; ok {
-		mockCrypto.DecryptPrivateKeyFunc = func(pemData, password []byte) (crypto.Signer, error) {
+		mockCrypto.DecryptPrivateKeyFunc = func(pemData []byte) (crypto.Signer, error) {
 			return nil, decryptError.(error)
 		}
 	} else {
-		mockCrypto.DecryptPrivateKeyFunc = func(pemData, password []byte) (crypto.Signer, error) {
+		mockCrypto.DecryptPrivateKeyFunc = func(pemData []byte) (crypto.Signer, error) {
 			return generateTestKey(), nil
 		}
 	}
-	mockCrypto.EncryptPrivateKeyFunc = func(key crypto.Signer, password []byte) ([]byte, error) {
+	mockCrypto.EncryptPrivateKeyFunc = func(key crypto.Signer) ([]byte, error) {
 		pub := key.Public().(*ecdsa.PublicKey)
 		return []byte(fmt.Sprintf("encrypted-key-%x", pub.X.Bytes())), nil
 	}

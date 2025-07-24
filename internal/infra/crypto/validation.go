@@ -23,14 +23,14 @@ func ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
 	// Create temporary crypto service with new provider
 	tempCryptoSvc := NewAgeService(provider)
 
-	// Encrypt test key (age service doesn't use the password parameter)
-	encrypted, err := tempCryptoSvc.EncryptPrivateKey(testKey, nil)
+	// Encrypt test key
+	encrypted, err := tempCryptoSvc.EncryptPrivateKey(testKey)
 	if err != nil {
 		return fmt.Errorf("test encryption failed: %w", err)
 	}
 
 	// Decrypt test key
-	decrypted, err := tempCryptoSvc.DecryptPrivateKey(encrypted, nil)
+	decrypted, err := tempCryptoSvc.DecryptPrivateKey(encrypted)
 	if err != nil {
 		return fmt.Errorf("test decryption failed: %w", err)
 	}

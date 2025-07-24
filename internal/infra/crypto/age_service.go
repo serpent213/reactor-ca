@@ -28,7 +28,7 @@ func NewAgeService(identityProvider domain.IdentityProvider) *AgeService {
 }
 
 // EncryptPrivateKey encrypts a private key using age encryption.
-func (s *AgeService) EncryptPrivateKey(key crypto.Signer, _ []byte) ([]byte, error) {
+func (s *AgeService) EncryptPrivateKey(key crypto.Signer) ([]byte, error) {
 	recipients, err := s.identityProvider.GetRecipients()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recipients: %w", err)
@@ -60,7 +60,7 @@ func (s *AgeService) EncryptPrivateKey(key crypto.Signer, _ []byte) ([]byte, err
 }
 
 // DecryptPrivateKey decrypts an age-encrypted private key.
-func (s *AgeService) DecryptPrivateKey(data []byte, _ []byte) (crypto.Signer, error) {
+func (s *AgeService) DecryptPrivateKey(data []byte) (crypto.Signer, error) {
 	identity, err := s.identityProvider.GetIdentity()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get identity: %w", err)

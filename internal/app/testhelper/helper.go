@@ -65,8 +65,8 @@ type MockCryptoService struct {
 	CreateRootCertificateFunc  func(cfg *domain.CAConfig, key crypto.Signer) (*x509.Certificate, error)
 	CreateHostCertificateFunc  func(hostCfg *domain.HostConfig, caCert *x509.Certificate, caKey crypto.Signer, hostPublicKey crypto.PublicKey) (*x509.Certificate, error)
 	SignCSRFunc                func(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error)
-	EncryptPrivateKeyFunc      func(key crypto.Signer, password []byte) ([]byte, error)
-	DecryptPrivateKeyFunc      func(pemData, password []byte) (crypto.Signer, error)
+	EncryptPrivateKeyFunc      func(key crypto.Signer) ([]byte, error)
+	DecryptPrivateKeyFunc      func(pemData []byte) (crypto.Signer, error)
 	EncodeCertificateToPEMFunc func(cert *x509.Certificate) []byte
 	EncodeKeyToPEMFunc         func(key crypto.Signer) ([]byte, error)
 	ParseCertificateFunc       func(pemData []byte) (*x509.Certificate, error)
@@ -88,11 +88,11 @@ func (m *MockCryptoService) CreateHostCertificate(h *domain.HostConfig, c *x509.
 func (m *MockCryptoService) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error) {
 	return m.SignCSRFunc(csr, caCert, caKey, validityDays)
 }
-func (m *MockCryptoService) EncryptPrivateKey(k crypto.Signer, p []byte) ([]byte, error) {
-	return m.EncryptPrivateKeyFunc(k, p)
+func (m *MockCryptoService) EncryptPrivateKey(k crypto.Signer) ([]byte, error) {
+	return m.EncryptPrivateKeyFunc(k)
 }
-func (m *MockCryptoService) DecryptPrivateKey(d, p []byte) (crypto.Signer, error) {
-	return m.DecryptPrivateKeyFunc(d, p)
+func (m *MockCryptoService) DecryptPrivateKey(d []byte) (crypto.Signer, error) {
+	return m.DecryptPrivateKeyFunc(d)
 }
 func (m *MockCryptoService) EncodeCertificateToPEM(c *x509.Certificate) []byte {
 	return m.EncodeCertificateToPEMFunc(c)

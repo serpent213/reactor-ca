@@ -57,7 +57,6 @@ type UserInteraction interface {
 type PasswordProvider interface {
 	GetMasterPassword(ctx context.Context, cfg PasswordConfig) ([]byte, error)
 	GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error)
-	GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error)
 }
 
 // CryptoService defines the interface for all cryptographic operations.
@@ -66,8 +65,8 @@ type CryptoService interface {
 	CreateRootCertificate(cfg *CAConfig, key crypto.Signer) (*x509.Certificate, error)
 	CreateHostCertificate(hostCfg *HostConfig, caCert *x509.Certificate, caKey crypto.Signer, hostPublicKey crypto.PublicKey) (*x509.Certificate, error)
 	SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error)
-	EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error)
-	DecryptPrivateKey(pemData, password []byte) (crypto.Signer, error)
+	EncryptPrivateKey(key crypto.Signer) ([]byte, error)
+	DecryptPrivateKey(pemData []byte) (crypto.Signer, error)
 	EncodeCertificateToPEM(cert *x509.Certificate) []byte
 	EncodeKeyToPEM(key crypto.Signer) ([]byte, error)
 	ParseCertificate(pemData []byte) (*x509.Certificate, error)
