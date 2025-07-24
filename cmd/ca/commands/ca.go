@@ -92,7 +92,7 @@ var caInfoCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(info)
+		ui.PrintBlock(info)
 		return nil
 	},
 }

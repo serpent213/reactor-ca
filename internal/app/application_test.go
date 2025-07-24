@@ -17,41 +17,11 @@ import (
 
 	"filippo.io/age"
 	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/app/testhelper"
 	"reactor.de/reactor-ca/internal/domain"
 )
 
 // --- Domain Mocks ---
-
-type mockConfigLoader struct {
-	ca    *domain.CAConfig
-	hosts *domain.HostsConfig
-	err   error
-}
-
-func (m *mockConfigLoader) LoadCA() (*domain.CAConfig, error) {
-	return m.ca, m.err
-}
-
-func (m *mockConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
-	return m.hosts, m.err
-}
-
-type mockPasswordProvider struct {
-	newPassword []byte
-	passwordErr error
-}
-
-func (m *mockPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
-	return []byte("old-password"), m.passwordErr
-}
-
-func (m *mockPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
-	return m.newPassword, m.passwordErr
-}
-
-func (m *mockPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
-	return nil, nil
-}
 
 type mockUserInteraction struct {
 	confirmResponse bool
@@ -61,12 +31,6 @@ type mockUserInteraction struct {
 func (m *mockUserInteraction) Confirm(prompt string) (bool, error) {
 	return m.confirmResponse, m.confirmErr
 }
-
-type mockLogger struct{}
-
-func (m *mockLogger) Info(msg string, args ...interface{})  {}
-func (m *mockLogger) Error(msg string, args ...interface{}) {}
-func (m *mockLogger) Log(msg string)                        {}
 
 // --- Infrastructure Mocks ---
 
@@ -187,26 +151,26 @@ func TestCleanHosts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup Mocks
-			mockCfgLoader := &mockConfigLoader{
-				hosts: &domain.HostsConfig{Hosts: make(map[string]domain.HostConfig)},
+			mockCfgLoader := &testhelper.MockConfigLoader{
+				HostsConfig: &domain.HostsConfig{Hosts: make(map[string]domain.HostConfig)},
 			}
 			for _, id := range tc.configIDs {
-				mockCfgLoader.hosts.Hosts[id] = domain.HostConfig{}
+				mockCfgLoader.HostsConfig.Hosts[id] = domain.HostConfig{}
 			}
 
 			mockStore := &mockStore{
 				hostIDs: tc.storeIDs,
 			}
 
-			mockPwProvider := &mockPasswordProvider{}
+			mockPwProvider := &testhelper.MockPasswordProvider{}
 			mockUserInt := &mockUserInteraction{
 				confirmResponse: tc.confirmResponse,
 				confirmErr:      tc.confirmError,
 			}
 
 			application := app.NewApplication(
-				"", &mockLogger{}, mockCfgLoader, mockStore, nil,
-				mockPwProvider, mockUserInt, nil, nil,
+				"", &testhelper.MockLogger{}, mockCfgLoader, mockStore, nil,
+				mockPwProvider, mockUserInt, &testhelper.MockCommander{}, nil,
 				&mockIdentityProviderFactory{}, &mockCryptoServiceFactory{}, &mockValidationService{},
 			)
 
@@ -234,53 +198,6 @@ func TestCleanHosts(t *testing.T) {
 		})
 	}
 }
-
-type mockCryptoService struct {
-	decryptError error
-	encryptError error
-}
-
-func (m *mockCryptoService) EncryptPrivateKey(key crypto.Signer, password []byte) ([]byte, error) {
-	if m.encryptError != nil {
-		return nil, m.encryptError
-	}
-	pub := key.Public().(*ecdsa.PublicKey)
-	return []byte(fmt.Sprintf("encrypted-key-%x", pub.X.Bytes())), nil
-}
-
-func (m *mockCryptoService) DecryptPrivateKey(pemData, password []byte) (crypto.Signer, error) {
-	if m.decryptError != nil {
-		return nil, m.decryptError
-	}
-	return generateTestKey(), nil
-}
-
-// Minimal CryptoService interface implementations
-func (m *mockCryptoService) GeneratePrivateKey(algo domain.KeyAlgorithm) (crypto.Signer, error) {
-	return generateTestKey(), nil
-}
-func (m *mockCryptoService) CreateRootCertificate(cfg *domain.CAConfig, key crypto.Signer) (*x509.Certificate, error) {
-	return nil, nil
-}
-func (m *mockCryptoService) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509.Certificate, caKey crypto.Signer, hostPublicKey crypto.PublicKey) (*x509.Certificate, error) {
-	return nil, nil
-}
-func (m *mockCryptoService) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate, caKey crypto.Signer, validityDays int) (*x509.Certificate, error) {
-	return nil, nil
-}
-func (m *mockCryptoService) EncodeCertificateToPEM(cert *x509.Certificate) []byte { return nil }
-func (m *mockCryptoService) EncodeKeyToPEM(key crypto.Signer) ([]byte, error)     { return nil, nil }
-func (m *mockCryptoService) ParseCertificate(pemData []byte) (*x509.Certificate, error) {
-	return nil, nil
-}
-func (m *mockCryptoService) ParsePrivateKey(pemData []byte) (crypto.Signer, error) { return nil, nil }
-func (m *mockCryptoService) ParseCSR(pemData []byte) (*x509.CertificateRequest, error) {
-	return nil, nil
-}
-func (m *mockCryptoService) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error {
-	return nil
-}
-func (m *mockCryptoService) FormatCertificateInfo(cert *x509.Certificate) string { return "" }
 
 type mockIdentityProvider struct {
 	validateError error
@@ -328,12 +245,6 @@ func (m *mockAgeRecipient) Wrap(fileKey []byte) ([]*age.Stanza, error) {
 	return []*age.Stanza{{Type: "mock", Args: []string{"test"}, Body: []byte("mock-body")}}, nil
 }
 
-type mockCommander struct{}
-
-func (m *mockCommander) Execute(name string, args ...string) ([]byte, error) {
-	return nil, nil
-}
-
 type mockIdentityProviderFactory struct{}
 
 func (m *mockIdentityProviderFactory) CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
@@ -348,7 +259,7 @@ func (m *mockCryptoServiceFactory) CreateCryptoService(identityProvider domain.I
 	if m.cryptoSvc != nil {
 		return m.cryptoSvc
 	}
-	return &mockCryptoService{}
+	return &testhelper.MockCryptoService{}
 }
 
 type mockValidationService struct {
@@ -506,9 +417,19 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 		mockStore.updateKeyError = updateError.(error)
 	}
 
-	mockCrypto := &mockCryptoService{}
+	mockCrypto := &testhelper.MockCryptoService{}
 	if decryptError, ok := config.mockOptions["decryptError"]; ok {
-		mockCrypto.decryptError = decryptError.(error)
+		mockCrypto.DecryptPrivateKeyFunc = func(pemData, password []byte) (crypto.Signer, error) {
+			return nil, decryptError.(error)
+		}
+	} else {
+		mockCrypto.DecryptPrivateKeyFunc = func(pemData, password []byte) (crypto.Signer, error) {
+			return generateTestKey(), nil
+		}
+	}
+	mockCrypto.EncryptPrivateKeyFunc = func(key crypto.Signer, password []byte) ([]byte, error) {
+		pub := key.Public().(*ecdsa.PublicKey)
+		return []byte(fmt.Sprintf("encrypted-key-%x", pub.X.Bytes())), nil
 	}
 
 	mockUserInt := &mockUserInteraction{confirmResponse: true}
@@ -521,16 +442,19 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 		mockValidation.validateError = validateError.(error)
 	}
 
-	mockPwProvider := &mockPasswordProvider{newPassword: []byte("new-password")}
-	mockCfgLoader := &mockConfigLoader{ca: cfg}
+	mockPwProvider := &testhelper.MockPasswordProvider{MasterPassword: []byte("old-password")}
+	if newPassword, ok := config.mockOptions["newPassword"]; ok {
+		mockPwProvider.MasterPassword = newPassword.([]byte)
+	}
+	mockCfgLoader := &testhelper.MockConfigLoader{CAConfig: cfg}
 
 	// Create factories that can produce different types of providers/services based on test mode
 	mockIdentityFactory := &mockIdentityProviderFactory{}
 	mockCryptoFactory := &mockCryptoServiceFactory{cryptoSvc: mockCrypto}
 
 	application := app.NewApplication(
-		testRoot, &mockLogger{}, mockCfgLoader, mockStore, mockCrypto,
-		mockPwProvider, mockUserInt, &mockCommander{}, nil,
+		testRoot, &testhelper.MockLogger{}, mockCfgLoader, mockStore, mockCrypto,
+		mockPwProvider, mockUserInt, &testhelper.MockCommander{}, nil,
 		mockIdentityFactory, mockCryptoFactory, mockValidation,
 	)
 

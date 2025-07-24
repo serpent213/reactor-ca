@@ -19,9 +19,8 @@ var hostCmd = &cobra.Command{
 
 // host issue
 var (
-	rekeyHost     bool
-	deployHost    bool
-	issueAllHosts bool
+	rekeyHost  bool
+	deployHost bool
 )
 var hostIssueCmd = &cobra.Command{
 	Use:   "issue <host-id>",
@@ -97,7 +96,7 @@ func filterHostList(list []*domain.HostInfo, expired bool, expiringIn int) []*do
 
 func printHostTable(list []*domain.HostInfo) {
 	if len(list) == 0 {
-		fmt.Println("No host certificates found in the store.")
+		ui.Info("No host certificates found in the store.")
 		return
 	}
 
@@ -123,13 +122,12 @@ var hostInfoCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(info)
+		ui.PrintBlock(info)
 		return nil
 	},
 }
 
 // host deploy
-var deployAllHosts bool
 var hostDeployCmd = &cobra.Command{
 	Use:   "deploy <host-id>",
 	Short: "Run the configured deployment command for one or all hosts",
@@ -235,7 +233,7 @@ var hostCleanCmd = &cobra.Command{
 		}
 
 		if len(pruned) == 0 {
-			fmt.Println("Store is already clean. No hosts to prune.")
+			ui.Info("Store is already clean. No hosts to prune.")
 			return nil
 		}
 
@@ -251,7 +249,7 @@ func init() {
 	// host issue
 	hostIssueCmd.Flags().BoolVar(&rekeyHost, "rekey", false, "Force generation of a new private key")
 	hostIssueCmd.Flags().BoolVar(&deployHost, "deploy", false, "Execute the deployment step after successful issuance")
-	hostIssueCmd.Flags().BoolVar(&issueAllHosts, "all", false, "Issue certificates for all hosts defined in hosts.yaml")
+	hostIssueCmd.Flags().Bool("all", false, "Issue certificates for all hosts defined in hosts.yaml")
 	hostCmd.AddCommand(hostIssueCmd)
 
 	// host list
@@ -264,7 +262,7 @@ func init() {
 	hostCmd.AddCommand(hostInfoCmd)
 
 	// host deploy
-	hostDeployCmd.Flags().BoolVar(&deployAllHosts, "all", false, "Deploy certificates for all hosts with a deploy command")
+	hostDeployCmd.Flags().Bool("all", false, "Deploy certificates for all hosts with a deploy command")
 	hostCmd.AddCommand(hostDeployCmd)
 
 	// host export-key

@@ -46,6 +46,12 @@ func Action(msg string, args ...interface{}) {
 	fmt.Printf("%s %s\n", cyan("→"), formatted)
 }
 
+// PrintBlock prints a block of pre-formatted text, such as certificate details.
+// This ensures all command output goes through the UI package for consistency.
+func PrintBlock(text string) {
+	fmt.Println(text)
+}
+
 // PrintTableHeader prints a styled table header with border
 func PrintTableHeader(columns ...string) {
 	header := strings.Join(columns, " | ")

@@ -73,10 +73,10 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 			return err
 		}
 		if len(hostIDs) == 0 {
-			fmt.Println("No hosts found in configuration.")
+			ui.Info("No hosts found in configuration.")
 			return nil
 		}
-		fmt.Printf(pluralActionMsg+"\n", len(hostIDs))
+		ui.Action(pluralActionMsg, len(hostIDs))
 	} else {
 		hostIDs = append(hostIDs, args[0])
 	}
@@ -86,7 +86,7 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 		// Only print the singular action message if we are not in "all" mode,
 		// as the plural message has already been printed.
 		if !isAll {
-			fmt.Printf(singularActionMsg+"\n", id)
+			ui.Action(singularActionMsg, id)
 		}
 		err := actionFunc(cmd.Context(), id)
 		if err != nil {
