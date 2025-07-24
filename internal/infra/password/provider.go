@@ -1,15 +1,14 @@
 package password
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"golang.org/x/term"
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 // Provider implements the domain.PasswordProvider interface.
@@ -37,13 +36,8 @@ func (p *Provider) GetMasterPassword(ctx context.Context, cfg domain.PasswordCon
 	}
 
 	// 3. Interactive prompt
-	fmt.Print("Enter Master Password: ")
-	pw, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read password: %w", err)
-	}
-	return pw, nil
+	prompt := ui.NewPrompt()
+	return prompt.PromptPassword("Enter Master Password: ")
 }
 
 // GetNewMasterPassword prompts the user to enter and confirm a new password.
@@ -59,60 +53,12 @@ func (p *Provider) GetNewMasterPassword(ctx context.Context, minLength int) ([]b
 		return nil, fmt.Errorf("running in non-interactive environment but no password provided via REACTOR_CA_PASSWORD environment variable")
 	}
 
-	for {
-		fmt.Print("Enter New Master Password: ")
-		pw1, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read password interactively: %w", err)
-		}
-
-		if len(pw1) < minLength {
-			fmt.Printf("Password must be at least %d characters long. Please try again.\n", minLength)
-			continue
-		}
-
-		fmt.Print("Confirm New Master Password: ")
-		pw2, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return nil, err
-		}
-
-		if !bytes.Equal(pw1, pw2) {
-			fmt.Println("Passwords do not match. Please try again.")
-			continue
-		}
-
-		return pw1, nil
-	}
+	prompt := ui.NewPrompt()
+	return prompt.PromptPasswordWithConfirmation("Enter New Master Password: ", minLength)
 }
 
 // GetPasswordForImport prompts for a new password to encrypt an imported key.
 func (p *Provider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
 	fmt.Println("Enter a new master password to encrypt the imported private key.")
 	return p.GetNewMasterPassword(ctx, minLength)
-}
-
-// Confirm prompts the user for a yes/no answer.
-func (p *Provider) Confirm(prompt string) (bool, error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false, fmt.Errorf("cannot prompt for confirmation in non-interactive environment: %s", prompt)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print(prompt)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return false, fmt.Errorf("failed to read user input: %w", err)
-		}
-		response = strings.ToLower(strings.TrimSpace(response))
-		if response == "y" || response == "yes" {
-			return true, nil
-		}
-		if response == "n" || response == "no" || response == "" {
-			return false, nil
-		}
-	}
 }

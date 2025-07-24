@@ -17,4 +17,5 @@
 **/.claude/settings.local.json
 
 # Scratch
+/TODO.md
 /tmp/

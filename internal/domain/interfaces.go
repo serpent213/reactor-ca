@@ -48,12 +48,16 @@ type Store interface {
 	GetCACertPath() string
 }
 
+// UserInteraction defines the interface for all user prompting and confirmation.
+type UserInteraction interface {
+	Confirm(prompt string) (bool, error)
+}
+
 // PasswordProvider defines the interface for retrieving the master password.
 type PasswordProvider interface {
 	GetMasterPassword(ctx context.Context, cfg PasswordConfig) ([]byte, error)
 	GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error)
 	GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error)
-	Confirm(prompt string) (bool, error)
 }
 
 // CryptoService defines the interface for all cryptographic operations.

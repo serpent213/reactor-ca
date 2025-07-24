@@ -63,14 +63,7 @@ func (m *mockStore) GetHostCertPath(hostID string) string { return "" }
 func (m *mockStore) GetHostKeyPath(hostID string) string  { return "" }
 func (m *mockStore) GetCACertPath() string                { return "" }
 
-type mockPasswordProvider struct {
-	confirmResponse bool
-	confirmErr      error
-}
-
-func (m *mockPasswordProvider) Confirm(prompt string) (bool, error) {
-	return m.confirmResponse, m.confirmErr
-}
+type mockPasswordProvider struct{}
 
 // Add empty implementations for other PasswordProvider methods
 func (m *mockPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
@@ -81,6 +74,15 @@ func (m *mockPasswordProvider) GetNewMasterPassword(ctx context.Context, minLeng
 }
 func (m *mockPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {
 	return nil, nil
+}
+
+type mockUserInteraction struct {
+	confirmResponse bool
+	confirmErr      error
+}
+
+func (m *mockUserInteraction) Confirm(prompt string) (bool, error) {
+	return m.confirmResponse, m.confirmErr
 }
 
 type mockLogger struct{}
@@ -166,13 +168,14 @@ func TestCleanHosts(t *testing.T) {
 				hostIDs: tc.storeIDs,
 			}
 
-			mockPwProvider := &mockPasswordProvider{
+			mockPwProvider := &mockPasswordProvider{}
+			mockUserInt := &mockUserInteraction{
 				confirmResponse: tc.confirmResponse,
 				confirmErr:      tc.confirmError,
 			}
 
 			// Create Application instance
-			application := app.NewApplication("", &mockLogger{}, mockCfgLoader, mockStore, nil, mockPwProvider, nil, nil)
+			application := app.NewApplication("", &mockLogger{}, mockCfgLoader, mockStore, nil, mockPwProvider, mockUserInt, nil, nil)
 
 			// Run the method
 			pruned, err := application.CleanHosts(context.Background(), tc.force)

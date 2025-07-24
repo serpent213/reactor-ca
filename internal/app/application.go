@@ -26,6 +26,7 @@ type Application struct {
 	store            domain.Store
 	cryptoSvc        domain.CryptoService
 	passwordProvider domain.PasswordProvider
+	userInteraction  domain.UserInteraction
 	commander        domain.Commander
 	identityProvider domain.IdentityProvider
 }
@@ -38,6 +39,7 @@ func NewApplication(
 	store domain.Store,
 	cryptoSvc domain.CryptoService,
 	passwordProvider domain.PasswordProvider,
+	userInteraction domain.UserInteraction,
 	commander domain.Commander,
 	identityProvider domain.IdentityProvider,
 ) *Application {
@@ -48,6 +50,7 @@ func NewApplication(
 		store:            store,
 		cryptoSvc:        cryptoSvc,
 		passwordProvider: passwordProvider,
+		userInteraction:  userInteraction,
 		commander:        commander,
 		identityProvider: identityProvider,
 	}
@@ -159,7 +162,7 @@ func (a *Application) renewCAWithKey(caKey crypto.Signer) error {
 func (a *Application) RekeyCA(ctx context.Context, force bool) error {
 	a.logger.Log("Re-keying CA. This will replace the existing CA key and certificate.")
 	if !force {
-		confirmed, err := a.passwordProvider.Confirm("Are you sure you want to proceed? [y/N]: ")
+		confirmed, err := a.userInteraction.Confirm("Are you sure you want to proceed? [y/N]: ")
 		if err != nil {
 			return err
 		}
@@ -729,7 +732,7 @@ func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, err
 	}
 
 	if !force {
-		confirmed, err := a.passwordProvider.Confirm("Do you want to permanently delete these hosts from the store? [y/N]: ")
+		confirmed, err := a.userInteraction.Confirm("Do you want to permanently delete these hosts from the store? [y/N]: ")
 		if err != nil {
 			return nil, err
 		}

@@ -61,6 +61,7 @@ suitable for homelab and small-to-medium business environments.`,
 		fileStore := store.NewFileStore(storePath)
 		configLoader := config.NewYAMLConfigLoader(configPath)
 		passwordProvider := password.NewProvider()
+		userInteraction := ui.NewPrompt()
 		commander := exec.NewCommander()
 
 		// Load configuration to determine encryption method
@@ -85,6 +86,7 @@ suitable for homelab and small-to-medium business environments.`,
 			fileStore,
 			cryptoSvc,
 			passwordProvider,
+			userInteraction,
 			commander,
 			identityProvider,
 		)
