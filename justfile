@@ -72,13 +72,30 @@ staticcheck:
 
 lint: fmt-check vet staticcheck
 
-test-unit:
-    go test -v ./...
+test type="all":
+    #!/usr/bin/env bash
+    if [ "{{type}}" = "unit" ]; then
+        go test -v ./...
+    elif [ "{{type}}" = "integration" ]; then
+        go test -v -tags integration ./...
+    elif [ "{{type}}" = "e2e" ]; then
+        go test -v -tags e2e ./...
+    elif [ "{{type}}" = "all" ]; then
+        echo "Running unit tests..."
+        go test -v ./...
+        echo "Running integration tests..."
+        go test -v -tags integration ./...
+        echo "Running e2e tests..."
+        go test -v -tags e2e ./...
+    else
+        echo "Invalid test type: {{type}}. Use 'unit', 'integration', 'e2e', or 'all'."
+        exit 1
+    fi
 
-test-integration:
-    go test -v -tags integration ./...
-
-test: test-unit test-integration
+# Legacy aliases for compatibility
+test-unit: (test "unit")
+test-integration: (test "integration")
+test-e2e: (test "e2e")
 
 tidy:
     go mod tidy

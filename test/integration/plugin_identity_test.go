@@ -1,6 +1,6 @@
 //go:build integration
 
-package identity_test
+package integration_test
 
 import (
 	"os"

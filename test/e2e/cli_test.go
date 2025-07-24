@@ -1,6 +1,6 @@
-//go:build integration
+//go:build e2e
 
-package main_test
+package e2e_test
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ const testPassword = "super-secret-password-for-testing"
 // builds the `reactor-ca` binary once, and then runs all tests.
 func TestMain(m *testing.M) {
 	if _, err := exec.LookPath("openssl"); err != nil {
-		log.Println("WARNING: `openssl` not found in PATH, skipping integration tests.")
+		log.Println("WARNING: `openssl` not found in PATH, skipping e2e tests.")
 		os.Exit(0)
 	}
 
