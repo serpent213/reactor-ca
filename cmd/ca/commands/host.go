@@ -12,9 +12,6 @@ import (
 	"reactor.de/reactor-ca/internal/ui"
 )
 
-// hostTableColumnWidths defines the column widths for the host list table
-var hostTableColumnWidths = []int{18, 8, 7, 13, 25}
-
 var hostCmd = &cobra.Command{
 	Use:   "host",
 	Short: "Manage host certificates",
@@ -103,9 +100,13 @@ func printHostTable(list []*domain.HostInfo) {
 		return
 	}
 
-	// Header
-	ui.PrintTableHeaderWithWidths(hostTableColumnWidths, "HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "STATUS / DAYS REMAINING")
+	table := ui.NewHostsTable()
 
+	// Set headers
+	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "STATUS / DAYS REMAINING"})
+
+	// Prepare data rows
+	var data [][]string
 	for _, h := range list {
 		var expiresStr, statusStr, keyAlgoStr, keyLenStr, hashAlgoStr string
 
@@ -130,14 +131,20 @@ func printHostTable(list []*domain.HostInfo) {
 			hashAlgoStr = h.HashAlgorithm
 		}
 
-		fmt.Printf("%-*s | %-*s | %-*s | %-*s | %-*s | %s\n",
-			hostTableColumnWidths[0], h.ID,
-			hostTableColumnWidths[1], keyAlgoStr,
-			hostTableColumnWidths[2], keyLenStr,
-			hostTableColumnWidths[3], hashAlgoStr,
-			hostTableColumnWidths[4], expiresStr,
-			statusStr)
+		data = append(data, []string{
+			h.ID,
+			keyAlgoStr,
+			keyLenStr,
+			hashAlgoStr,
+			expiresStr,
+			statusStr,
+		})
 	}
+
+	// Add data and footer
+	table.Bulk(data)
+	table.Footer([]string{"", "", "", "", "Total", fmt.Sprintf("%d", len(list))})
+	table.Render()
 }
 
 // host info
