@@ -87,6 +87,11 @@ func (m *mockStore) GetHostCertPath(hostID string) string                  { ret
 func (m *mockStore) GetHostKeyPath(hostID string) string                   { return "" }
 func (m *mockStore) GetCACertPath() string                                 { return "" }
 
+// Backup operations - mock implementations
+func (m *mockStore) CreateBackupFile(originalPath string) error  { return nil }
+func (m *mockStore) RestoreFromBackup(originalPath string) error { return nil }
+func (m *mockStore) RemoveBackupFile(originalPath string) error  { return nil }
+
 // --- Tests ---
 
 func TestCleanHosts(t *testing.T) {

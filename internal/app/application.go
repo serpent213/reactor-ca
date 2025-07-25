@@ -1,7 +1,6 @@
 package app
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"crypto"
@@ -11,7 +10,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,13 +270,11 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 		return err
 	}
 
-	// Create a backup before proceeding
-	backupPath, err := a.backupStore("reencrypt")
+	// Create .bak files for all keys before proceeding
+	backedUpFiles, err := a.backupKeysToBAK()
 	if err != nil {
-		return fmt.Errorf("failed to create store backup before re-encryption: %w", err)
+		return fmt.Errorf("failed to create key backups before re-encryption: %w", err)
 	}
-	a.logger.Log(fmt.Sprintf("Created a backup of the store at: %s", backupPath))
-	fmt.Printf("A backup of your store has been created at %s\n", backupPath)
 
 	// Create new password provider for this operation if needed
 	var newPasswordProvider domain.PasswordProvider = a.passwordProvider
@@ -329,11 +325,11 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	// Create new crypto service with new identity provider
 	newCryptoSvc := a.cryptoServiceFactory.CreateCryptoService(newIdentityProvider)
 
-	return a.reencryptKeysWithService(newCryptoSvc)
+	return a.reencryptKeysWithService(newCryptoSvc, backedUpFiles)
 }
 
 // reencryptKeysWithService handles the actual key re-encryption process.
-func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService) error {
+func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService, backedUpFiles []string) error {
 	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
 		return fmt.Errorf("failed to list keys in store: %w", err)
@@ -345,6 +341,7 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 	}
 	reEncryptedKeys := make([]reEncryptedKey, 0, len(keyPaths))
 
+	// Decrypt and re-encrypt all keys in memory first
 	for _, path := range keyPaths {
 		encryptedPEM, err := os.ReadFile(path)
 		if err != nil {
@@ -369,15 +366,72 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 		reEncryptedKeys = append(reEncryptedKeys, reEncryptedKey{path: path, key: reEncrypted})
 	}
 
+	// Track which files we've successfully written
+	var writtenFiles []string
+
+	// Write all re-encrypted keys
 	for _, item := range reEncryptedKeys {
 		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
-			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", filepath.Base(item.path), err)
+			// On write failure, offer rollback
+			a.logger.Log(fmt.Sprintf("Failed to write re-encrypted key %s: %v", filepath.Base(item.path), err))
+			return a.handleReencryptionFailure(writtenFiles, backedUpFiles, fmt.Errorf("failed to write re-encrypted key %s: %w", filepath.Base(item.path), err))
+		}
+		writtenFiles = append(writtenFiles, item.path)
+	}
+
+	// Success - clean up all .bak files
+	a.logger.Log("Successfully wrote all re-encrypted keys back to store")
+	a.cleanupBackupFiles(backedUpFiles)
+
+	return nil
+}
+
+// handleReencryptionFailure offers the user a rollback option and handles cleanup
+func (a *Application) handleReencryptionFailure(writtenFiles, backedUpFiles []string, originalErr error) error {
+	ui.Error("Re-encryption failed: %v", originalErr)
+	ui.Warning("Some keys may have been partially re-encrypted.")
+
+	// Offer rollback
+	confirmed, err := a.userInteraction.Confirm("Would you like to rollback all changes from .bak files? [y/N]: ")
+	if err != nil {
+		ui.Error("Failed to get user confirmation: %v", err)
+		return fmt.Errorf("FATAL: %w. Manual rollback required from .bak files", originalErr)
+	}
+
+	if confirmed {
+		ui.Action("Rolling back changes from .bak files...")
+		rollbackErrors := 0
+
+		for _, filePath := range backedUpFiles {
+			if err := a.store.RestoreFromBackup(filePath); err != nil {
+				ui.Error("Failed to restore %s from backup: %v", filepath.Base(filePath), err)
+				rollbackErrors++
+			}
+		}
+
+		// Clean up .bak files after rollback
+		a.cleanupBackupFiles(backedUpFiles)
+
+		if rollbackErrors == 0 {
+			ui.Success("Successfully rolled back all changes")
+			return fmt.Errorf("re-encryption failed but rollback completed successfully: %w", originalErr)
+		} else {
+			return fmt.Errorf("FATAL: re-encryption failed and rollback had %d errors. Manual recovery may be required: %w", rollbackErrors, originalErr)
 		}
 	}
-	a.logger.Log("Successfully wrote all re-encrypted keys back to store")
 
-	a.logger.Log("Key re-encryption complete. Backup can be removed if everything is working.")
-	return nil
+	// User declined rollback - leave .bak files for manual recovery
+	ui.Warning("Rollback declined. .bak files have been left for manual recovery.")
+	return fmt.Errorf("FATAL: %w. .bak files available for manual recovery", originalErr)
+}
+
+// cleanupBackupFiles removes all .bak files
+func (a *Application) cleanupBackupFiles(backedUpFiles []string) {
+	for _, filePath := range backedUpFiles {
+		if err := a.store.RemoveBackupFile(filePath); err != nil {
+			a.logger.Log(fmt.Sprintf("Warning: failed to remove backup file for %s: %v", filepath.Base(filePath), err))
+		}
+	}
 }
 
 // GetAllHostIDs returns a list of all host IDs from the configuration.
@@ -905,45 +959,25 @@ func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMod
 	return os.WriteFile(path, data, perm)
 }
 
-func (a *Application) backupStore(reason string) (string, error) {
-	storeDir := filepath.Join(a.rootPath, "store")
-	backupFileName := fmt.Sprintf("store-backup-%s-%s.zip", time.Now().UTC().Format("20060102150405"), reason)
-	backupFilePath := filepath.Join(a.rootPath, backupFileName)
-
-	backupFile, err := os.Create(backupFilePath)
+func (a *Application) backupKeysToBAK() ([]string, error) {
+	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to list keys for backup: %w", err)
 	}
-	defer backupFile.Close()
 
-	zipWriter := zip.NewWriter(backupFile)
-	defer zipWriter.Close()
+	var backedUpFiles []string
+	for _, path := range keyPaths {
+		if err := a.store.CreateBackupFile(path); err != nil {
+			// On backup failure, try to clean up any backups we've already created
+			for _, backupPath := range backedUpFiles {
+				_ = a.store.RemoveBackupFile(backupPath)
+			}
+			return nil, fmt.Errorf("failed to create backup for %s: %w", filepath.Base(path), err)
+		}
+		backedUpFiles = append(backedUpFiles, path)
+	}
 
-	err = filepath.Walk(storeDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		relPath, err := filepath.Rel(storeDir, path)
-		if err != nil {
-			return err
-		}
-		zipFile, err := zipWriter.Create(filepath.ToSlash(relPath))
-		if err != nil {
-			return err
-		}
-		fsFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer fsFile.Close()
-		_, err = io.Copy(zipFile, fsFile)
-		return err
-	})
-
-	return backupFilePath, err
+	return backedUpFiles, nil
 }
 
 // loadCAKey loads and decrypts the CA private key.

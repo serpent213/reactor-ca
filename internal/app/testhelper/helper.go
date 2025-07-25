@@ -60,6 +60,11 @@ func (m *MockStore) GetHostCertPath(id string) string { return "" }
 func (m *MockStore) GetHostKeyPath(id string) string  { return "" }
 func (m *MockStore) GetCACertPath() string            { return "" }
 
+// Backup operations - mock implementations
+func (m *MockStore) CreateBackupFile(originalPath string) error  { return nil }
+func (m *MockStore) RestoreFromBackup(originalPath string) error { return nil }
+func (m *MockStore) RemoveBackupFile(originalPath string) error  { return nil }
+
 type MockCryptoService struct {
 	GeneratePrivateKeyFunc     func(algo domain.KeyAlgorithm) (crypto.Signer, error)
 	CreateRootCertificateFunc  func(cfg *domain.CAConfig, key crypto.Signer) (*x509.Certificate, error)

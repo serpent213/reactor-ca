@@ -42,6 +42,11 @@ type Store interface {
 	GetAllEncryptedKeyPaths() ([]string, error)
 	UpdateEncryptedKey(path string, data []byte) error
 
+	// Backup operations
+	CreateBackupFile(originalPath string) error
+	RestoreFromBackup(originalPath string) error
+	RemoveBackupFile(originalPath string) error
+
 	// Path getters
 	GetHostCertPath(hostID string) string
 	GetHostKeyPath(hostID string) string

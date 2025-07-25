@@ -262,3 +262,69 @@ func (s *FileStore) UpdateEncryptedKey(path string, data []byte) (err error) {
 
 	return nil
 }
+
+// CreateBackupFile creates a .bak copy of the original file.
+func (s *FileStore) CreateBackupFile(originalPath string) error {
+	backupPath := originalPath + ".bak"
+
+	// Read original file
+	data, err := os.ReadFile(originalPath)
+	if err != nil {
+		return fmt.Errorf("failed to read original file for backup: %w", err)
+	}
+
+	// Get original file info for permission copying
+	info, err := os.Stat(originalPath)
+	if err != nil {
+		return fmt.Errorf("failed to get original file info: %w", err)
+	}
+
+	// Write backup file with same permissions
+	err = os.WriteFile(backupPath, data, info.Mode())
+	if err != nil {
+		return fmt.Errorf("failed to create backup file: %w", err)
+	}
+
+	return nil
+}
+
+// RestoreFromBackup restores the original file from its .bak copy.
+func (s *FileStore) RestoreFromBackup(originalPath string) error {
+	backupPath := originalPath + ".bak"
+
+	// Check if backup exists
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return fmt.Errorf("backup file does not exist: %s", backupPath)
+	}
+
+	// Read backup file
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup file: %w", err)
+	}
+
+	// Get backup file info for permission copying
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to get backup file info: %w", err)
+	}
+
+	// Restore to original location
+	err = os.WriteFile(originalPath, data, info.Mode())
+	if err != nil {
+		return fmt.Errorf("failed to restore from backup: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveBackupFile removes a .bak file.
+func (s *FileStore) RemoveBackupFile(originalPath string) error {
+	backupPath := originalPath + ".bak"
+
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove backup file: %w", err)
+	}
+
+	return nil
+}
