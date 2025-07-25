@@ -15,7 +15,7 @@ ca:
 
   # --- Validity Period ---
   # How long the CA certificate will be valid for.
-  # Specify exactly one of 'years' or 'days'.
+  # Specify any combination of 'years', 'months' and 'days'.
   validity:
     years: 10
     # days: 3650
