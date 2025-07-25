@@ -1,0 +1,36 @@
+# Tree-sitter MCP Server Configuration for Zeitmeister Android Project
+
+security:
+  max_file_size_mb: 5
+  excluded_dirs:
+    # Version control
+    - .git
+
+    - # Build artifacts
+    - /dist
+
+    - # Ignore store and config directories
+    - /store
+    - /config
+
+    - # Nix
+    - /.direnv
+    - /.devenv
+    - /.devenv.flake.nix
+    - /result
+
+    - # Scratch
+    - /tmp
+
+language:
+  preferred_languages:
+    - go
+    - yaml
+
+cache:
+  enabled: true
+  max_size_mb: 100
+  ttl_seconds: 300
+
+log_level: INFO
+max_results_default: 100

@@ -23,6 +23,15 @@ Key architectural principles:
 - **Secure storage**: Private keys encrypted using age-based encryption with configurable identity providers
 - **Clean interfaces**: Domain interfaces implemented by infrastructure layer
 
+## Tree-Sitter Integration
+
+Initialize tree-sitter for code exploration:
+```bash
+# Configure and register the project
+mcp__tree-sitter__configure --config-path .tree-sitter-mcp-config.yaml
+mcp__tree-sitter__register_project_tool --path /Users/self/Documents/projects/ReactorCA --name ReactorCA --description "Go-based CLI tool for managing a private PKI"
+```
+
 ## Development Commands
 
 This project uses [just](https://github.com/casey/just) for task automation. Run `just help` to see available commands.
