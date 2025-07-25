@@ -7,7 +7,7 @@
 
 A Go CLI tool to manage a homelab/small-office Certificate Authority with [age](https://age-encryption.org/) encrypted private keys.
 
-Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month.
+Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month, while keeping your CA store and config in a Git repo.
 
 ## Features
 
@@ -18,9 +18,6 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
   - SSH key-based encryption using existing SSH identities (age-ssh)
   - Hardware token encryption using age plugins (Secure Enclave, YubiKey, etc.)
 - Certificate inventory and expiration tracking
-- Certificate chain support (CA + host certificate)
-- Flexible authentication options (interactive prompt, environment variable, file, SSH keys)
-- Export unencrypted private keys when needed
 - Simple deployment to target locations via shell scripts
 - Single statically-linked binary with no runtime dependencies
 
