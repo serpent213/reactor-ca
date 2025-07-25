@@ -63,6 +63,11 @@ Authentication Security
 - Immune to key extraction attacks - cryptographic operations isolated in secure element
 - Plugin security depends on underlying hardware token implementation
 
+Memory Protection
+
+**Core dumps**
+- Core dumps are disabled on program start
+
 ## Dependencies
 
 - Go Standard Crypto. We use crypto/x509 for certificate ops, crypto/rsa and crypto/ecdsa for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and crypto/rand for secure randomness.
