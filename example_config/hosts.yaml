@@ -22,8 +22,7 @@ hosts:
       cert: "/etc/ssl/certs/web-server.crt"
       chain: "/etc/ssl/certs/web-server-chain.crt"
     deploy:
-      commands:
-        - "systemctl reload nginx"
+      command: "systemctl reload nginx"
 
   # VPN server with IPv6 support
   vpn-server:
@@ -44,8 +43,7 @@ hosts:
       cert: "/etc/openvpn/server.crt"
       chain: "/etc/openvpn/server-chain.crt"
     deploy:
-      commands:
-        - "systemctl restart openvpn@server"
+      command: "systemctl restart openvpn@server"
 
   # IoT device with custom subject fields
   iot-gateway:
@@ -66,9 +64,9 @@ hosts:
       cert: "/opt/iot/certs/gateway.crt"
       chain: "/opt/iot/certs/gateway-chain.crt"
     deploy:
-      commands:
-        - "chown iot:iot /opt/iot/certs/*"
-        - "systemctl restart mosquitto"
+      command: |
+        chown iot:iot /opt/iot/certs/*
+        systemctl restart mosquitto
 
   # Client certificate for user authentication
   client-user:

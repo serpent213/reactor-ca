@@ -543,10 +543,10 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 		return domain.ErrHostNotFoundInConfig
 	}
 
-	if len(hostCfg.Deploy.Commands) == 0 {
+	if strings.TrimSpace(hostCfg.Deploy.Command) == "" {
 		return domain.ErrNoDeployCommand
 	}
-	a.logger.Log(fmt.Sprintf("Running %d deploy command(s) for '%s'", len(hostCfg.Deploy.Commands), hostID))
+	a.logger.Log(fmt.Sprintf("Running deploy command for '%s'", hostID))
 
 	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(hostKey)
 	if err != nil {
@@ -627,13 +627,11 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 		"${private_key}", tempKeyFile.Name(),
 	)
 
-	var substitutedCommands []string
-	for _, cmd := range hostCfg.Deploy.Commands {
-		substitutedCommands = append(substitutedCommands, replacer.Replace(cmd))
-	}
+	// Perform variable substitution on the command
+	substitutedCommand := replacer.Replace(hostCfg.Deploy.Command)
 
 	// Create shell script with safety flags
-	shellScript := "set -euo pipefail\n" + strings.Join(substitutedCommands, "\n")
+	shellScript := "set -euo pipefail\n" + substitutedCommand
 
 	// Execute via shell
 	a.logger.Log(fmt.Sprintf("Executing deploy script for '%s':\n%s", hostID, shellScript))
@@ -641,7 +639,16 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	if err != nil {
 		return fmt.Errorf("deploy command failed: %w\nOutput:\n%s", err, string(output))
 	}
-	a.logger.Log(fmt.Sprintf("Deploy commands for '%s' successful. Output: %s", hostID, string(output)))
+	a.logger.Log(fmt.Sprintf("Deploy command for '%s' successful. Output: %s", hostID, string(output)))
+
+	// Display output to user if there's any
+	if len(output) > 0 {
+		fmt.Print(string(output))
+		if !strings.HasSuffix(string(output), "\n") {
+			fmt.Println()
+		}
+	}
+
 	return nil
 }
 

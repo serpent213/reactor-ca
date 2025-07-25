@@ -162,7 +162,7 @@ func TestIssueHost_Deploy(t *testing.T) {
 		Subject:      domain.SubjectConfig{CommonName: "deploy.test.com"},
 		Validity:     domain.Validity{Days: 1},
 		KeyAlgorithm: domain.ECP256,
-		Deploy:       domain.DeployConfig{Commands: []string{"echo deployed"}},
+		Deploy:       domain.DeployConfig{Command: "echo deployed"},
 	}
 	testCACert, testCAKey := testhelper.GetTestCACert(t)
 	realCrypto := cryptosvc.NewService()

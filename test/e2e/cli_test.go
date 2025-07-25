@@ -300,8 +300,7 @@ hosts:
       common_name: "deploy.reactor.test"
     validity: { days: 15 }
     deploy:
-      commands:
-        - "echo DEPLOYED > deployment.flag"
+      command: "echo DEPLOYED > deployment.flag"
 `
 	e.writeConfig("hosts.yaml", deployHostYAML)
 	e.runWithCheck(testPassword, "host", "issue", "deploy-target", "--deploy")

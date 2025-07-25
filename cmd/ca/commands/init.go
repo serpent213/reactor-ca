@@ -162,10 +162,10 @@ hosts:
     # - ${private_key}: Absolute path to a temporary, unencrypted private key file.
     #   This file is created with secure permissions and is automatically deleted after the script runs.
     deploy:
-      commands:
-        # - "scp ${chain} ${cert} user@host:/etc/ssl/certs/"
-        # - "ssh user@host -- 'systemctl reload nginx'"
-        - "echo 'Deployment for web-server-example would run now.'"
-        - "echo 'Cert Path: ${cert}'"
-        - "echo 'Key Path: ${private_key}'"
+      command: |
+        # scp ${chain} ${cert} user@host:/etc/ssl/certs/
+        # ssh user@host -- 'systemctl reload nginx'
+        echo 'Deployment for web-server-example would run now.'
+        echo 'Cert Path: ${cert}'
+        echo 'Key Path: ${private_key}'
 `
