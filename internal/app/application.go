@@ -71,7 +71,6 @@ func NewApplication(
 
 // ValidateConfig checks if the configuration files are valid.
 func (a *Application) ValidateConfig(ctx context.Context) error {
-	a.logger.Log("Validating configuration files...")
 	if _, err := a.configLoader.LoadCA(); err != nil {
 		return err
 	}
@@ -79,7 +78,6 @@ func (a *Application) ValidateConfig(ctx context.Context) error {
 		return err
 	}
 
-	a.logger.Log("Configuration files are valid.")
 	return nil
 }
 
@@ -100,7 +98,6 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		}
 	}
 
-	a.logger.Log("Loading CA configuration...")
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
@@ -123,31 +120,29 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		cryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdentityProvider)
 	}
 
-	a.logger.Log(fmt.Sprintf("Generating private key with algorithm %s...", cfg.CA.KeyAlgorithm))
 	key, err := cryptoSvc.GeneratePrivateKey(cfg.CA.KeyAlgorithm)
 	if err != nil {
 		return err
 	}
+	a.logger.Log(fmt.Sprintf("Generated private key with algorithm %s", cfg.CA.KeyAlgorithm))
 
-	a.logger.Log("Creating self-signed root certificate...")
 	cert, err := cryptoSvc.CreateRootCertificate(cfg, key)
 	if err != nil {
 		return err
 	}
+	a.logger.Log("Created self-signed root certificate")
 
-	a.logger.Log("Encrypting private key...")
 	encryptedKey, err := cryptoSvc.EncryptPrivateKey(key)
 	if err != nil {
 		return err
 	}
 
-	a.logger.Log("Saving CA certificate and encrypted key to store...")
 	certPEM := a.cryptoSvc.EncodeCertificateToPEM(cert)
 	if err := a.store.SaveCA(certPEM, encryptedKey); err != nil {
 		return err
 	}
+	a.logger.Log("Saved CA certificate and encrypted key to store")
 
-	a.logger.Log("CA created successfully.")
 	return nil
 }
 
@@ -160,32 +155,29 @@ func (a *Application) RenewCA(ctx context.Context) error {
 
 // renewCAWithKey implements the business logic for renewing the CA certificate.
 func (a *Application) renewCAWithKey(caKey crypto.Signer) error {
-	a.logger.Log("Renewing CA certificate...")
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
 	}
 
-	a.logger.Log("Creating new self-signed root certificate...")
 	newCert, err := a.cryptoSvc.CreateRootCertificate(cfg, caKey)
 	if err != nil {
 		return err
 	}
+	a.logger.Log("Created new self-signed root certificate")
 
-	a.logger.Log("Saving renewed CA certificate...")
 	certPEM := a.cryptoSvc.EncodeCertificateToPEM(newCert)
 	// We only need to save the cert, as the key is unchanged.
 	if err := a.store.SaveCA(certPEM, nil); err != nil {
 		return err
 	}
+	a.logger.Log("Saved renewed CA certificate")
 
-	a.logger.Log("CA renewed successfully.")
 	return nil
 }
 
 // RekeyCA creates a new key and certificate, replacing the old ones.
 func (a *Application) RekeyCA(ctx context.Context, force bool) error {
-	a.logger.Log("Re-keying CA. This will replace the existing CA key and certificate.")
 	if !force {
 		confirmed, err := a.userInteraction.Confirm("Are you sure you want to proceed? [y/N]: ")
 		if err != nil {
@@ -196,12 +188,15 @@ func (a *Application) RekeyCA(ctx context.Context, force bool) error {
 		}
 	}
 	// Create new CA, allowing overwrite of existing CA
-	return a.createCA(ctx, true)
+	if err := a.createCA(ctx, true); err != nil {
+		return err
+	}
+	a.logger.Log("Successfully re-keyed CA with new key and certificate")
+	return nil
 }
 
 // InfoCA returns a formatted string with details about the CA certificate.
 func (a *Application) InfoCA(ctx context.Context) (string, error) {
-	a.logger.Log("Loading CA certificate info...")
 	cert, err := a.store.LoadCACert()
 	if err != nil {
 		return "", err
@@ -211,7 +206,6 @@ func (a *Application) InfoCA(ctx context.Context) (string, error) {
 
 // ImportCA imports an existing CA from external files.
 func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) error {
-	a.logger.Log(fmt.Sprintf("Importing CA from cert: %s, key: %s", certPath, keyPath))
 
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
@@ -265,7 +259,7 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 	if err := a.store.SaveCA(certPEM, encryptedKey); err != nil {
 		return err
 	}
-	a.logger.Log("CA imported successfully.")
+	a.logger.Log(fmt.Sprintf("Successfully imported CA from cert: %s, key: %s", certPath, keyPath))
 	return nil
 }
 
@@ -273,7 +267,6 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 // For password mode: prompts for new password
 // For SSH/plugin mode: uses current configuration (allowing manual recipient updates)
 func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
-	a.logger.Log("Starting key re-encryption process...")
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
@@ -352,7 +345,6 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 	}
 	reEncryptedKeys := make([]reEncryptedKey, 0, len(keyPaths))
 
-	a.logger.Log(fmt.Sprintf("Decrypting %d keys with current encryption...", len(keyPaths)))
 	for _, path := range keyPaths {
 		encryptedPEM, err := os.ReadFile(path)
 		if err != nil {
@@ -377,12 +369,12 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 		reEncryptedKeys = append(reEncryptedKeys, reEncryptedKey{path: path, key: reEncrypted})
 	}
 
-	a.logger.Log("All keys decrypted successfully. Writing re-encrypted keys back to store...")
 	for _, item := range reEncryptedKeys {
 		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
 			return fmt.Errorf("FATAL: failed to write re-encrypted key %s. Your keys may be in an inconsistent state. PLEASE RESTORE FROM THE BACKUP. Error: %w", filepath.Base(item.path), err)
 		}
 	}
+	a.logger.Log("Successfully wrote all re-encrypted keys back to store")
 
 	a.logger.Log("Key re-encryption complete. Backup can be removed if everything is working.")
 	return nil
@@ -410,7 +402,6 @@ func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shoul
 
 // issueHostWithKey implements the business logic for issuing a host certificate.
 func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey crypto.Signer, rekey, shouldDeploy bool) error {
-	a.logger.Log(fmt.Sprintf("Starting certificate issuance for host '%s'", hostID))
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
 		return err
@@ -457,7 +448,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 			return err
 		}
 	} else {
-		a.logger.Log(fmt.Sprintf("Using existing key for '%s'.", hostID))
+		a.logger.Log(fmt.Sprintf("Using existing key for '%s'", hostID))
 		hostKeyData, err := a.store.LoadHostKey(hostID)
 		if err != nil {
 			return err
@@ -471,11 +462,11 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		}
 	}
 
-	a.logger.Log(fmt.Sprintf("Creating certificate for '%s'...", hostID))
 	hostCert, err := a.cryptoSvc.CreateHostCertificate(&hostCfg, caCert, caKey, hostKey.Public())
 	if err != nil {
 		return err
 	}
+	a.logger.Log(fmt.Sprintf("Created certificate for '%s'", hostID))
 	certPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 	if err := a.store.SaveHostCert(hostID, certPEM); err != nil {
 		return err
@@ -486,7 +477,6 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 	}
 
 	if shouldDeploy {
-		a.logger.Log(fmt.Sprintf("Deployment requested for '%s'.", hostID))
 		if err := a.DeployHost(ctx, hostID); err != nil {
 			return fmt.Errorf("deployment failed: %w", err)
 		}
@@ -505,22 +495,22 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 	// Export certificate
 	if hostCfg.Export.Cert != "" {
 		certPath := a.resolvePath(hostCfg.Export.Cert)
-		a.logger.Log(fmt.Sprintf("Exporting certificate to %s", certPath))
 		if err := a.writeFileWithDir(certPath, a.cryptoSvc.EncodeCertificateToPEM(hostCert), 0644); err != nil {
 			return fmt.Errorf("failed to export certificate: %w", err)
 		}
+		a.logger.Log(fmt.Sprintf("Exported certificate to %s", certPath))
 	}
 
 	// Export chain
 	if hostCfg.Export.Chain != "" {
 		chainPath := a.resolvePath(hostCfg.Export.Chain)
-		a.logger.Log(fmt.Sprintf("Exporting certificate chain to %s", chainPath))
 		hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 		caCertPEM := a.cryptoSvc.EncodeCertificateToPEM(caCert)
 		chain := bytes.Join([][]byte{hostCertPEM, caCertPEM}, []byte{})
 		if err := a.writeFileWithDir(chainPath, chain, 0644); err != nil {
 			return fmt.Errorf("failed to export chain: %w", err)
 		}
+		a.logger.Log(fmt.Sprintf("Exported certificate chain to %s", chainPath))
 	}
 	return nil
 }
@@ -546,7 +536,6 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	if strings.TrimSpace(hostCfg.Deploy.Command) == "" {
 		return domain.ErrNoDeployCommand
 	}
-	a.logger.Log(fmt.Sprintf("Running deploy command for '%s'", hostID))
 
 	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(hostKey)
 	if err != nil {
@@ -634,12 +623,11 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	shellScript := "set -euo pipefail\n" + substitutedCommand
 
 	// Execute via shell
-	a.logger.Log(fmt.Sprintf("Executing deploy script for '%s':\n%s", hostID, shellScript))
 	output, err := a.commander.Execute("bash", "-c", shellScript)
 	if err != nil {
 		return fmt.Errorf("deploy command failed: %w\nOutput:\n%s", err, string(output))
 	}
-	a.logger.Log(fmt.Sprintf("Deploy command for '%s' successful. Output: %s", hostID, string(output)))
+	a.logger.Log(fmt.Sprintf("Successfully executed deploy command for '%s'", hostID))
 
 	// Display output to user if there's any
 	if len(output) > 0 {
@@ -654,8 +642,6 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 
 // ListHosts returns information about all hosts (configured and/or stored).
 func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error) {
-	a.logger.Log("Listing hosts from config and store...")
-
 	// Load configured hosts
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
@@ -755,7 +741,6 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 
 // InfoHost returns details for a specific host certificate.
 func (a *Application) InfoHost(ctx context.Context, hostID string) (string, error) {
-	a.logger.Log(fmt.Sprintf("Loading host certificate info for '%s'...", hostID))
 	cert, err := a.store.LoadHostCert(hostID)
 	if err != nil {
 		return "", err
@@ -774,18 +759,17 @@ func (a *Application) ExportHostKey(ctx context.Context, hostID string) ([]byte,
 
 // exportHostKeyWithKey implements the business logic for exporting a host key.
 func (a *Application) exportHostKeyWithKey(hostID string, hostKey crypto.Signer, result *[]byte) error {
-	a.logger.Log(fmt.Sprintf("Exporting private key for host '%s'", hostID))
 	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(hostKey)
 	if err != nil {
 		return err
 	}
 	*result = keyPEM
+	a.logger.Log(fmt.Sprintf("Exported private key for host '%s'", hostID))
 	return nil
 }
 
 // ImportHostKey imports an external key for a host.
 func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string) error {
-	a.logger.Log(fmt.Sprintf("Importing key for host '%s' from %s", hostID, keyPath))
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
 		return err
@@ -811,7 +795,7 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 	if err := a.store.SaveHostKey(hostID, encryptedKey); err != nil {
 		return err
 	}
-	a.logger.Log(fmt.Sprintf("Key for host '%s' imported successfully.", hostID))
+	a.logger.Log(fmt.Sprintf("Successfully imported key for host '%s' from %s", hostID, keyPath))
 	return nil
 }
 
@@ -826,7 +810,6 @@ func (a *Application) SignCSR(ctx context.Context, csrPath string, validityDays 
 
 // signCSRWithKey implements the business logic for signing a CSR.
 func (a *Application) signCSRWithKey(csrPath string, validityDays int, caKey crypto.Signer, result *[]byte) error {
-	a.logger.Log(fmt.Sprintf("Signing CSR from %s", csrPath))
 	csrPEM, err := os.ReadFile(csrPath)
 	if err != nil {
 		return fmt.Errorf("failed to read CSR file: %w", err)
@@ -849,14 +832,13 @@ func (a *Application) signCSRWithKey(csrPath string, validityDays int, caKey cry
 		return err
 	}
 
-	a.logger.Log("CSR signed successfully.")
 	*result = a.cryptoSvc.EncodeCertificateToPEM(cert)
+	a.logger.Log(fmt.Sprintf("Successfully signed CSR from %s", csrPath))
 	return nil
 }
 
 // CleanHosts removes hosts from the store that are no longer in the config.
 func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, error) {
-	a.logger.Log("Checking for hosts to clean from the store...")
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
 		return nil, err
@@ -898,13 +880,13 @@ func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, err
 	}
 
 	for _, id := range toPrune {
-		a.logger.Log(fmt.Sprintf("Deleting host '%s' from store...", id))
 		if err := a.store.DeleteHost(id); err != nil {
 			a.logger.Error(fmt.Sprintf("Failed to delete host '%s': %v", id, err))
 			// Continue to next host
+		} else {
+			a.logger.Log(fmt.Sprintf("Successfully deleted host '%s' from store", id))
 		}
 	}
-	a.logger.Log("Host cleaning complete.")
 	return toPrune, nil
 }
 
