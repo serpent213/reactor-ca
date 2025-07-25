@@ -41,8 +41,8 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 	if cfg.CA.Subject.CommonName == "" {
 		return nil, fmt.Errorf("%w: ca.subject.common_name is required in ca.yaml", domain.ErrValidation)
 	}
-	if cfg.CA.Validity.Years == 0 && cfg.CA.Validity.Days == 0 {
-		return nil, fmt.Errorf("%w: ca.validity must have either 'years' or 'days' set in ca.yaml", domain.ErrValidation)
+	if cfg.CA.Validity.Years == 0 && cfg.CA.Validity.Months == 0 && cfg.CA.Validity.Days == 0 {
+		return nil, fmt.Errorf("%w: ca.validity must have either 'years', 'months', or 'days' set in ca.yaml", domain.ErrValidation)
 	}
 	if cfg.CA.KeyAlgorithm == "" {
 		return nil, fmt.Errorf("%w: ca.key_algorithm is required in ca.yaml", domain.ErrValidation)
@@ -77,8 +77,8 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 		if host.Subject.CommonName == "" {
 			return nil, fmt.Errorf("%w: hosts.%s.subject.common_name is required in hosts.yaml", domain.ErrValidation, id)
 		}
-		if host.Validity.Years == 0 && host.Validity.Days == 0 {
-			return nil, fmt.Errorf("%w: hosts.%s.validity must have either 'years' or 'days' set in hosts.yaml", domain.ErrValidation, id)
+		if host.Validity.Years == 0 && host.Validity.Months == 0 && host.Validity.Days == 0 {
+			return nil, fmt.Errorf("%w: hosts.%s.validity must have either 'years', 'months', or 'days' set in hosts.yaml", domain.ErrValidation, id)
 		}
 	}
 

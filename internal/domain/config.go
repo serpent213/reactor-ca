@@ -42,12 +42,15 @@ type SubjectConfig struct {
 
 // Validity defines the duration for which a certificate is valid.
 type Validity struct {
-	Years int `yaml:"years"`
-	Days  int `yaml:"days"`
+	Years  int `yaml:"years"`
+	Months int `yaml:"months"`
+	Days   int `yaml:"days"`
 }
 
 func (v Validity) ToDuration() time.Duration {
-	return time.Duration(v.Years)*365*24*time.Hour + time.Duration(v.Days)*24*time.Hour
+	return time.Duration(v.Years)*365*24*time.Hour +
+		time.Duration(v.Months)*30*24*time.Hour +
+		time.Duration(v.Days)*24*time.Hour
 }
 
 // PasswordConfig defines how the master password is managed.
