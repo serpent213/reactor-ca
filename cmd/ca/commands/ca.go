@@ -20,6 +20,7 @@ var caCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new CA key and self-signed certificate",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Creating new CA certificate and private key")
 		app := getApp(cmd)
 		err := app.CreateCA(cmd.Context())
 		if err != nil {
@@ -38,6 +39,7 @@ var caRenewCmd = &cobra.Command{
 	Use:   "renew",
 	Short: "Renew the CA certificate using the existing key",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Renewing CA certificate with existing private key")
 		app := getApp(cmd)
 		err := app.RenewCA(cmd.Context())
 		if err != nil {
@@ -73,6 +75,7 @@ re-issue and re-deploy all host certificates after this operation.`),
 			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
 		}
 
+		ui.Action("Creating new CA private key and certificate (re-key operation)")
 		err := app.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err
@@ -87,6 +90,7 @@ var caInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Display detailed information about the CA certificate",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Retrieving CA certificate information")
 		app := getApp(cmd)
 		info, err := app.InfoCA(cmd.Context())
 		if err != nil {
@@ -106,6 +110,7 @@ var caImportCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import an existing CA certificate and private key",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Importing existing CA certificate and private key from %s, %s", importCertPath, importKeyPath)
 		app := getApp(cmd)
 		err := app.ImportCA(cmd.Context(), importCertPath, importKeyPath)
 		if err != nil {
@@ -128,6 +133,7 @@ Re-encrypt all private keys in the store with new encryption parameters:
 A round-trip validation test is performed to ensure you can decrypt
 the re-encrypted keys. Use --force to bypass validation failures.`),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Re-encrypting all private keys with updated encryption parameters")
 		app := getApp(cmd)
 		force, _ := cmd.Flags().GetBool("force")
 		err := app.ReencryptKeys(cmd.Context(), force)

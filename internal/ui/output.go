@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -25,7 +26,7 @@ func Success(msg string, args ...interface{}) {
 // Error prints an error message with red ✗ symbol
 func Error(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Printf("%s %s\n", red("✗"), formatted)
+	fmt.Fprintf(os.Stderr, "%s %s\n", red("✗"), formatted)
 }
 
 // Warning prints a warning message with yellow ! symbol

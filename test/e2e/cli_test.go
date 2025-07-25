@@ -168,7 +168,7 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 	if err == nil {
 		t.Fatal("`export-key` succeeded with wrong password, but should have failed")
 	}
-	if !strings.Contains(stderr, "incorrect password") {
+	if !strings.Contains(stderr, "Incorrect password") {
 		t.Errorf("Expected decryption error, got: %s", stderr)
 	}
 }

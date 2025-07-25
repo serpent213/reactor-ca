@@ -1,19 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"os"
+	"strings"
 
-	"github.com/fatih/color"
 	"reactor.de/reactor-ca/cmd/ca/commands"
+	"reactor.de/reactor-ca/internal/ui"
 )
 
 var version = "dev"
 
 func main() {
 	if err := commands.Execute(version); err != nil {
-		// Use color for better visibility, and a clear "Error:" prefix.
-		fmt.Fprintln(os.Stderr, color.RedString("Error: %v", err))
+		ui.Error("%s", strings.ToUpper(err.Error()[:1])+err.Error()[1:])
 		os.Exit(1)
 	}
 }

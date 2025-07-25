@@ -54,6 +54,9 @@ var hostListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all host certificates in the store with their status",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !listJSON {
+			ui.Action("Listing host certificates from store")
+		}
 		app := getApp(cmd)
 		list, err := app.ListHosts(cmd.Context())
 		if err != nil {
@@ -153,6 +156,7 @@ var hostInfoCmd = &cobra.Command{
 	Short: "Display detailed information about a specific host certificate",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Retrieving certificate information for host '%s'", args[0])
 		app := getApp(cmd)
 		info, err := app.InfoHost(cmd.Context(), args[0])
 		if err != nil {
@@ -191,6 +195,7 @@ var hostExportKeyCmd = &cobra.Command{
 	Long:  `Exports the unencrypted private key for a host to a specified file or stdout.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Exporting unencrypted private key for host '%s'", args[0])
 		app := getApp(cmd)
 		hostID := args[0]
 		pemKey, err := app.ExportHostKey(cmd.Context(), hostID)
@@ -218,6 +223,7 @@ var hostImportKeyCmd = &cobra.Command{
 	Short: "Import a pre-existing private key for a host",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Importing private key for host '%s' from %s", args[0], importHostKeyPath)
 		app := getApp(cmd)
 		err := app.ImportHostKey(cmd.Context(), args[0], importHostKeyPath)
 		if err != nil {
@@ -238,6 +244,7 @@ var hostSignCSRCmd = &cobra.Command{
 	Use:   "sign-csr",
 	Short: "Sign an external Certificate Signing Request (CSR)",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Signing external CSR from %s (valid for %d days)", csrPath, csrDays)
 		app := getApp(cmd)
 		certPEM, err := app.SignCSR(cmd.Context(), csrPath, csrDays)
 		if err != nil {
@@ -262,6 +269,7 @@ var hostCleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Prune certificates/keys from the store for hosts no longer in hosts.yaml",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Cleaning orphaned certificates from store")
 		app := getApp(cmd)
 		pruned, err := app.CleanHosts(cmd.Context(), forceClean)
 		if err != nil {

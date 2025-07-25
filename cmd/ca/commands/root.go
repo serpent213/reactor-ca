@@ -33,6 +33,8 @@ var rootCmd = &cobra.Command{
 ReactorCA provides a secure, reliable, and user-friendly Command-Line
 Interface (CLI) for managing a private Public Key Infrastructure (PKI)
 suitable for homelab and small-to-medium business environments.`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Do not run dependency injection for the 'init' command or help.
 		if cmd.Name() == "init" || cmd.Name() == "help" || cmd.Name() == "completion" {

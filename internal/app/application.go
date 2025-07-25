@@ -73,10 +73,10 @@ func NewApplication(
 func (a *Application) ValidateConfig(ctx context.Context) error {
 	a.logger.Log("Validating configuration files...")
 	if _, err := a.configLoader.LoadCA(); err != nil {
-		return fmt.Errorf("invalid ca.yaml: %w", err)
+		return err
 	}
 	if _, err := a.configLoader.LoadHosts(); err != nil {
-		return fmt.Errorf("invalid hosts.yaml: %w", err)
+		return err
 	}
 
 	a.logger.Log("Configuration files are valid.")
