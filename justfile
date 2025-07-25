@@ -43,6 +43,9 @@ build-cross platform="all":
         GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-windows-arm64.exe ./cmd/ca
     fi
 
+build-nix:
+    nix build
+
 debug: (build "debug")
 
 release: (build "release")
@@ -50,6 +53,7 @@ release: (build "release")
 fmt:
     gofmt -s -w {{dirs}}
     go tool yamlfmt -quiet example_config/ .github/
+    nixfmt *.nix
 
 fmt-check:
     @echo "Checking Go formatting..."
@@ -92,11 +96,6 @@ test type="all":
         exit 1
     fi
 
-# Legacy aliases for compatibility
-test-unit: (test "unit")
-test-integration: (test "integration")
-test-e2e: (test "e2e")
-
 tidy:
     go mod tidy
 
@@ -104,8 +103,6 @@ update:
     go get -u ./...
     go mod tidy
 
-check: lint build test tidy
+check: lint build tidy test build-nix
 
 ci: lint tidy test release
-
-release-all: build-cross

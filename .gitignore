@@ -9,9 +9,10 @@
 /config/
 
 # Nix
-.direnv/
-.devenv/
-.devenv.flake.nix
+/.direnv/
+/.devenv/
+/.devenv.flake.nix
+/result
 
 # LLMs
 **/.claude/settings.local.json
