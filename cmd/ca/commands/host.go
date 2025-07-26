@@ -34,17 +34,9 @@ A new key is generated only if one does not already exist, unless --rekey is spe
 			app := getApp(cmd)
 
 			// First, resolve and validate the host configuration
-			_, warnings, err := app.ResolveHostConfig(hostID)
+			_, err := app.ResolveHostConfig(hostID, rekeyHost)
 			if err != nil {
 				return err
-			}
-
-			// Display any warnings to the user (skip key algorithm warnings if rekeying)
-			for _, warning := range warnings {
-				if rekeyHost && warning.Type == "key_algorithm_mismatch" {
-					continue // Skip this warning since we're about to regenerate the key
-				}
-				ui.Warning("%s", warning.Message)
 			}
 
 			return app.IssueHost(ctx, hostID, rekeyHost, deployHost)

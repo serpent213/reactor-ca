@@ -130,7 +130,8 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 	if err != nil {
 		return err
 	}
-	a.logger.Log("Created self-signed root certificate")
+	a.logger.Log(fmt.Sprintf("Created self-signed root certificate with %s signature", cfg.CA.HashAlgorithm))
+	ui.Info("Created CA certificate with %s signature", cfg.CA.HashAlgorithm)
 
 	encryptedKey, err := cryptoSvc.EncryptPrivateKey(key)
 	if err != nil {
@@ -492,10 +493,13 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		return err
 	}
 	if rekey || !keyExists {
+		keyAlgoStr := string(resolvedHostCfg.KeyAlgorithm)
 		if rekey {
-			a.logger.Log(fmt.Sprintf("Rekey requested for '%s'. Generating new key.", hostID))
+			a.logger.Log(fmt.Sprintf("Rekey requested for '%s'. Generating new %s key.", hostID, keyAlgoStr))
+			ui.Info("Generated new %s private key (rekey requested)", keyAlgoStr)
 		} else {
-			a.logger.Log(fmt.Sprintf("No key found for '%s'. Generating new key.", hostID))
+			a.logger.Log(fmt.Sprintf("No key found for '%s'. Generating new %s key.", hostID, keyAlgoStr))
+			ui.Info("Generated new %s private key", keyAlgoStr)
 		}
 		hostKey, err = a.cryptoSvc.GeneratePrivateKey(resolvedHostCfg.KeyAlgorithm)
 		if err != nil {
@@ -541,7 +545,8 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 			return fmt.Errorf("deployment failed: %w", err)
 		}
 	}
-	a.logger.Log(fmt.Sprintf("Successfully issued certificate for '%s'", hostID))
+	a.logger.Log(fmt.Sprintf("Successfully issued certificate for '%s' with %s signature", hostID, resolvedHostCfg.HashAlgorithm))
+	ui.Info("Created certificate with %s signature", resolvedHostCfg.HashAlgorithm)
 	return nil
 }
 
@@ -1042,86 +1047,78 @@ func getKeyLength(publicKey crypto.PublicKey) int {
 	}
 }
 
-// ValidateCAConfig checks for CA configuration issues and returns warnings.
-func (a *Application) ValidateCAConfig() ([]domain.ValidationWarning, error) {
+// ValidateCAConfig checks for CA configuration issues and displays warnings.
+func (a *Application) ValidateCAConfig(skipKeyWarnings bool) error {
 	caCfg, err := a.configLoader.LoadCA()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var warnings []domain.ValidationWarning
-
-	// Check for key algorithm mismatch if CA key exists
-	caExists, err := a.store.CAExists()
-	if err != nil {
-		return nil, err
-	}
-	if caExists {
-		caKeyData, err := a.store.LoadCAKey()
+	// Check for key algorithm mismatch if CA key exists (skip if rekeying)
+	if !skipKeyWarnings {
+		caExists, err := a.store.CAExists()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData)
-		if err == nil { // Only check if we can decrypt the key
-			if !a.keyAlgorithmMatches(caKey, caCfg.CA.KeyAlgorithm) {
-				a.logger.Log(fmt.Sprintf("Warning: Existing CA key does not match configured algorithm (%s)", caCfg.CA.KeyAlgorithm))
-				warnings = append(warnings, domain.ValidationWarning{
-					Type:    "key_algorithm_mismatch",
-					Message: fmt.Sprintf("Existing CA key does not match configured algorithm (%s). Use 'ca rekey' to regenerate.", caCfg.CA.KeyAlgorithm),
-					HostID:  "CA",
-				})
+		if caExists {
+			caKeyData, err := a.store.LoadCAKey()
+			if err != nil {
+				return err
+			}
+			caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData)
+			if err == nil { // Only check if we can decrypt the key
+				if !a.keyAlgorithmMatches(caKey, caCfg.CA.KeyAlgorithm) {
+					a.logger.Log(fmt.Sprintf("Warning: Existing CA key does not match configured algorithm (%s)", caCfg.CA.KeyAlgorithm))
+					ui.Warning("Existing CA key does not match configured algorithm (%s). Use 'ca rekey' to regenerate.", caCfg.CA.KeyAlgorithm)
+				}
 			}
 		}
 	}
 
-	return warnings, nil
+	return nil
 }
 
 // ResolveHostConfig applies inheritance from CA config and validates host config.
-func (a *Application) ResolveHostConfig(hostID string) (domain.HostConfig, []domain.ValidationWarning, error) {
+func (a *Application) ResolveHostConfig(hostID string, skipKeyWarnings bool) (domain.HostConfig, error) {
 	hostsCfg, err := a.configLoader.LoadHosts()
 	if err != nil {
-		return domain.HostConfig{}, nil, err
+		return domain.HostConfig{}, err
 	}
 
 	hostCfg, ok := hostsCfg.Hosts[hostID]
 	if !ok {
-		return domain.HostConfig{}, nil, domain.ErrHostNotFoundInConfig
+		return domain.HostConfig{}, domain.ErrHostNotFoundInConfig
 	}
 
 	caCfg, err := a.configLoader.LoadCA()
 	if err != nil {
-		return domain.HostConfig{}, nil, err
+		return domain.HostConfig{}, err
 	}
 
 	resolvedHostCfg := a.resolveHostConfig(hostCfg, caCfg)
 
-	var warnings []domain.ValidationWarning
-
-	// Check for key algorithm mismatch if key exists
-	keyExists, err := a.store.HostKeyExists(hostID)
-	if err != nil {
-		return domain.HostConfig{}, nil, err
-	}
-	if keyExists {
-		hostKeyData, err := a.store.LoadHostKey(hostID)
+	// Check for key algorithm mismatch if key exists (skip if rekeying)
+	if !skipKeyWarnings {
+		keyExists, err := a.store.HostKeyExists(hostID)
 		if err != nil {
-			return domain.HostConfig{}, nil, err
+			return domain.HostConfig{}, err
 		}
-		hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData)
-		if err == nil { // Only check if we can decrypt the key
-			if !a.keyAlgorithmMatches(hostKey, resolvedHostCfg.KeyAlgorithm) {
-				a.logger.Log(fmt.Sprintf("Warning: Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedHostCfg.KeyAlgorithm))
-				warnings = append(warnings, domain.ValidationWarning{
-					Type:    "key_algorithm_mismatch",
-					Message: fmt.Sprintf("Existing key for '%s' does not match configured algorithm (%s). Use --rekey to regenerate.", hostID, resolvedHostCfg.KeyAlgorithm),
-					HostID:  hostID,
-				})
+		if keyExists {
+			hostKeyData, err := a.store.LoadHostKey(hostID)
+			if err != nil {
+				return domain.HostConfig{}, err
+			}
+			hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData)
+			if err == nil { // Only check if we can decrypt the key
+				if !a.keyAlgorithmMatches(hostKey, resolvedHostCfg.KeyAlgorithm) {
+					a.logger.Log(fmt.Sprintf("Warning: Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedHostCfg.KeyAlgorithm))
+					ui.Warning("Existing key for '%s' does not match configured algorithm (%s). Use --rekey to regenerate.", hostID, resolvedHostCfg.KeyAlgorithm)
+				}
 			}
 		}
 	}
 
-	return resolvedHostCfg, warnings, nil
+	return resolvedHostCfg, nil
 }
 
 // resolveHostConfig applies inheritance from CA config to host config.

@@ -24,14 +24,9 @@ var caCreateCmd = &cobra.Command{
 		app := getApp(cmd)
 
 		// Validate CA configuration
-		warnings, err := app.ValidateCAConfig()
+		err := app.ValidateCAConfig(false)
 		if err != nil {
 			return err
-		}
-
-		// Display any warnings
-		for _, warning := range warnings {
-			ui.Warning("%s", warning.Message)
 		}
 
 		err = app.CreateCA(cmd.Context())
@@ -55,14 +50,9 @@ var caRenewCmd = &cobra.Command{
 		app := getApp(cmd)
 
 		// Validate CA configuration
-		warnings, err := app.ValidateCAConfig()
+		err := app.ValidateCAConfig(false)
 		if err != nil {
 			return err
-		}
-
-		// Display any warnings
-		for _, warning := range warnings {
-			ui.Warning("%s", warning.Message)
 		}
 
 		err = app.RenewCA(cmd.Context())
@@ -99,18 +89,10 @@ re-issue and re-deploy all host certificates after this operation.`),
 			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
 		}
 
-		// Validate CA configuration (mainly for other potential issues)
-		warnings, err := app.ValidateCAConfig()
+		// Validate CA configuration (skip key warnings since rekey will fix them)
+		err := app.ValidateCAConfig(true)
 		if err != nil {
 			return err
-		}
-
-		// Display any warnings (skip key algorithm warnings since rekey will fix them)
-		for _, warning := range warnings {
-			if warning.Type == "key_algorithm_mismatch" {
-				continue // Skip this warning since we're about to regenerate the key
-			}
-			ui.Warning("%s", warning.Message)
 		}
 
 		ui.Action("Creating new CA private key and certificate (re-key operation)")

@@ -15,10 +15,3 @@ var (
 	ErrNoDeployCommand      = errors.New("no deploy command configured for this host")
 	ErrIncorrectPassword    = errors.New("incorrect password")
 )
-
-// ValidationWarning represents a non-fatal configuration issue.
-type ValidationWarning struct {
-	Type    string // "key_algorithm_mismatch", "hash_algorithm_mismatch", etc.
-	Message string // Human-readable message for UI
-	HostID  string // Optional: relevant host ID
-}
