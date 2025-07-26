@@ -51,9 +51,10 @@ just fmt
 just lint
 
 # Run tests
-just test             # All tests
-just test-unit        # Unit tests only
-just test-integration # Integration tests only
+just test             # All tests (unit, integration, e2e)
+just test unit        # Unit tests only
+just test integration # Integration tests only
+just test e2e         # End-to-end tests only
 
 # Full CI pipeline
 just ci
@@ -105,7 +106,7 @@ Central orchestrator that coordinates between domain interfaces. Key methods:
 - `ExportHostKey()` - Export host private key
 - `ImportHostKey()` - Import host private key
 - `SignCSR()` - Sign external certificate signing request
-- `ReencryptKeys()` - Re-encrypt all keys with new identity provider
+- `ReencryptKeys()` - Re-encrypt all keys with new identity provider (with .bak file backup/rollback)
 - `ValidateConfig()` - Validate configuration files
 
 ### Domain Interfaces (`internal/domain/interfaces.go`)
@@ -133,13 +134,17 @@ Central orchestrator that coordinates between domain interfaces. Key methods:
 store/
 ├── ca/
 │   ├── ca.crt           # CA certificate (PEM)
-│   └── ca.key.age       # Age-encrypted CA private key
+│   ├── ca.key.age       # Age-encrypted CA private key
+│   └── ca.key.age.bak   # Backup during reencryption (auto-cleaned)
 ├── hosts/
 │   └── <host-id>/
 │       ├── cert.crt     # Host certificate (PEM) 
-│       └── cert.key.age # Age-encrypted host private key
+│       ├── cert.key.age # Age-encrypted host private key
+│       └── cert.key.age.bak # Backup during reencryption (auto-cleaned)
 └── ca.log               # Operation log
 ```
+
+Note: `.bak` files are created temporarily during `ca reencrypt` operations and are automatically cleaned up on success or can be used for rollback on failure.
 
 ## Security Notes
 
@@ -214,11 +219,3 @@ Focus testing on:
 - Configuration parsing edge cases
 - Store operations with filesystem mocks
 - CLI command integration and end-to-end flows
-
-### Test Commands
-```bash
-just test             # All tests
-just test-unit        # Unit tests only
-just test-integration # Integration tests with filesystem
-just test-e2e         # End-to-end CLI tests
-```
