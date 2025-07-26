@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration_test
+package integration
 
 import (
 	"context"
@@ -42,13 +42,6 @@ func (m *mockUserInteraction) Confirm(prompt string) (bool, error) {
 	return m.confirmResponse, nil
 }
 
-// mockLogger provides a no-op logger for testing
-type mockLogger struct{}
-
-func (m *mockLogger) Info(msg string, args ...interface{})  {}
-func (m *mockLogger) Error(msg string, args ...interface{}) {}
-func (m *mockLogger) Log(msg string)                        {}
-
 func TestReencryptRollback_Integration(t *testing.T) {
 	// Set password environment variable
 	t.Setenv("REACTOR_CA_PASSWORD", "test-password-123")
@@ -65,7 +58,7 @@ func TestReencryptRollback_Integration(t *testing.T) {
 	storeDir := filepath.Join(tempDir, "store")
 
 	// Set up infrastructure components
-	logger := &mockLogger{}
+	logger := &MockLogger{}
 	configLoader := config.NewYAMLConfigLoader(configDir)
 	realStore := store.NewFileStore(storeDir)
 	mockStore := &mockStoreWithWriteFailure{

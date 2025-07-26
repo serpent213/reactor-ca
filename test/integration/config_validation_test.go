@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration_test
+package integration
 
 import (
 	"context"
@@ -87,7 +87,7 @@ func testValidateExampleConfig(t *testing.T, exampleFilePath string) {
 }
 
 func createTestApplication(rootPath string) *app.Application {
-	logger := &mockLogger{}
+	logger := &MockLogger{}
 	configLoader := config.NewYAMLConfigLoader(filepath.Join(rootPath, "config"))
 	store := store.NewFileStore(rootPath)
 	passwordProvider := password.NewProvider()
@@ -111,12 +111,6 @@ func createTestApplication(rootPath string) *app.Application {
 		validationService,
 	)
 }
-
-type mockLogger struct{}
-
-func (m *mockLogger) Info(msg string, args ...interface{})  {}
-func (m *mockLogger) Error(msg string, args ...interface{}) {}
-func (m *mockLogger) Log(msg string)                        {}
 
 func findProjectRoot() (string, error) {
 	cwd, err := os.Getwd()
