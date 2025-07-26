@@ -136,7 +136,8 @@ the re-encrypted keys. Use --force to bypass validation failures.`),
 		ui.Action("Re-encrypting all private keys with updated encryption parameters")
 		app := getApp(cmd)
 		force, _ := cmd.Flags().GetBool("force")
-		err := app.ReencryptKeys(cmd.Context(), force)
+		rollback, _ := cmd.Flags().GetBool("rollback")
+		err := app.ReencryptKeys(cmd.Context(), force, rollback)
 		if err != nil {
 			return err
 		}
@@ -153,6 +154,7 @@ func init() {
 
 	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation")
+	caReencryptCmd.Flags().Bool("rollback", false, "Automatically rollback from .bak files on failure")
 
 	caCmd.AddCommand(caCreateCmd)
 	caCmd.AddCommand(caRenewCmd)

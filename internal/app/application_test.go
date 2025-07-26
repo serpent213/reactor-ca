@@ -484,7 +484,7 @@ func TestReencryptKeys_PasswordChange_Success(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Assertions
 	if err != nil {
@@ -521,7 +521,7 @@ func TestReencryptKeys_PasswordChange_WrongOldPassword(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Assertions
 	if !errors.Is(err, domain.ErrIncorrectPassword) {
@@ -547,7 +547,7 @@ func TestReencryptKeys_AgeSsh_UserNotInRecipients_Warning(t *testing.T) {
 	})
 
 	// Execute without force flag - should prompt user
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should succeed because user confirmed
 	if err != nil {
@@ -573,7 +573,7 @@ func TestReencryptKeys_AgeSsh_ValidationFailure_UserDeclines(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should fail because user declined
 	if err == nil {
@@ -603,7 +603,7 @@ func TestReencryptKeys_AgeSsh_ValidRecipients_Success(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should succeed without prompts
 	if err != nil {
@@ -628,7 +628,7 @@ func TestReencryptKeys_AgeSsh_RoundTripFailure_ForceSkip(t *testing.T) {
 	})
 
 	// Execute with force=true to skip validation
-	err := app.ReencryptKeys(context.Background(), true)
+	err := app.ReencryptKeys(context.Background(), true, false)
 
 	// Should succeed because validation was skipped
 	if err != nil {
@@ -654,7 +654,7 @@ func TestReencryptKeys_Plugin_Success(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should succeed
 	if err != nil {
@@ -677,7 +677,7 @@ func TestReencryptKeys_NoKeysToReencrypt(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should succeed with no keys to process
 	if err != nil {
@@ -702,7 +702,7 @@ func TestReencryptKeys_PartialFailure_StoreUpdateError(t *testing.T) {
 	})
 
 	// Execute
-	err := app.ReencryptKeys(context.Background(), false)
+	err := app.ReencryptKeys(context.Background(), false, false)
 
 	// Should fail on store update
 	if err == nil {

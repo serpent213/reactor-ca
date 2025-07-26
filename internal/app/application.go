@@ -264,7 +264,7 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 // ReencryptKeys re-encrypts all keys in the store with new encryption parameters.
 // For password mode: prompts for new password
 // For SSH/plugin mode: uses current configuration (allowing manual recipient updates)
-func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
+func (a *Application) ReencryptKeys(ctx context.Context, force bool, rollback bool) error {
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
@@ -325,11 +325,11 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool) error {
 	// Create new crypto service with new identity provider
 	newCryptoSvc := a.cryptoServiceFactory.CreateCryptoService(newIdentityProvider)
 
-	return a.reencryptKeysWithService(newCryptoSvc, backedUpFiles)
+	return a.reencryptKeysWithService(newCryptoSvc, backedUpFiles, rollback)
 }
 
 // reencryptKeysWithService handles the actual key re-encryption process.
-func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService, backedUpFiles []string) error {
+func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService, backedUpFiles []string, rollback bool) error {
 	keyPaths, err := a.store.GetAllEncryptedKeyPaths()
 	if err != nil {
 		return fmt.Errorf("failed to list keys in store: %w", err)
@@ -374,7 +374,7 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 		if err := a.store.UpdateEncryptedKey(item.path, item.key); err != nil {
 			// On write failure, offer rollback
 			a.logger.Log(fmt.Sprintf("Failed to write re-encrypted key %s: %v", filepath.Base(item.path), err))
-			return a.handleReencryptionFailure(writtenFiles, backedUpFiles, fmt.Errorf("failed to write re-encrypted key %s: %w", filepath.Base(item.path), err))
+			return a.handleReencryptionFailure(writtenFiles, backedUpFiles, rollback, fmt.Errorf("failed to write re-encrypted key %s: %w", filepath.Base(item.path), err))
 		}
 		writtenFiles = append(writtenFiles, item.path)
 	}
@@ -387,15 +387,25 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 }
 
 // handleReencryptionFailure offers the user a rollback option and handles cleanup
-func (a *Application) handleReencryptionFailure(writtenFiles, backedUpFiles []string, originalErr error) error {
+func (a *Application) handleReencryptionFailure(writtenFiles, backedUpFiles []string, rollback bool, originalErr error) error {
 	ui.Error("Re-encryption failed: %v", originalErr)
 	ui.Warning("Some keys may have been partially re-encrypted.")
 
-	// Offer rollback
-	confirmed, err := a.userInteraction.Confirm("Would you like to rollback all changes from .bak files? [y/N]: ")
-	if err != nil {
-		ui.Error("Failed to get user confirmation: %v", err)
-		return fmt.Errorf("FATAL: %w. Manual rollback required from .bak files", originalErr)
+	// Determine if we should rollback
+	var confirmed bool
+	var err error
+
+	if rollback {
+		// --rollback flag provided, automatically rollback
+		confirmed = true
+		ui.Action("Automatically rolling back due to --rollback flag")
+	} else {
+		// Ask user for confirmation
+		confirmed, err = a.userInteraction.Confirm("Would you like to rollback all changes from .bak files? [y/N]: ")
+		if err != nil {
+			ui.Error("Failed to get user confirmation: %v", err)
+			return fmt.Errorf("FATAL: %w. Manual rollback required from .bak files", originalErr)
+		}
 	}
 
 	if confirmed {
