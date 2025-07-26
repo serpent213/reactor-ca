@@ -105,13 +105,54 @@ test type="all":
         exit 1
     fi
 
+check: lint build tidy test build-nix
+
+ci: lint tidy test release
+
 tidy:
     go mod tidy
 
 update:
     go get -u ./...
     go mod tidy
+    @just update-flake
 
-check: lint build tidy test build-nix
+update-flake:
+    #!/usr/bin/env bash
+    echo "Updating vendor hash in flake.nix..."
 
-ci: lint tidy test release
+    # First, set vendorHash to lib.fakeHash
+    sed -i.bak 's/vendorHash = ".*";/vendorHash = pkgs.lib.fakeHash;/' flake.nix
+
+    # Try to build and capture the output
+    if output=$(nix build .#reactor-ca 2>&1); then
+        echo "Build succeeded unexpectedly. No hash update needed."
+        # Restore original if build succeeded
+        mv flake.nix.bak flake.nix
+    else
+        # Extract the correct hash from the error output (the "got:" line)
+        correct_hash=$(echo "$output" | grep "got:" | grep -o 'sha256-[A-Za-z0-9+/]\{43\}=')
+        if [ -n "$correct_hash" ]; then
+            echo "Found correct hash: $correct_hash"
+            # Update flake.nix with the correct hash
+            sed -i "s|vendorHash = pkgs.lib.fakeHash;|vendorHash = \"$correct_hash\";|" flake.nix
+            echo "Updated vendorHash in flake.nix"
+            rm -f flake.nix.bak
+
+            # Verify the build works now
+            echo "Verifying build with new hash..."
+            if nix build .#reactor-ca; then
+                echo "Build successful with updated vendor hash"
+            else
+                echo "Build still failing after hash update"
+                exit 1
+            fi
+        else
+            echo "Could not extract vendor hash from build output"
+            echo "Build output:"
+            echo "$output"
+            # Restore original on failure
+            mv flake.nix.bak flake.nix
+            exit 1
+        fi
+    fi
