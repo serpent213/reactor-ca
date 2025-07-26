@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+
+# DON'T EXPECT THIS TO WORK!
+
+import sys
+import subprocess
+import os
+from datetime import datetime
+
+def log_message(msg, direction=""):
+    """Log messages with timestamp and direction"""
+    if os.environ.get('AGE_PLUGIN_MOCK_TRACK_FILE'):
+        with open(os.environ['AGE_PLUGIN_MOCK_TRACK_FILE'], 'a') as f:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f"{timestamp} {direction}: {msg}\n")
+
+def log_invocation():
+    """Log the plugin invocation"""
+    if os.environ.get('AGE_PLUGIN_MOCK_TRACK_FILE'):
+        with open(os.environ['AGE_PLUGIN_MOCK_TRACK_FILE'], 'a') as f:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            f.write(f"{timestamp} - Plugin invoked with args: {' '.join(sys.argv[1:])}\n")
+
+def find_real_plugin():
+    """Find the real age-plugin-se binary excluding our test directory"""
+    # Get PATH excluding our test directory
+    path_dirs = os.environ.get('PATH', '').split(':')
+    filtered_dirs = [d for d in path_dirs if not d.endswith('/test')]
+    
+    # Search for real plugin
+    for directory in filtered_dirs:
+        plugin_path = os.path.join(directory, 'age-plugin-se')
+        if os.path.isfile(plugin_path) and os.access(plugin_path, os.X_OK):
+            return plugin_path
+    
+    return None
+
+def main():
+    # Log the invocation
+    log_invocation()
+    
+    # Find real plugin
+    real_plugin = find_real_plugin()
+    if not real_plugin:
+        print("Error: Real age-plugin-se not found in PATH", file=sys.stderr)
+        sys.exit(1)
+    
+    # Log that we're starting communication
+    log_message(f"Starting real plugin: {real_plugin}", "INFO")
+    
+    # Start the real plugin as subprocess
+    try:
+        process = subprocess.Popen(
+            [real_plugin] + sys.argv[1:],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=0  # Unbuffered
+        )
+        
+        # Forward all I/O and log it
+        import threading
+        import queue
+        
+        def read_stdout():
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                line = line.rstrip('\n\r')
+                log_message(f"STDOUT: {repr(line)}", ">>")
+                print(line, flush=True)
+        
+        def read_stderr():
+            while True:
+                line = process.stderr.readline()
+                if not line:
+                    break
+                line = line.rstrip('\n\r')
+                log_message(f"STDERR: {repr(line)}", ">>")
+                print(line, file=sys.stderr, flush=True)
+        
+        # Start threads to read stdout/stderr
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # Forward stdin
+        try:
+            while True:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                log_message(f"STDIN: {repr(line.rstrip())}", "<<")
+                process.stdin.write(line)
+                process.stdin.flush()
+        except (BrokenPipeError, EOFError):
+            pass
+        
+        # Close stdin to signal we're done
+        process.stdin.close()
+        
+        # Wait for process to complete
+        exit_code = process.wait()
+        log_message(f"Plugin exited with code: {exit_code}", "INFO")
+        
+        # Wait for output threads to finish
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
+        
+        sys.exit(exit_code)
+        
+    except Exception as e:
+        log_message(f"Error running real plugin: {e}", "ERROR")
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# DON'T EXPECT THIS TO WORK!
+
 set -e
 
 # Mock age plugin for testing ReactorCA
