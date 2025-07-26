@@ -1,7 +1,9 @@
-###################################
-# ReactorCA
-# by Steffen Beyer in 2025
-###################################
+#  ______                                    ______
+# (_____ \                  _               / _____)  /\
+#  _____) ) ____ ____  ____| |_  ___   ____| /       /  \
+# (_____ ( / _  ) _  |/ ___)  _)/ _ \ / ___) |      / /\ \
+#       | ( (/ ( ( | ( (___| |_| |_| | |   | \_____| |__| |
+#       |_|\____)_||_|\____)\___)___/|_|    \______)______|
 
 version := "0.3.0"
 dirs := "./cmd ./internal ./test"
@@ -41,6 +43,13 @@ build-cross platform="all":
         GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-windows-amd64.exe ./cmd/ca
         echo "Building for Windows ARM64..."
         GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-windows-arm64.exe ./cmd/ca
+    fi
+
+    if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "freebsd" ]; then
+        echo "Building for FreeBSD x86_64..."
+        GOOS=freebsd GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-freebsd-amd64 ./cmd/ca
+        echo "Building for FreeBSD ARM64..."
+        GOOS=freebsd GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-freebsd-arm64 ./cmd/ca
     fi
 
 build-nix:

@@ -68,6 +68,8 @@ jobs:
           gh release upload ${{ github.event.release.tag_name }} \
             ./dist/reactor-ca-linux-amd64 \
             ./dist/reactor-ca-linux-arm64 \
+            ./dist/reactor-ca-freebsd-amd64 \
+            ./dist/reactor-ca-freebsd-arm64 \
             ./dist/reactor-ca-darwin-amd64 \
             ./dist/reactor-ca-darwin-arm64 \
             ./dist/reactor-ca-windows-amd64.exe \
