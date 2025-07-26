@@ -90,7 +90,6 @@ type IdentityProvider interface {
 	GetIdentity() (age.Identity, error)
 	GetRecipients() ([]age.Recipient, error)
 	Validate() error
-	ClearIdentityCache()
 }
 
 // IdentityProviderFactory creates identity providers based on configuration.

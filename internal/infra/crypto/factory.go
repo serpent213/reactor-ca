@@ -13,6 +13,8 @@ func NewServiceFactory() *ServiceFactory {
 }
 
 // CreateCryptoService creates a crypto service with the given identity provider.
+// The service is automatically wrapped with caching to avoid repeated decryption operations.
 func (f *ServiceFactory) CreateCryptoService(identityProvider domain.IdentityProvider) domain.CryptoService {
-	return NewAgeService(identityProvider)
+	underlying := NewAgeService(identityProvider)
+	return NewCachedCryptoService(underlying)
 }

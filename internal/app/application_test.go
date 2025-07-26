@@ -228,8 +228,6 @@ func (m *mockIdentityProvider) Validate() error {
 	return m.validateError
 }
 
-func (m *mockIdentityProvider) ClearIdentityCache() {}
-
 type mockAgeIdentity struct {
 	validateError error
 }

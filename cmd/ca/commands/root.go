@@ -84,8 +84,8 @@ suitable for homelab and small-to-medium business environments.`,
 			return fmt.Errorf("failed to create identity provider: %w", err)
 		}
 
-		// Create age-based crypto service
-		cryptoSvc := crypto.NewAgeService(identityProvider)
+		// Create cached crypto service using factory
+		cryptoSvc := cryptoServiceFactory.CreateCryptoService(identityProvider)
 
 		application := app.NewApplication(
 			rootPath,

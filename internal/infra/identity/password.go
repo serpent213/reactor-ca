@@ -68,11 +68,6 @@ func (p *PasswordProvider) Validate() error {
 	return nil
 }
 
-// ClearIdentityCache is a no-op for password provider as it doesn't cache identities.
-func (p *PasswordProvider) ClearIdentityCache() {
-	// No-op: password provider creates fresh identities on each call
-}
-
 // getMasterPassword retrieves the master password using the configured method.
 func (p *PasswordProvider) getMasterPassword() ([]byte, error) {
 	ctx := context.Background()
