@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	filippo.io/age v1.2.1
+	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.18.0
 	github.com/olekukonko/tablewriter v1.0.8
 	github.com/spf13/cobra v1.9.1

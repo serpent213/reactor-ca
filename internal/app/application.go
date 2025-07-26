@@ -683,20 +683,11 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	// Create shell script with safety flags
 	shellScript := "set -euo pipefail\n" + substitutedCommand
 
-	// Execute via shell
-	output, err := a.commander.Execute("bash", "-c", shellScript)
-	if err != nil {
-		return fmt.Errorf("deploy command failed: %w\nOutput:\n%s", err, string(output))
+	// Execute via shell with interactive PTY support
+	if err := a.commander.ExecuteInteractive("bash", "-c", shellScript); err != nil {
+		return fmt.Errorf("deploy command failed: %w", err)
 	}
 	a.logger.Log(fmt.Sprintf("Successfully executed deploy command for '%s'", hostID))
-
-	// Display output to user if there's any
-	if len(output) > 0 {
-		fmt.Print(string(output))
-		if !strings.HasSuffix(string(output), "\n") {
-			fmt.Println()
-		}
-	}
 
 	return nil
 }

@@ -192,9 +192,9 @@ func TestIssueHost_Deploy(t *testing.T) {
 	mocks.Store.LoadHostKeyFunc = func(id string) ([]byte, error) { return testhelper.DummyEncryptedKey, nil } // for deploy step
 	mocks.Store.SaveHostKeyFunc = func(id string, k []byte) error { return nil }
 	mocks.Store.SaveHostCertFunc = func(id string, c []byte) error { return nil }
-	mocks.Commander.ExecuteFunc = func(name string, args ...string) ([]byte, error) {
+	mocks.Commander.ExecuteInteractiveFunc = func(name string, args ...string) error {
 		commanderCalled = true
-		return nil, nil
+		return nil
 	}
 
 	// Act
