@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -795,6 +796,11 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 			HashAlgorithm: hashAlgorithm,
 		})
 	}
+
+	// Sort by host ID alphanumerically
+	sort.Slice(infoList, func(i, j int) bool {
+		return infoList[i].ID < infoList[j].ID
+	})
 
 	return infoList, nil
 }
