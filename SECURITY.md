@@ -42,9 +42,15 @@ Certificate Validity
 
 Hashing Algorithms
 
-- CA Default: SHA-384 - Stronger hash for root certificate, matches P-384 curve strength
-- Host Default: SHA-256 - Industry standard, adequate for 1-year certificates
+- Configuration: Explicit hash algorithm specification required in ca.yaml, hosts inherit from CA if unspecified
+- Runtime fallbacks when no hash algorithm configured: RSA keys use SHA-256, ECDSA keys use SHA-384
 - Available: SHA-256/384/512 - Full SHA-2 family support for algorithm agility
+
+Signature Algorithms
+
+- RSA: Uses configured hash algorithm, falls back to SHA-256 (SHA256WithRSA/SHA384WithRSA/SHA512WithRSA) - Applied when hash algorithm unspecified or invalid
+- ECDSA: Uses configured hash algorithm, falls back to SHA-384 - Applied when hash algorithm unspecified or invalid
+- Ed25519: Always PureEd25519 regardless of configuration - Cryptographically fixed, ignores hash algorithm setting
 
 Authentication Security
 

@@ -4,21 +4,24 @@ security:
     # Version control
     - .git
 
-    - # Build artifacts
+    # Build artifacts
     - dist
 
-    - # Ignore store and config directories
+    # Ignore store and config directories
     - store
     - config
 
-    - # Nix
+    # Nix
     - .direnv
     - .devenv
     - .devenv.flake.nix
     - result
 
-    - # Scratch
+    # Scratch
     - tmp
+
+    # Docs
+    - docs/llm
 
 language:
   preferred_languages:

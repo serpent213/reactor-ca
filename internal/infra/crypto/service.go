@@ -62,6 +62,7 @@ func (s *Service) CreateRootCertificate(cfg *domain.CAConfig, key crypto.Signer)
 	template.IsCA = true
 	template.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
 	template.BasicConstraintsValid = true
+	template.SignatureAlgorithm = s.getSignatureAlgorithm(cfg.CA.HashAlgorithm, key)
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	if err != nil {
@@ -76,6 +77,9 @@ func (s *Service) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509
 	if err != nil {
 		return nil, err
 	}
+
+	// Set signature algorithm based on hash algorithm and CA key type
+	template.SignatureAlgorithm = s.getSignatureAlgorithm(hostCfg.HashAlgorithm, caKey)
 
 	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
@@ -260,4 +264,36 @@ func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity dom
 func (s *Service) newSerialNumber() (*big.Int, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	return rand.Int(rand.Reader, serialNumberLimit)
+}
+
+// getSignatureAlgorithm determines the x509.SignatureAlgorithm based on hash algorithm and key type.
+func (s *Service) getSignatureAlgorithm(hashAlgo domain.HashAlgorithm, key crypto.Signer) x509.SignatureAlgorithm {
+	switch key.(type) {
+	case *rsa.PrivateKey:
+		switch hashAlgo {
+		case domain.SHA256:
+			return x509.SHA256WithRSA
+		case domain.SHA384:
+			return x509.SHA384WithRSA
+		case domain.SHA512:
+			return x509.SHA512WithRSA
+		default:
+			return x509.SHA256WithRSA
+		}
+	case *ecdsa.PrivateKey:
+		switch hashAlgo {
+		case domain.SHA256:
+			return x509.ECDSAWithSHA256
+		case domain.SHA384:
+			return x509.ECDSAWithSHA384
+		case domain.SHA512:
+			return x509.ECDSAWithSHA512
+		default:
+			return x509.ECDSAWithSHA384
+		}
+	case ed25519.PrivateKey:
+		return x509.PureEd25519
+	default:
+		return x509.SHA256WithRSA
+	}
 }

@@ -22,7 +22,19 @@ var caCreateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Action("Creating new CA certificate and private key")
 		app := getApp(cmd)
-		err := app.CreateCA(cmd.Context())
+
+		// Validate CA configuration
+		warnings, err := app.ValidateCAConfig()
+		if err != nil {
+			return err
+		}
+
+		// Display any warnings
+		for _, warning := range warnings {
+			ui.Warning("%s", warning.Message)
+		}
+
+		err = app.CreateCA(cmd.Context())
 		if err != nil {
 			if err == domain.ErrCAAlreadyExists {
 				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
@@ -41,7 +53,19 @@ var caRenewCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Action("Renewing CA certificate with existing private key")
 		app := getApp(cmd)
-		err := app.RenewCA(cmd.Context())
+
+		// Validate CA configuration
+		warnings, err := app.ValidateCAConfig()
+		if err != nil {
+			return err
+		}
+
+		// Display any warnings
+		for _, warning := range warnings {
+			ui.Warning("%s", warning.Message)
+		}
+
+		err = app.RenewCA(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -75,8 +99,22 @@ re-issue and re-deploy all host certificates after this operation.`),
 			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
 		}
 
+		// Validate CA configuration (mainly for other potential issues)
+		warnings, err := app.ValidateCAConfig()
+		if err != nil {
+			return err
+		}
+
+		// Display any warnings (skip key algorithm warnings since rekey will fix them)
+		for _, warning := range warnings {
+			if warning.Type == "key_algorithm_mismatch" {
+				continue // Skip this warning since we're about to regenerate the key
+			}
+			ui.Warning("%s", warning.Message)
+		}
+
 		ui.Action("Creating new CA private key and certificate (re-key operation)")
-		err := app.RekeyCA(cmd.Context(), force)
+		err = app.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err
 		}

@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
 	"errors"
@@ -476,6 +477,9 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		return err
 	}
 
+	// Apply inheritance from CA config to host config
+	resolvedHostCfg := a.resolveHostConfig(hostCfg, caCfg)
+
 	caCert, err := a.store.LoadCACert()
 	if err != nil {
 		return err
@@ -492,11 +496,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		} else {
 			a.logger.Log(fmt.Sprintf("No key found for '%s'. Generating new key.", hostID))
 		}
-		algo := hostCfg.KeyAlgorithm
-		if algo == "" {
-			algo = caCfg.CA.KeyAlgorithm
-		}
-		hostKey, err = a.cryptoSvc.GeneratePrivateKey(algo)
+		hostKey, err = a.cryptoSvc.GeneratePrivateKey(resolvedHostCfg.KeyAlgorithm)
 		if err != nil {
 			return err
 		}
@@ -522,7 +522,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		}
 	}
 
-	hostCert, err := a.cryptoSvc.CreateHostCertificate(&hostCfg, caCert, caKey, hostKey.Public())
+	hostCert, err := a.cryptoSvc.CreateHostCertificate(&resolvedHostCfg, caCert, caKey, hostKey.Public())
 	if err != nil {
 		return err
 	}
@@ -1044,4 +1044,151 @@ func getKeyLength(publicKey crypto.PublicKey) int {
 	default:
 		return 0 // Unknown key type
 	}
+}
+
+// ValidateCAConfig checks for CA configuration issues and returns warnings.
+func (a *Application) ValidateCAConfig() ([]domain.ValidationWarning, error) {
+	caCfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return nil, err
+	}
+
+	var warnings []domain.ValidationWarning
+
+	// Check for key algorithm mismatch if CA key exists
+	caExists, err := a.store.CAExists()
+	if err != nil {
+		return nil, err
+	}
+	if caExists {
+		caKeyData, err := a.store.LoadCAKey()
+		if err != nil {
+			return nil, err
+		}
+		caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData)
+		if err == nil { // Only check if we can decrypt the key
+			if !a.keyAlgorithmMatches(caKey, caCfg.CA.KeyAlgorithm) {
+				a.logger.Log(fmt.Sprintf("Warning: Existing CA key does not match configured algorithm (%s)", caCfg.CA.KeyAlgorithm))
+				warnings = append(warnings, domain.ValidationWarning{
+					Type:    "key_algorithm_mismatch",
+					Message: fmt.Sprintf("Existing CA key does not match configured algorithm (%s). Use 'ca rekey' to regenerate.", caCfg.CA.KeyAlgorithm),
+					HostID:  "CA",
+				})
+			}
+		}
+	}
+
+	return warnings, nil
+}
+
+// ResolveHostConfig applies inheritance from CA config and validates host config.
+func (a *Application) ResolveHostConfig(hostID string) (domain.HostConfig, []domain.ValidationWarning, error) {
+	hostsCfg, err := a.configLoader.LoadHosts()
+	if err != nil {
+		return domain.HostConfig{}, nil, err
+	}
+
+	hostCfg, ok := hostsCfg.Hosts[hostID]
+	if !ok {
+		return domain.HostConfig{}, nil, domain.ErrHostNotFoundInConfig
+	}
+
+	caCfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return domain.HostConfig{}, nil, err
+	}
+
+	resolvedHostCfg := a.resolveHostConfig(hostCfg, caCfg)
+
+	var warnings []domain.ValidationWarning
+
+	// Check for key algorithm mismatch if key exists
+	keyExists, err := a.store.HostKeyExists(hostID)
+	if err != nil {
+		return domain.HostConfig{}, nil, err
+	}
+	if keyExists {
+		hostKeyData, err := a.store.LoadHostKey(hostID)
+		if err != nil {
+			return domain.HostConfig{}, nil, err
+		}
+		hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData)
+		if err == nil { // Only check if we can decrypt the key
+			if !a.keyAlgorithmMatches(hostKey, resolvedHostCfg.KeyAlgorithm) {
+				a.logger.Log(fmt.Sprintf("Warning: Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedHostCfg.KeyAlgorithm))
+				warnings = append(warnings, domain.ValidationWarning{
+					Type:    "key_algorithm_mismatch",
+					Message: fmt.Sprintf("Existing key for '%s' does not match configured algorithm (%s). Use --rekey to regenerate.", hostID, resolvedHostCfg.KeyAlgorithm),
+					HostID:  hostID,
+				})
+			}
+		}
+	}
+
+	return resolvedHostCfg, warnings, nil
+}
+
+// resolveHostConfig applies inheritance from CA config to host config.
+// Returns a new HostConfig with all inherited fields populated.
+func (a *Application) resolveHostConfig(hostCfg domain.HostConfig, caCfg *domain.CAConfig) domain.HostConfig {
+	resolved := hostCfg // Start with host config
+
+	// Inherit subject fields from CA when not specified in host
+	if resolved.Subject.Organization == "" {
+		resolved.Subject.Organization = caCfg.CA.Subject.Organization
+	}
+	if resolved.Subject.OrganizationUnit == "" {
+		resolved.Subject.OrganizationUnit = caCfg.CA.Subject.OrganizationUnit
+	}
+	if resolved.Subject.Country == "" {
+		resolved.Subject.Country = caCfg.CA.Subject.Country
+	}
+	if resolved.Subject.State == "" {
+		resolved.Subject.State = caCfg.CA.Subject.State
+	}
+	if resolved.Subject.Locality == "" {
+		resolved.Subject.Locality = caCfg.CA.Subject.Locality
+	}
+	if resolved.Subject.Email == "" {
+		resolved.Subject.Email = caCfg.CA.Subject.Email
+	}
+
+	// Inherit hash algorithm from CA when not specified in host
+	if resolved.HashAlgorithm == "" {
+		resolved.HashAlgorithm = caCfg.CA.HashAlgorithm
+	}
+
+	// Inherit key algorithm from CA when not specified in host
+	if resolved.KeyAlgorithm == "" {
+		resolved.KeyAlgorithm = caCfg.CA.KeyAlgorithm
+	}
+
+	return resolved
+}
+
+// keyAlgorithmMatches checks if existing key matches the expected key algorithm.
+func (a *Application) keyAlgorithmMatches(key crypto.Signer, expectedAlgo domain.KeyAlgorithm) bool {
+	switch k := key.(type) {
+	case *rsa.PrivateKey:
+		switch expectedAlgo {
+		case domain.RSA2048:
+			return k.N.BitLen() == 2048
+		case domain.RSA3072:
+			return k.N.BitLen() == 3072
+		case domain.RSA4096:
+			return k.N.BitLen() == 4096
+		}
+	case *ecdsa.PrivateKey:
+		switch expectedAlgo {
+		case domain.ECP256:
+			return k.Curve == elliptic.P256()
+		case domain.ECP384:
+			return k.Curve == elliptic.P384()
+		case domain.ECP521:
+			return k.Curve == elliptic.P521()
+		}
+	case ed25519.PrivateKey:
+		return expectedAlgo == domain.ED25519
+	}
+	return false
 }
