@@ -25,7 +25,7 @@ func TestValidateAllExampleConfigs(t *testing.T) {
 	}
 
 	exampleConfigDir := filepath.Join(projectRoot, "example_config")
-	
+
 	// Get all YAML files from example_config directory
 	exampleFiles, err := filepath.Glob(filepath.Join(exampleConfigDir, "*.yaml"))
 	if err != nil {
@@ -48,14 +48,14 @@ func testValidateExampleConfig(t *testing.T, exampleFilePath string) {
 	// Create temporary directory for this test
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
-	
+
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create config directory: %v", err)
 	}
 
 	// Copy the appropriate configuration files based on the example file
 	exampleFileName := filepath.Base(exampleFilePath)
-	
+
 	var err error
 	if exampleFileName == "hosts.yaml" || (filepath.Ext(exampleFileName) == ".yaml" && len(exampleFileName) >= 5 && exampleFileName[:5] == "hosts") {
 		// For hosts*.yaml, create minimal ca.yaml and copy the hosts file
@@ -130,14 +130,14 @@ func findProjectRoot() (string, error) {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir, nil
 		}
-		
+
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break // reached root
 		}
 		dir = parent
 	}
-	
+
 	return "", os.ErrNotExist
 }
 
@@ -146,7 +146,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(dst, data, 0644)
 }
 

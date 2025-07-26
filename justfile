@@ -4,7 +4,7 @@
 ###################################
 
 version := "0.3.0"
-dirs := "./cmd ./internal"
+dirs := "./cmd ./internal ./test"
 packages := "./cmd/... ./internal/..."
 
 help:
