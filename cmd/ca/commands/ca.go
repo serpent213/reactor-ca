@@ -92,11 +92,11 @@ var caInfoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Action("Retrieving CA certificate information")
 		app := getApp(cmd)
-		info, err := app.InfoCA(cmd.Context())
+		cert, err := app.InfoCA(cmd.Context())
 		if err != nil {
 			return err
 		}
-		ui.PrintBlock(info)
+		ui.PrintCertInfo(cert)
 		return nil
 	},
 }

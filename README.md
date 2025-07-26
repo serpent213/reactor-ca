@@ -421,3 +421,4 @@ just test
 - No certificate revocation (CRL/OCSP) support
 - No PKCS#12 bundle creation
 - No automated renewal daemon (use cron/systemd timers)
+- Date calculations use fixed multipliers, i.e. 1 year = 365 days, 1 month = 30 days

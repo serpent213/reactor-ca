@@ -158,11 +158,11 @@ var hostInfoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Action("Retrieving certificate information for host '%s'", args[0])
 		app := getApp(cmd)
-		info, err := app.InfoHost(cmd.Context(), args[0])
+		cert, err := app.InfoHost(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
-		ui.PrintBlock(info)
+		ui.PrintCertInfo(cert)
 		return nil
 	},
 }

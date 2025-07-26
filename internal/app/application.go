@@ -193,13 +193,9 @@ func (a *Application) RekeyCA(ctx context.Context, force bool) error {
 	return nil
 }
 
-// InfoCA returns a formatted string with details about the CA certificate.
-func (a *Application) InfoCA(ctx context.Context) (string, error) {
-	cert, err := a.store.LoadCACert()
-	if err != nil {
-		return "", err
-	}
-	return a.cryptoSvc.FormatCertificateInfo(cert), nil
+// InfoCA returns the CA certificate for display formatting.
+func (a *Application) InfoCA(ctx context.Context) (*x509.Certificate, error) {
+	return a.store.LoadCACert()
 }
 
 // ImportCA imports an existing CA from external files.
@@ -803,13 +799,9 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 	return infoList, nil
 }
 
-// InfoHost returns details for a specific host certificate.
-func (a *Application) InfoHost(ctx context.Context, hostID string) (string, error) {
-	cert, err := a.store.LoadHostCert(hostID)
-	if err != nil {
-		return "", err
-	}
-	return a.cryptoSvc.FormatCertificateInfo(cert), nil
+// InfoHost returns the host certificate for display formatting.
+func (a *Application) InfoHost(ctx context.Context, hostID string) (*x509.Certificate, error) {
+	return a.store.LoadHostCert(hostID)
 }
 
 // ExportHostKey returns the unencrypted private key for a host.

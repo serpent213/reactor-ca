@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/mail"
 	"net/url"
-	"strings"
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
@@ -222,37 +221,6 @@ func (s *Service) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) err
 		return fmt.Errorf("unsupported public key type: %T", pub)
 	}
 	return nil
-}
-
-// FormatCertificateInfo provides a human-readable summary of a certificate.
-func (s *Service) FormatCertificateInfo(cert *x509.Certificate) string {
-	var b strings.Builder
-	b.WriteString("Certificate:\n")
-	b.WriteString(fmt.Sprintf("    Version: %d\n", cert.Version))
-	b.WriteString(fmt.Sprintf("    Serial Number: %s\n", cert.SerialNumber))
-	b.WriteString(fmt.Sprintf("    Signature Algorithm: %s\n", cert.SignatureAlgorithm))
-	b.WriteString(fmt.Sprintf("    Issuer: %s\n", cert.Issuer.String()))
-	b.WriteString("    Validity:\n")
-	b.WriteString(fmt.Sprintf("        Not Before: %s\n", cert.NotBefore.Format(time.RFC1123)))
-	b.WriteString(fmt.Sprintf("        Not After : %s\n", cert.NotAfter.Format(time.RFC1123)))
-	b.WriteString(fmt.Sprintf("    Subject: %s\n", cert.Subject.String()))
-	b.WriteString("    Subject Public Key Info:\n")
-	b.WriteString(fmt.Sprintf("        Public Key Algorithm: %s\n", cert.PublicKeyAlgorithm))
-	if len(cert.DNSNames) > 0 || len(cert.IPAddresses) > 0 {
-		b.WriteString("    X509v3 Subject Alternative Name:\n")
-		if len(cert.DNSNames) > 0 {
-			b.WriteString(fmt.Sprintf("        DNS: %s\n", strings.Join(cert.DNSNames, ", ")))
-		}
-		if len(cert.IPAddresses) > 0 {
-			var ips []string
-			for _, ip := range cert.IPAddresses {
-				ips = append(ips, ip.String())
-			}
-			b.WriteString(fmt.Sprintf("        IP Address: %s\n", strings.Join(ips, ", ")))
-		}
-	}
-	b.WriteString(fmt.Sprintf("    Is CA: %t\n", cert.IsCA))
-	return b.String()
 }
 
 // createBaseTemplate creates a base certificate template.

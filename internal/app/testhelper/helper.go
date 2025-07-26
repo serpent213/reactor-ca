@@ -78,7 +78,6 @@ type MockCryptoService struct {
 	ParsePrivateKeyFunc        func(pemData []byte) (crypto.Signer, error)
 	ParseCSRFunc               func(pemData []byte) (*x509.CertificateRequest, error)
 	ValidateKeyPairFunc        func(cert *x509.Certificate, key crypto.Signer) error
-	FormatCertificateInfoFunc  func(cert *x509.Certificate) string
 }
 
 func (m *MockCryptoService) GeneratePrivateKey(a domain.KeyAlgorithm) (crypto.Signer, error) {
@@ -116,9 +115,6 @@ func (m *MockCryptoService) ParseCSR(pemData []byte) (*x509.CertificateRequest, 
 }
 func (m *MockCryptoService) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error {
 	return m.ValidateKeyPairFunc(cert, key)
-}
-func (m *MockCryptoService) FormatCertificateInfo(cert *x509.Certificate) string {
-	return m.FormatCertificateInfoFunc(cert)
 }
 
 type MockPasswordProvider struct {
@@ -187,7 +183,6 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 			ParsePrivateKeyFunc:        realCryptoSvc.ParsePrivateKey,
 			ParseCSRFunc:               realCryptoSvc.ParseCSR,
 			ValidateKeyPairFunc:        realCryptoSvc.ValidateKeyPair,
-			FormatCertificateInfoFunc:  realCryptoSvc.FormatCertificateInfo,
 			// EncryptPrivateKeyFunc and DecryptPrivateKeyFunc left nil - tests must set these
 		},
 		Password:  &MockPasswordProvider{},

@@ -78,7 +78,6 @@ type CryptoService interface {
 	ParsePrivateKey(pemData []byte) (crypto.Signer, error)
 	ParseCSR(pemData []byte) (*x509.CertificateRequest, error)
 	ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) error
-	FormatCertificateInfo(cert *x509.Certificate) string
 }
 
 // Commander defines the interface for executing external commands.
