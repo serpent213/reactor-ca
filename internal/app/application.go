@@ -527,7 +527,6 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 	if err != nil {
 		return err
 	}
-	a.logger.Log(fmt.Sprintf("Created certificate for '%s'", hostID))
 	certPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 	if err := a.store.SaveHostCert(hostID, certPEM); err != nil {
 		return err
