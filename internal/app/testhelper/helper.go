@@ -153,9 +153,10 @@ func (m *MockCommander) ExecuteInteractive(name string, args ...string) error {
 
 type MockLogger struct{}
 
-func (m *MockLogger) Info(msg string, args ...interface{})  {}
-func (m *MockLogger) Error(msg string, args ...interface{}) {}
-func (m *MockLogger) Log(msg string)                        {}
+func (m *MockLogger) Info(msg string, args ...interface{})    {}
+func (m *MockLogger) Error(msg string, args ...interface{})   {}
+func (m *MockLogger) Warning(msg string, args ...interface{}) {}
+func (m *MockLogger) Log(msg string)                          {}
 
 // --- Test Setup Helper ---
 

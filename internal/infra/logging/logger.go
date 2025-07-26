@@ -41,6 +41,11 @@ func (l *FileLogger) Error(msg string, args ...interface{}) {
 	l.logger.Printf(l.formatTimestamp()+"ERROR: "+msg, args...)
 }
 
+// Warning logs a warning message.
+func (l *FileLogger) Warning(msg string, args ...interface{}) {
+	l.logger.Printf(l.formatTimestamp()+"WARNING: "+msg, args...)
+}
+
 // Log logs a standard operation message.
 func (l *FileLogger) Log(msg string) {
 	l.logger.Print(l.formatTimestamp() + msg)

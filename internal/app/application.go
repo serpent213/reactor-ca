@@ -438,7 +438,7 @@ func (a *Application) handleReencryptionFailure(writtenFiles, backedUpFiles []st
 func (a *Application) cleanupBackupFiles(backedUpFiles []string) {
 	for _, filePath := range backedUpFiles {
 		if err := a.store.RemoveBackupFile(filePath); err != nil {
-			a.logger.Log(fmt.Sprintf("Warning: failed to remove backup file for %s: %v", filepath.Base(filePath), err))
+			a.logger.Warning("Failed to remove backup file for %s: %v", filepath.Base(filePath), err)
 		}
 	}
 }
@@ -1068,7 +1068,7 @@ func (a *Application) ValidateCAConfig(skipKeyWarnings bool) error {
 			caKey, err := a.cryptoSvc.DecryptPrivateKey(caKeyData)
 			if err == nil { // Only check if we can decrypt the key
 				if !a.keyAlgorithmMatches(caKey, caCfg.CA.KeyAlgorithm) {
-					a.logger.Log(fmt.Sprintf("Warning: Existing CA key does not match configured algorithm (%s)", caCfg.CA.KeyAlgorithm))
+					a.logger.Warning("Existing CA key does not match configured algorithm (%s)", caCfg.CA.KeyAlgorithm)
 					ui.Warning("Existing CA key does not match configured algorithm (%s). Use 'ca rekey' to regenerate.", caCfg.CA.KeyAlgorithm)
 				}
 			}
@@ -1111,7 +1111,7 @@ func (a *Application) ResolveHostConfig(hostID string, skipKeyWarnings bool) (do
 			hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData)
 			if err == nil { // Only check if we can decrypt the key
 				if !a.keyAlgorithmMatches(hostKey, resolvedHostCfg.KeyAlgorithm) {
-					a.logger.Log(fmt.Sprintf("Warning: Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedHostCfg.KeyAlgorithm))
+					a.logger.Warning("Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedHostCfg.KeyAlgorithm)
 					ui.Warning("Existing key for '%s' does not match configured algorithm (%s). Use --rekey to regenerate.", hostID, resolvedHostCfg.KeyAlgorithm)
 				}
 			}
