@@ -305,18 +305,22 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool, rollback bo
 		return fmt.Errorf("failed to create key backups before re-encryption: %w", err)
 	}
 
+	// Validate current password access before prompting for new password
+	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
+		err := a.validateCurrentPasswordAccess()
+		if err != nil {
+			return fmt.Errorf("failed to validate current password: %w", err)
+		}
+	}
+
 	// Create new password provider for this operation if needed
 	var newPasswordProvider domain.PasswordProvider = a.passwordProvider
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
-		ui.Info("Password encryption detected - prompting for new password")
 		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return fmt.Errorf("failed to get new password: %w", err)
 		}
 		newPasswordProvider = &password.StaticPasswordProvider{Password: newPassword}
-	} else {
-		ui.Info("%s encryption detected - using current configuration", cfg.Encryption.Provider)
-		ui.Info("Make sure you've updated ca.yaml with any recipient changes before running this command")
 	}
 
 	// Reload config (to pick up any manual changes) and create new identity provider
@@ -408,7 +412,6 @@ func (a *Application) reencryptKeysWithService(newCryptoSvc domain.CryptoService
 		writtenFiles = append(writtenFiles, item.path)
 	}
 
-	// Success - clean up all .bak files
 	a.logger.Log("Successfully wrote all re-encrypted keys back to store")
 	a.cleanupBackupFiles(backedUpFiles)
 
@@ -990,6 +993,26 @@ func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMod
 		return err
 	}
 	return os.WriteFile(path, data, perm)
+}
+
+// validateCurrentPasswordAccess validates that the current password can decrypt the CA key.
+// This provides early validation and better UX by prompting for current password before new password.
+func (a *Application) validateCurrentPasswordAccess() error {
+	// Try to decrypt the CA key to validate current password
+	encryptedCA, err := a.store.LoadCAKey()
+	if err != nil {
+		return fmt.Errorf("failed to load CA key: %w", err)
+	}
+
+	_, err = a.cryptoSvc.DecryptPrivateKey(encryptedCA)
+	if err != nil {
+		if errors.Is(err, domain.ErrIncorrectPassword) {
+			return err // Propagate incorrect password error with clear message
+		}
+		return fmt.Errorf("failed to decrypt CA key: %w", err)
+	}
+
+	return nil
 }
 
 func (a *Application) backupKeysToBAK() ([]string, error) {

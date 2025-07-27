@@ -37,7 +37,7 @@ func (p *Provider) GetMasterPassword(ctx context.Context, cfg domain.PasswordCon
 
 	// 3. Interactive prompt
 	prompt := ui.NewPrompt()
-	return prompt.PromptPassword("Enter Master Password: ")
+	return prompt.PromptPassword("Enter current CA password: ")
 }
 
 // GetNewMasterPassword prompts the user to enter and confirm a new password.
@@ -54,7 +54,7 @@ func (p *Provider) GetNewMasterPassword(ctx context.Context, minLength int) ([]b
 	}
 
 	prompt := ui.NewPrompt()
-	return prompt.PromptPasswordWithConfirmation("Enter New Master Password: ", minLength)
+	return prompt.PromptPasswordWithConfirmation("Enter new CA password: ", minLength)
 }
 
 // StaticPasswordProvider implements domain.PasswordProvider with a pre-set password.
