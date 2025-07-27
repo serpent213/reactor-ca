@@ -476,6 +476,13 @@ func (e *testEnv) assertDirDoesNotExist(path string) {
 	}
 }
 
+func (e *testEnv) assertFileNotExists(path string) {
+	e.t.Helper()
+	if _, err := os.Stat(e.path(path)); !os.IsNotExist(err) {
+		e.t.Errorf("Expected file to NOT exist, but it does: %s", path)
+	}
+}
+
 func (e *testEnv) copyTestData(src, dest string) {
 	e.t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", src))
