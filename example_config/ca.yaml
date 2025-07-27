@@ -55,3 +55,14 @@ encryption:
     # Plugin recipient strings (age1 prefixed)
     recipients:
       - "age1se1qgg72x2qfk9wg3wh0qg9u0v7l5dkq4jx69fv80p6wdus3ftg6flwg5dz2dp"
+
+
+# --- Display Configuration ---
+# Controls how certificate status is displayed in host listings and info commands.
+display:
+  # Warning thresholds for certificate expiry status
+  warnings:
+    # Days remaining to show red critical warning (✗)
+    critical: 7
+    # Days remaining to show yellow warning (!)
+    warning: 30

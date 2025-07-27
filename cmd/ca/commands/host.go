@@ -81,7 +81,16 @@ var hostListCmd = &cobra.Command{
 			return nil
 		}
 
-		printHostTable(filteredList)
+		// Get warning thresholds from config
+		caCfg, err := app.GetCAConfig()
+		if err != nil {
+			// Use domain defaults if config can't be loaded
+			var defaultThresholds domain.WarningThresholds
+			printHostTable(filteredList, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays())
+		} else {
+			thresholds := caCfg.GetWarningThresholds()
+			printHostTable(filteredList, thresholds.GetCriticalDays(), thresholds.GetWarningDays())
+		}
 		return nil
 	},
 }
@@ -104,7 +113,7 @@ func filterHostList(list []*domain.HostInfo, expired bool, expiringIn int) []*do
 	return filtered
 }
 
-func printHostTable(list []*domain.HostInfo) {
+func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	if len(list) == 0 {
 		ui.Info("No hosts found.")
 		return
@@ -135,7 +144,7 @@ func printHostTable(list []*domain.HostInfo) {
 		} else {
 			// Issued hosts show normal certificate expiry info
 			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
-			statusStr = ui.FormatCertStatus(h.DaysRemaining)
+			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays)
 			keyAlgoStr = h.KeyAlgorithm
 			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
@@ -170,7 +179,17 @@ var hostInfoCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ui.PrintCertInfo(cert)
+
+		// Get warning thresholds from config
+		caCfg, err := app.GetCAConfig()
+		if err != nil {
+			// Use domain defaults if config can't be loaded
+			var defaultThresholds domain.WarningThresholds
+			ui.PrintCertInfo(cert, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays())
+		} else {
+			thresholds := caCfg.GetWarningThresholds()
+			ui.PrintCertInfo(cert, thresholds.GetCriticalDays(), thresholds.GetWarningDays())
+		}
 		return nil
 	},
 }

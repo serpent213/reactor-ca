@@ -81,6 +81,11 @@ func (a *Application) ValidateConfig(ctx context.Context) error {
 	return nil
 }
 
+// GetCAConfig returns the CA configuration with defaults applied.
+func (a *Application) GetCAConfig() (*domain.CAConfig, error) {
+	return a.configLoader.LoadCA()
+}
+
 // CreateCA creates a new Certificate Authority.
 func (a *Application) CreateCA(ctx context.Context, force bool) error {
 	return a.createCA(ctx, force)

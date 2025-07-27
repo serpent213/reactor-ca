@@ -11,6 +11,7 @@ type CAConfig struct {
 		HashAlgorithm HashAlgorithm `yaml:"hash_algorithm"`
 	} `yaml:"ca"`
 	Encryption EncryptionConfig `yaml:"encryption"`
+	Display    DisplayConfig    `yaml:"display"`
 }
 
 // HostsConfig holds the configuration for all managed hosts.
@@ -98,4 +99,36 @@ type SSHConfig struct {
 type PluginConfig struct {
 	IdentityFile string   `yaml:"identity_file"` // Path to age identity file
 	Recipients   []string `yaml:"recipients"`    // Plugin recipient strings
+}
+
+// DisplayConfig defines how certificate status is displayed.
+type DisplayConfig struct {
+	Warnings WarningThresholds `yaml:"warnings"`
+}
+
+// WarningThresholds defines the day thresholds for certificate expiry warnings.
+type WarningThresholds struct {
+	Critical int `yaml:"critical"` // Days remaining to show red warning (default: 7)
+	Warning  int `yaml:"warning"`  // Days remaining to show yellow warning (default: 30)
+}
+
+// GetCriticalDays returns the critical threshold with a default of 7 days.
+func (w WarningThresholds) GetCriticalDays() int {
+	if w.Critical <= 0 {
+		return 7
+	}
+	return w.Critical
+}
+
+// GetWarningDays returns the warning threshold with a default of 30 days.
+func (w WarningThresholds) GetWarningDays() int {
+	if w.Warning <= 0 {
+		return 30
+	}
+	return w.Warning
+}
+
+// GetWarningThresholds returns the warning thresholds from CAConfig with defaults applied.
+func (c *CAConfig) GetWarningThresholds() WarningThresholds {
+	return c.Display.Warnings
 }

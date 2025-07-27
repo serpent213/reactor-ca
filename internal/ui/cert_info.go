@@ -16,12 +16,74 @@ import (
 	"time"
 )
 
-// PrintCertInfo displays certificate information in a user-friendly format
-func PrintCertInfo(cert *x509.Certificate) {
-	// Calculate validity status
+// formatDurationParts formats a duration into human-readable parts
+func formatDurationParts(duration time.Duration, p *message.Printer) string {
+	days := int64(duration.Hours() / 24)
+	totalHours := int64(duration.Hours())
+
+	if days == 0 && totalHours == 0 {
+		return "today"
+	} else if days < 3 {
+		// Show total hours for durations less than 3 days
+		if days == 0 {
+			return p.Sprintf("%d hours", totalHours)
+		} else if days == 1 {
+			return p.Sprintf("1 day (%d hours)", totalHours)
+		} else { // days == 2
+			return p.Sprintf("%d days (%d hours)", days, totalHours)
+		}
+	} else if days < 365 {
+		return p.Sprintf("%d days", days)
+	} else {
+		// Calculate years with 1 decimal place
+		years := float64(days) / 365.0
+		return p.Sprintf("%d days (%.1f years)", days, years)
+	}
+}
+
+// FormatCertExpiry formats certificate expiry time in a user-friendly way with colored status symbols
+func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int) string {
+	p := message.NewPrinter(getUserLocale())
 	now := time.Now()
-	daysRemaining := int64(cert.NotAfter.Sub(now).Hours() / 24)
-	remaining := formatRemainingDays(daysRemaining)
+	duration := expiryTime.Sub(now)
+
+	var timeString string
+	if duration >= 0 {
+		// Certificate has not expired yet
+		formatted := formatDurationParts(duration, p)
+		if formatted == "today" {
+			timeString = "Expires today"
+		} else {
+			timeString = formatted
+		}
+	} else {
+		// Certificate has expired
+		expiredDuration := -duration // Make it positive for formatting
+		formatted := formatDurationParts(expiredDuration, p)
+		if formatted == "today" {
+			timeString = "EXPIRED today"
+		} else {
+			timeString = "EXPIRED " + formatted + " ago"
+		}
+	}
+
+	// Add colored status symbols based on configurable thresholds
+	days := int64(duration.Hours() / 24)
+	if days < 0 {
+		return red("✗") + " " + timeString
+	} else if days <= int64(criticalDays) {
+		return red("✗") + " " + timeString
+	} else if days <= int64(warningDays) {
+		return yellow("!") + " " + timeString
+	} else {
+		return green("✓") + " " + timeString
+	}
+}
+
+// PrintCertInfo displays certificate information in a user-friendly format
+func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
+	// Calculate validity status
+	remaining := FormatCertExpiry(cert.NotAfter, criticalDays, warningDays)
 
 	// Extract email from certificate subject
 	email := extractEmailFromSubject(cert.Subject)
@@ -168,31 +230,6 @@ func getUserLocale() language.Tag {
 
 	// Fall back to English if we can't determine locale
 	return language.English
-}
-
-// formatRemainingDays formats the remaining days with locale-conform number formatting
-// and includes years if >= 1 year
-func formatRemainingDays(days int64) string {
-	p := message.NewPrinter(getUserLocale())
-
-	if days < 0 {
-		return "EXPIRED"
-	}
-
-	if days == 0 {
-		return "Expires today"
-	}
-
-	if days < 365 {
-		if days == 1 {
-			return "1 day"
-		}
-		return p.Sprintf("%d days", days)
-	}
-
-	// Calculate years with 1 decimal place
-	years := float64(days) / 365.0
-	return p.Sprintf("%d days (%.1f years)", days, years)
 }
 
 // extractEmailFromSubject extracts email address from certificate subject

@@ -11,9 +11,9 @@ import (
 // Color functions for consistent styling
 var (
 	green  = color.New(color.FgGreen).SprintFunc()
+	cyan   = color.New(color.FgCyan).SprintFunc()
 	red    = color.New(color.FgRed).SprintFunc()
 	yellow = color.New(color.FgYellow).SprintFunc()
-	cyan   = color.New(color.FgCyan).SprintFunc()
 	bold   = color.New(color.Bold).SprintFunc()
 )
 
@@ -68,19 +68,6 @@ func PrintTableHeaderWithWidths(columnWidths []int, columns ...string) {
 	header := strings.Join(formattedColumns, " | ")
 	fmt.Printf("%s\n", bold(cyan(header)))
 	fmt.Println(cyan(strings.Repeat("─", len(header))))
-}
-
-// FormatCertStatus returns a formatted certificate status with appropriate symbol and color
-func FormatCertStatus(daysRemaining int64) string {
-	if daysRemaining < 0 {
-		return red("✗") + " EXPIRED"
-	} else if daysRemaining < 7 {
-		return red("✗") + fmt.Sprintf(" %d days", daysRemaining)
-	} else if daysRemaining < 30 {
-		return yellow("!") + fmt.Sprintf(" %d days", daysRemaining)
-	} else {
-		return green("✓") + fmt.Sprintf(" %d days", daysRemaining)
-	}
 }
 
 // FormatHostStatus returns a formatted host status with appropriate symbol and color
