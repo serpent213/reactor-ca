@@ -45,10 +45,6 @@ func TestValidateAllExampleConfigs(t *testing.T) {
 }
 
 func testValidateExampleConfig(t *testing.T, exampleFilePath string) {
-	// Set test password for validation
-	os.Setenv("TEST_CA_PASSWORD", "test-password-12345")
-	defer os.Unsetenv("TEST_CA_PASSWORD")
-
 	// Create temporary directory for this test
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
@@ -63,7 +59,8 @@ func testValidateExampleConfig(t *testing.T, exampleFilePath string) {
 	var err error
 	if exampleFileName == "hosts.yaml" || (filepath.Ext(exampleFileName) == ".yaml" && len(exampleFileName) >= 5 && exampleFileName[:5] == "hosts") {
 		// For hosts*.yaml, create minimal ca.yaml and copy the hosts file
-		if err = createMinimalCAConfig(filepath.Join(configDir, "ca.yaml")); err != nil {
+		// Use SSH provider for hosts.yaml since it contains additional_recipients
+		if err = createMinimalSSHCAConfig(filepath.Join(configDir, "ca.yaml")); err != nil {
 			t.Fatalf("Failed to create minimal ca.yaml: %v", err)
 		}
 		if err = copyFile(exampleFilePath, filepath.Join(configDir, "hosts.yaml")); err != nil {
@@ -161,9 +158,27 @@ func createMinimalCAConfig(path string) error {
 
 encryption:
   provider: "password"
-  password:
-    min_length: 12
-    env_var: "TEST_CA_PASSWORD"
+`
+	return os.WriteFile(path, []byte(minimalCA), 0644)
+}
+
+func createMinimalSSHCAConfig(path string) error {
+	minimalCA := `ca:
+  subject:
+    common_name: "Test CA"
+    organization: "Test Org"
+    country: "US"
+  validity:
+    years: 1
+  key_algorithm: "ec256"
+  hash_algorithm: "sha256"
+
+encryption:
+  provider: "ssh"
+  ssh:
+    identity_file: "~/.ssh/id_ed25519"
+    recipients:
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILmlSRRC4SIrIvVCIvH+H9GvhDxGbus907IJByMtgJIm test@host"
 `
 	return os.WriteFile(path, []byte(minimalCA), 0644)
 }
