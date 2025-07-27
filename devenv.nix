@@ -8,6 +8,7 @@
       openssl
       openssh
       # Formatting
+      jq
       nixfmt-rfc-style
     ]
     ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [

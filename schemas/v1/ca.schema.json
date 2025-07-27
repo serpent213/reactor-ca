@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json",
+  "title": "ReactorCA Certificate Authority Configuration",
+  "description": "Configuration schema for ReactorCA root Certificate Authority",
+  "type": "object",
+  "required": [
+    "ca"
+  ],
+  "properties": {
+    "ca": {
+      "type": "object",
+      "description": "Root Certificate Authority configuration",
+      "required": [
+        "subject"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/SubjectConfig"
+        },
+        "validity": {
+          "$ref": "#/$defs/Validity"
+        },
+        "key_algorithm": {
+          "$ref": "#/$defs/KeyAlgorithm"
+        },
+        "hash_algorithm": {
+          "$ref": "#/$defs/HashAlgorithm"
+        }
+      }
+    },
+    "encryption": {
+      "$ref": "#/$defs/EncryptionConfig"
+    },
+    "display": {
+      "$ref": "#/$defs/DisplayConfig"
+    }
+  },
+  "$defs": {
+    "SubjectConfig": {
+      "type": "object",
+      "description": "Certificate subject distinguished name fields",
+      "required": [
+        "common_name"
+      ],
+      "properties": {
+        "common_name": {
+          "type": "string",
+          "description": "Common Name (CN) - typically the FQDN or CA name",
+          "minLength": 1
+        },
+        "organization": {
+          "type": "string",
+          "description": "Organization (O) - company or entity name"
+        },
+        "organization_unit": {
+          "type": "string",
+          "description": "Organizational Unit (OU) - department or division"
+        },
+        "country": {
+          "type": "string",
+          "description": "Country (C) - 2-letter ISO country code",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "state": {
+          "type": "string",
+          "description": "State or Province (ST)"
+        },
+        "locality": {
+          "type": "string",
+          "description": "Locality or City (L)"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address - administrative contact",
+          "format": "email"
+        }
+      }
+    },
+    "Validity": {
+      "type": "object",
+      "description": "Certificate validity period - specify any combination of years, months, days",
+      "properties": {
+        "years": {
+          "type": "integer",
+          "description": "Number of years the certificate is valid",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "months": {
+          "type": "integer",
+          "description": "Number of months the certificate is valid",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "days": {
+          "type": "integer",
+          "description": "Number of days the certificate is valid",
+          "minimum": 0,
+          "maximum": 18250
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "years"
+          ]
+        },
+        {
+          "required": [
+            "months"
+          ]
+        },
+        {
+          "required": [
+            "days"
+          ]
+        }
+      ]
+    },
+    "KeyAlgorithm": {
+      "type": "string",
+      "description": "Cryptographic key algorithm for certificate generation",
+      "enum": [
+        "RSA2048",
+        "RSA3072",
+        "RSA4096",
+        "ECP256",
+        "ECP384",
+        "ECP521",
+        "ED25519"
+      ],
+      "default": "ECP384"
+    },
+    "HashAlgorithm": {
+      "type": "string",
+      "description": "Hash algorithm for certificate signature",
+      "enum": [
+        "SHA256",
+        "SHA384",
+        "SHA512"
+      ],
+      "default": "SHA384"
+    },
+    "EncryptionConfig": {
+      "type": "object",
+      "description": "Configuration for private key encryption at rest",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Encryption provider type",
+          "enum": [
+            "password",
+            "ssh",
+            "plugin"
+          ],
+          "default": "password"
+        },
+        "password": {
+          "$ref": "#/$defs/PasswordConfig"
+        },
+        "ssh": {
+          "$ref": "#/$defs/SSHConfig"
+        },
+        "plugin": {
+          "$ref": "#/$defs/PluginConfig"
+        }
+      }
+    },
+    "PasswordConfig": {
+      "type": "object",
+      "description": "Password-based encryption configuration using scrypt + age",
+      "properties": {
+        "min_length": {
+          "type": "integer",
+          "description": "Minimum password length requirement",
+          "minimum": 8,
+          "default": 12
+        },
+        "file": {
+          "type": "string",
+          "description": "Path to file containing the password"
+        },
+        "env_var": {
+          "type": "string",
+          "description": "Environment variable containing the password",
+          "default": "REACTOR_CA_PASSWORD"
+        }
+      }
+    },
+    "SSHConfig": {
+      "type": "object",
+      "description": "SSH key-based encryption using existing SSH private keys",
+      "required": [
+        "identity_file"
+      ],
+      "properties": {
+        "identity_file": {
+          "type": "string",
+          "description": "Path to SSH private key file (RSA, Ed25519, ECDSA)"
+        },
+        "recipients": {
+          "type": "array",
+          "description": "SSH public keys (ssh-*) or age recipient strings (age1*)",
+          "items": {
+            "type": "string",
+            "pattern": "^(age1|ssh-)"
+          }
+        }
+      }
+    },
+    "PluginConfig": {
+      "type": "object",
+      "description": "Age plugin-based encryption (YubiKey, Secure Enclave, TPM, etc.)",
+      "required": [
+        "identity_file"
+      ],
+      "properties": {
+        "identity_file": {
+          "type": "string",
+          "description": "Path to age identity file for the plugin"
+        },
+        "recipients": {
+          "type": "array",
+          "description": "Plugin-specific recipient strings (age*)",
+          "items": {
+            "type": "string",
+            "pattern": "^age"
+          }
+        }
+      }
+    },
+    "DisplayConfig": {
+      "type": "object",
+      "description": "Certificate status display configuration",
+      "properties": {
+        "warnings": {
+          "$ref": "#/$defs/WarningThresholds"
+        }
+      }
+    },
+    "WarningThresholds": {
+      "type": "object",
+      "description": "Day thresholds for certificate expiry warnings",
+      "properties": {
+        "critical": {
+          "type": "integer",
+          "description": "Days remaining to show red critical warning",
+          "minimum": 1,
+          "default": 7
+        },
+        "warning": {
+          "type": "integer",
+          "description": "Days remaining to show yellow warning",
+          "minimum": 1,
+          "default": 30
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://serpent213.github.io/reactor-ca/schemas/v1/hosts.schema.json",
+  "title": "ReactorCA Host Certificate Configuration",
+  "description": "Configuration schema for ReactorCA host certificates",
+  "type": "object",
+  "required": [
+    "hosts"
+  ],
+  "properties": {
+    "hosts": {
+      "type": "object",
+      "description": "Map of host certificate configurations by unique ID",
+      "patternProperties": {
+        "^[a-zA-Z0-9][a-zA-Z0-9_-]*$": {
+          "$ref": "#/$defs/HostConfig"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "HostConfig": {
+      "type": "object",
+      "description": "Configuration for a single host certificate",
+      "required": [
+        "subject"
+      ],
+      "properties": {
+        "subject": {
+          "$ref": "#/$defs/SubjectConfig"
+        },
+        "alternative_names": {
+          "$ref": "#/$defs/SubjectAlternativeNames"
+        },
+        "validity": {
+          "$ref": "#/$defs/Validity"
+        },
+        "key_algorithm": {
+          "$ref": "#/$defs/KeyAlgorithm"
+        },
+        "hash_algorithm": {
+          "$ref": "#/$defs/HashAlgorithm"
+        },
+        "export": {
+          "$ref": "#/$defs/ExportConfig"
+        },
+        "deploy": {
+          "$ref": "#/$defs/DeployConfig"
+        }
+      }
+    },
+    "SubjectConfig": {
+      "type": "object",
+      "description": "Certificate subject distinguished name fields",
+      "required": [
+        "common_name"
+      ],
+      "properties": {
+        "common_name": {
+          "type": "string",
+          "description": "Common Name (CN) - typically the primary FQDN",
+          "minLength": 1
+        },
+        "organization": {
+          "type": "string",
+          "description": "Organization (O) - inherits from CA if not specified"
+        },
+        "organization_unit": {
+          "type": "string",
+          "description": "Organizational Unit (OU) - inherits from CA if not specified"
+        },
+        "country": {
+          "type": "string",
+          "description": "Country (C) - 2-letter ISO country code",
+          "pattern": "^[A-Z]{2}$"
+        },
+        "state": {
+          "type": "string",
+          "description": "State or Province (ST) - inherits from CA if not specified"
+        },
+        "locality": {
+          "type": "string",
+          "description": "Locality or City (L) - inherits from CA if not specified"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address - inherits from CA if not specified",
+          "format": "email"
+        }
+      }
+    },
+    "SubjectAlternativeNames": {
+      "type": "object",
+      "description": "Subject Alternative Names (SANs) for the certificate",
+      "properties": {
+        "dns": {
+          "type": "array",
+          "description": "DNS names the certificate is valid for",
+          "items": {
+            "type": "string",
+            "description": "Fully qualified domain name",
+            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
+          },
+          "uniqueItems": true
+        },
+        "ip": {
+          "type": "array",
+          "description": "IP addresses the certificate is valid for",
+          "items": {
+            "type": "string",
+            "description": "IPv4 or IPv6 address",
+            "anyOf": [
+              {
+                "format": "ipv4"
+              },
+              {
+                "format": "ipv6"
+              }
+            ]
+          },
+          "uniqueItems": true
+        },
+        "email": {
+          "type": "array",
+          "description": "Email addresses the certificate is valid for",
+          "items": {
+            "type": "string",
+            "format": "email"
+          },
+          "uniqueItems": true
+        },
+        "uri": {
+          "type": "array",
+          "description": "URIs the certificate is valid for",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "Validity": {
+      "type": "object",
+      "description": "Certificate validity period - specify any combination of years, months, days",
+      "properties": {
+        "years": {
+          "type": "integer",
+          "description": "Number of years the certificate is valid",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "months": {
+          "type": "integer",
+          "description": "Number of months the certificate is valid",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "days": {
+          "type": "integer",
+          "description": "Number of days the certificate is valid",
+          "minimum": 0,
+          "maximum": 3650
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "years"
+          ]
+        },
+        {
+          "required": [
+            "months"
+          ]
+        },
+        {
+          "required": [
+            "days"
+          ]
+        }
+      ]
+    },
+    "KeyAlgorithm": {
+      "type": "string",
+      "description": "Cryptographic key algorithm - defaults to CA's key_algorithm if not specified",
+      "enum": [
+        "RSA2048",
+        "RSA3072",
+        "RSA4096",
+        "ECP256",
+        "ECP384",
+        "ECP521",
+        "ED25519"
+      ]
+    },
+    "HashAlgorithm": {
+      "type": "string",
+      "description": "Hash algorithm for certificate signature - defaults to CA's hash_algorithm if not specified",
+      "enum": [
+        "SHA256",
+        "SHA384",
+        "SHA512"
+      ]
+    },
+    "ExportConfig": {
+      "type": "object",
+      "description": "Paths for exporting certificate files after issuance",
+      "properties": {
+        "cert": {
+          "type": "string",
+          "description": "Path to save the host certificate (PEM format)"
+        },
+        "chain": {
+          "type": "string",
+          "description": "Path to save the full certificate chain (host + CA certificates)"
+        }
+      }
+    },
+    "DeployConfig": {
+      "type": "object",
+      "description": "Deployment commands to run after certificate issuance",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command to execute (supports variables: ${cert}, ${chain}, ${private_key})",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

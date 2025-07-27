@@ -64,6 +64,7 @@ func init() {
 
 const defaultCaYAML = `# ReactorCA: Certificate Authority Configuration
 # This file defines the properties of your root Certificate Authority.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json
 
 ca:
   # These values are used to build the distinguished name (DN) of the CA certificate.
@@ -107,6 +108,7 @@ encryption:
 
 const defaultHostsYAML = `# ReactorCA: Host Certificate Configuration
 # This file defines the certificates you want to issue for your hosts/services.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/hosts.schema.json
 
 hosts:
   # This is a unique ID for the certificate, used in CLI commands (e.g., 'ca host issue web-server').

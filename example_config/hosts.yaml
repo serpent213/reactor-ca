@@ -1,5 +1,6 @@
 # ReactorCA: Host Certificate Configuration
 # This file defines the certificates you want to issue for your hosts/services.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/hosts.schema.json
 
 hosts:
   # Web server example - typical use case

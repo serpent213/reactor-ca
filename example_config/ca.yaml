@@ -1,5 +1,6 @@
 # ReactorCA: Certificate Authority Configuration
 # This file defines the properties of your root Certificate Authority.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json
 
 ca:
   # --- Subject Details ---

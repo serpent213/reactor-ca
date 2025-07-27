@@ -65,10 +65,11 @@ debug: (build "debug")
 # Build release binary
 release: (build "release")
 
-# Format Go, YAML, and Nix files
+# Format Go, YAML, JSON schemas, and Nix files
 fmt:
     gofmt -s -w {{dirs}}
     go tool yamlfmt -quiet example_config/ .github/
+    @just fmt-schemas
     nixfmt *.nix
 
 # Check code formatting
@@ -84,6 +85,8 @@ fmt-check:
         echo "YAML files are not formatted. Run 'just fmt' to fix."; \
         exit 1; \
     fi
+    @echo "Checking JSON schema formatting..."
+    @just fmt-schemas-check
 
 # Run Go vet analysis
 vet:
@@ -244,25 +247,20 @@ update-flake:
     #!/usr/bin/env bash
     echo "Updating vendor hash in flake.nix..."
 
-    # First, set vendorHash to lib.fakeHash
     sed -i.bak 's/vendorHash = ".*";/vendorHash = pkgs.lib.fakeHash;/' flake.nix
 
-    # Try to build and capture the output
     if output=$(nix build .#reactor-ca 2>&1); then
         echo "Build succeeded unexpectedly. No hash update needed."
         # Restore original if build succeeded
         mv flake.nix.bak flake.nix
     else
-        # Extract the correct hash from the error output (the "got:" line)
         correct_hash=$(echo "$output" | grep "got:" | grep -o 'sha256-[A-Za-z0-9+/]\{43\}=')
         if [ -n "$correct_hash" ]; then
             echo "Found correct hash: $correct_hash"
-            # Update flake.nix with the correct hash
             sed -i "s|vendorHash = pkgs.lib.fakeHash;|vendorHash = \"$correct_hash\";|" flake.nix
             echo "Updated vendorHash in flake.nix"
             rm -f flake.nix.bak
 
-            # Verify the build works now
             echo "Verifying build with new hash..."
             if nix build .#reactor-ca; then
                 echo "Build successful with updated vendor hash"
@@ -278,4 +276,53 @@ update-flake:
             mv flake.nix.bak flake.nix
             exit 1
         fi
+    fi
+
+# Format JSON schema files
+fmt-schemas:
+    #!/usr/bin/env bash
+    for file in schemas/v1/*.json; do
+        if [ -f "$file" ]; then
+            jq '.' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+            echo "Formatted: $file"
+        fi
+    done
+
+# Check JSON schema formatting
+fmt-schemas-check:
+    #!/usr/bin/env bash
+    echo "Checking JSON schema formatting..."
+    for file in schemas/v1/*.json; do
+        if [ -f "$file" ]; then
+            if ! jq '.' "$file" > /dev/null 2>&1; then
+                echo "Invalid JSON in: $file"
+                exit 1
+            fi
+            if ! cmp -s "$file" <(jq '.' "$file"); then
+                echo "Schema not formatted: $file"
+                echo "Run 'just fmt-schemas' to fix."
+                exit 1
+            fi
+        fi
+    done
+
+# Validate example configs against schemas
+validate-schemas:
+    #!/usr/bin/env bash
+    if [ -d "example_config" ]; then
+        for config in example_config/ca*.yaml example_config/ca*.yml; do
+            if [ -f "$config" ]; then
+                echo "Validating $config against ca.schema.json..."
+                go tool yajsv -s schemas/v1/ca.schema.json "$config"
+            fi
+        done
+
+        for config in example_config/hosts.yaml example_config/hosts.yml; do
+            if [ -f "$config" ]; then
+                echo "Validating $config against hosts.schema.json..."
+                go tool yajsv -s schemas/v1/hosts.schema.json "$config"
+            fi
+        done
+    else
+        echo "No example_config directory found"
     fi

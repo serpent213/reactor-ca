@@ -1,5 +1,6 @@
 # ReactorCA: Certificate Authority Configuration with Apple Secure Enclave
 # This example demonstrates using age-plugin-se for hardware-backed private key encryption.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json
 
 ca:
   subject:

@@ -332,7 +332,7 @@ func (e *ptyTestEnv) waitForPrompt(expectedPrompt string) (string, error) {
 				chunk := buffer[:n]
 				output.Write(chunk)
 				// Echo all output to console for debugging
-				fmt.Print(string(chunk))
+				// fmt.Print(string(chunk))
 
 				if strings.Contains(output.String(), expectedPrompt) {
 					resultCh <- output.String()
