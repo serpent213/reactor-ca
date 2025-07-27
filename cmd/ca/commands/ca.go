@@ -38,7 +38,7 @@ the newly created CA key. Use --force to bypass validation failures.`),
 		err = app.CreateCA(cmd.Context(), force)
 		if err != nil {
 			if err == domain.ErrCAAlreadyExists {
-				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
+				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use “ca ca rekey”.")
 			}
 			return err
 		}

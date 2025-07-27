@@ -50,10 +50,10 @@ suitable for homelab and small-to-medium business environments.`,
 		configPath := filepath.Join(rootPath, "config")
 		storePath := filepath.Join(rootPath, "store")
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			return fmt.Errorf("config directory not found at %s. Did you run 'reactor-ca init'?", configPath)
+			return fmt.Errorf("config directory not found at %s. Did you run “ca init”?", configPath)
 		}
 		if _, err := os.Stat(storePath); os.IsNotExist(err) {
-			return fmt.Errorf("store directory not found at %s. Did you run 'reactor-ca init'?", storePath)
+			return fmt.Errorf("store directory not found at %s. Did you run “ca init”?", storePath)
 		}
 
 		// Dependency Injection

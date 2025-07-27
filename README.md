@@ -192,7 +192,7 @@ ca host issue web-server-example
 ca init
 
 # Import existing CA
-./reactor-ca ca import --cert path/to/ca.crt --key path/to/ca.key
+ca ca import --cert path/to/ca.crt --key path/to/ca.key
 
 # Edit host configuration
 vim config/hosts.yaml
@@ -208,7 +208,7 @@ ca host issue web-server-example
 ca host issue web-server-example
 
 # Renew all certificates
-./reactor-ca host issue --all
+ca host issue --all
 
 # Renew and deploy
 ca host issue web-server-example --deploy
@@ -218,14 +218,28 @@ ca host issue web-server-example --deploy
 
 ```bash
 # Rotate the CA key and certificate
-./reactor-ca ca rekey
+ca ca rekey
 
 # Rotate a specific host key and certificate
 ca host issue web-server-example --rekey
 
 # Rotate all host keys and certificates
-./reactor-ca host issue --all --rekey
+ca host issue --all --rekey
 ```
+
+## Emergency Access
+
+If ReactorCA cannot be run, you can manually decrypt private keys using the `age` command:
+
+```bash
+# Decrypt CA private key (SSH-based encryption)
+age -d -i ~/.ssh/id_ed25519 store/ca/ca.key.age > ca.key
+
+# Decrypt host private key
+age -d -i ~/.ssh/id_ed25519 store/hosts/web-server/cert.key.age > host.key
+```
+
+The store structure is simple: certificates are in PEM format (`.crt` files) and private keys are age-encrypted (`.key.age` files). Your encryption method determines which identity file to use with `age -d -i`.
 
 ## Configuration
 
@@ -282,7 +296,7 @@ hosts:
   web-server-example:
     subject:
       common_name: "web.reactor.local"
-    
+
     # Subject Alternative Names
     alternative_names:
       dns:
@@ -291,20 +305,20 @@ hosts:
       ip:
         - "192.168.1.100"
         - "10.10.0.1"
-    
+
     # Certificate validity
     validity:
       years: 1
-    
+
     # Cryptographic settings (optional, defaults to CA settings)
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
-    
+
     # Export paths (optional). These paths can be used in the deploy commands.
     export:
       cert: "/etc/ssl/certs/web-server.pem"
       chain: "/etc/ssl/certs/web-server-chain.pem"
-    
+
     # Deployment commands (optional). Executed as a shell script.
     # Variables:
     # - ${cert}: Path to the exported certificate.

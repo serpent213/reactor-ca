@@ -38,12 +38,26 @@ func NewHostsTable() *tablewriter.Table {
 				{},                                      // Inherit default
 			},
 		},
-		Border:    renderer.Tint{FG: renderer.Colors{color.FgWhite}}, // White borders
-		Separator: renderer.Tint{FG: renderer.Colors{color.FgWhite}}, // White separators
+		Border:    renderer.Tint{FG: renderer.Colors{color.FgBlue}}, // Dark blue borders
+		Separator: renderer.Tint{FG: renderer.Colors{color.FgBlue}}, // Dark blue separators
 	}
+
+	borders := tw.Border{
+		Left:   tw.Off,
+		Right:  tw.Off,
+		Top:    tw.Off,
+		Bottom: tw.Off,
+	}
+
+	// Custom symbols for horizontal-only lines with no top/bottom borders
+	symbols := tw.NewSymbolCustom("HorizontalOnly").
+		WithRow("─").
+		WithCenter("─").
+		WithColumn(" ")
 
 	return tablewriter.NewTable(os.Stdout,
 		tablewriter.WithRenderer(renderer.NewColorized(colorCfg)),
+		tablewriter.WithRendition(tw.Rendition{Borders: borders, Symbols: symbols}),
 		tablewriter.WithConfig(tablewriter.Config{
 			Header: tw.CellConfig{
 				Alignment:  tw.CellAlignment{Global: tw.AlignLeft}, // Left-align headers

@@ -53,7 +53,7 @@ var initCmd = &cobra.Command{
 			ui.Success("Created config file: %s", path)
 		}
 
-		ui.Success("Initialization complete. Review the files in config/ and then run 'reactor-ca ca create'.")
+		ui.Success("Initialization complete. Review the files in config/ and then run “ca ca create”.")
 		return nil
 	},
 }
@@ -109,7 +109,7 @@ const defaultHostsYAML = `# ReactorCA: Host Certificate Configuration
 # This file defines the certificates you want to issue for your hosts/services.
 
 hosts:
-  # This is a unique ID for the certificate, used in CLI commands (e.g., 'reactor-ca host issue web-server').
+  # This is a unique ID for the certificate, used in CLI commands (e.g., 'ca host issue web-server').
   web-server-example:
     # The Common Name (CN) is typically the primary fully-qualified domain name (FQDN).
     subject:

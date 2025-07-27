@@ -26,7 +26,7 @@ var hostIssueCmd = &cobra.Command{
 	Use:   "issue <host-id>",
 	Short: "Issue or renew a certificate for one or all hosts",
 	Long: `Issues or renews a certificate for a host defined in hosts.yaml.
-Use '--all' to issue for all defined hosts.
+Use “--all” to issue for all defined hosts.
 A new key is generated only if one does not already exist, unless --rekey is specified.`,
 	Args: hostIDOrAllFlag("all"),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,9 +43,9 @@ A new key is generated only if one does not already exist, unless --rekey is spe
 		}
 
 		return processHostCmd(cmd, args, "all",
-			"Issuing certificate for host '%s'...",
+			"Issuing certificate for host “%s”...",
 			"Issuing certificates for all %d hosts...",
-			"Successfully issued certificate for '%s'",
+			"Successfully issued certificate for “%s”",
 			action,
 		)
 	},
@@ -113,7 +113,7 @@ func printHostTable(list []*domain.HostInfo) {
 	table := ui.NewHostsTable()
 
 	// Set headers
-	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "STATUS / DAYS REMAINING"})
+	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "REMAINING"})
 
 	// Prepare data rows
 	var data [][]string
@@ -152,6 +152,7 @@ func printHostTable(list []*domain.HostInfo) {
 	}
 
 	// Add data and footer
+	fmt.Println()
 	table.Bulk(data)
 	table.Footer([]string{"", "", "", "", "Total", fmt.Sprintf("%d", len(list))})
 	table.Render()
@@ -163,7 +164,7 @@ var hostInfoCmd = &cobra.Command{
 	Short: "Display detailed information about a specific host certificate",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Action("Retrieving certificate information for host '%s'", args[0])
+		ui.Action("Retrieving certificate information for host “%s”", args[0])
 		app := getApp(cmd)
 		cert, err := app.InfoHost(cmd.Context(), args[0])
 		if err != nil {
@@ -186,9 +187,9 @@ var hostDeployCmd = &cobra.Command{
 		}
 
 		return processHostCmd(cmd, args, "all",
-			"Deploying certificate for host '%s'...",
+			"Deploying certificate for host “%s”...",
 			"Deploying certificates for all %d hosts...",
-			"Successfully deployed certificate for '%s'",
+			"Successfully deployed certificate for “%s”",
 			action,
 		)
 	},
@@ -202,7 +203,7 @@ var hostExportKeyCmd = &cobra.Command{
 	Long:  `Exports the unencrypted private key for a host to a specified file or stdout.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Action("Exporting unencrypted private key for host '%s'", args[0])
+		ui.Action("Exporting unencrypted private key for host “%s”", args[0])
 		app := getApp(cmd)
 		hostID := args[0]
 		pemKey, err := app.ExportHostKey(cmd.Context(), hostID)
@@ -217,7 +218,7 @@ var hostExportKeyCmd = &cobra.Command{
 			if err := os.WriteFile(exportKeyOutPath, pemKey, 0600); err != nil {
 				return fmt.Errorf("failed to write key to %s: %w", exportKeyOutPath, err)
 			}
-			ui.Success("Unencrypted key for '%s' exported to %s", hostID, exportKeyOutPath)
+			ui.Success("Unencrypted key for “%s” exported to %s", hostID, exportKeyOutPath)
 		}
 		return nil
 	},
@@ -230,13 +231,13 @@ var hostImportKeyCmd = &cobra.Command{
 	Short: "Import a pre-existing private key for a host",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ui.Action("Importing private key for host '%s' from %s", args[0], importHostKeyPath)
+		ui.Action("Importing private key for host “%s” from %s", args[0], importHostKeyPath)
 		app := getApp(cmd)
 		err := app.ImportHostKey(cmd.Context(), args[0], importHostKeyPath)
 		if err != nil {
 			return err
 		}
-		ui.Success("Key for host '%s' imported successfully. Run 'host issue %s' to create a matching certificate", args[0], args[0])
+		ui.Success("Key for host “%s” imported successfully. Run “host issue %s” to create a matching certificate", args[0], args[0])
 		return nil
 	},
 }

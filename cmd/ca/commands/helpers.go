@@ -93,7 +93,7 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 			hasErrors = true
 			// Don't stop on error if --all is used
 			if isAll {
-				ui.Error("Error processing host '%s': %v", id, err)
+				ui.Error("Error processing host “%s”: %v", id, err)
 				continue
 			}
 			return err
