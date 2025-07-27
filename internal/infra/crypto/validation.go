@@ -15,6 +15,7 @@ import (
 // ValidateProviderRoundTrip performs a test encrypt/decrypt to ensure the provider works.
 func ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
 	// Generate a test ECDSA private key
+	// Should not take longer than 15 ms on slow systems
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("failed to generate test key: %w", err)

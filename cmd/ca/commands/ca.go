@@ -19,9 +19,15 @@ var caCmd = &cobra.Command{
 var caCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new CA key and self-signed certificate",
+	Long: strings.TrimSpace(`
+Create a new CA key and self-signed certificate.
+
+A round-trip validation test is performed to ensure you can decrypt
+the newly created CA key. Use --force to bypass validation failures.`),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.Action("Creating new CA certificate and private key")
 		app := getApp(cmd)
+		force, _ := cmd.Flags().GetBool("force")
 
 		// Validate CA configuration
 		err := app.ValidateCAConfig(false)
@@ -29,7 +35,7 @@ var caCreateCmd = &cobra.Command{
 			return err
 		}
 
-		err = app.CreateCA(cmd.Context())
+		err = app.CreateCA(cmd.Context(), force)
 		if err != nil {
 			if err == domain.ErrCAAlreadyExists {
 				return fmt.Errorf("%w\n%s", err, "Hint: To replace the existing CA, use 'reactor-ca ca rekey'.")
@@ -172,6 +178,7 @@ func init() {
 	_ = caImportCmd.MarkFlagRequired("cert")
 	_ = caImportCmd.MarkFlagRequired("key")
 
+	caCreateCmd.Flags().Bool("force", false, "Skip round-trip validation")
 	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation")
 	caReencryptCmd.Flags().Bool("rollback", false, "Automatically rollback from .bak files on failure")

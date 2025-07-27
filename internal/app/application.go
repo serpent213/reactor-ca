@@ -82,8 +82,8 @@ func (a *Application) ValidateConfig(ctx context.Context) error {
 }
 
 // CreateCA creates a new Certificate Authority.
-func (a *Application) CreateCA(ctx context.Context) error {
-	return a.createCA(ctx, false)
+func (a *Application) CreateCA(ctx context.Context, force bool) error {
+	return a.createCA(ctx, force)
 }
 
 // createCA creates a new Certificate Authority with optional force parameter.
@@ -103,21 +103,51 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		return err
 	}
 
-	// For CA creation, we need to ask for password confirmation
-	cryptoSvc := a.cryptoSvc
+	// Create identity provider for CA creation - same logic as reencrypt
+	var identityProvider domain.IdentityProvider
+	var cryptoSvc domain.CryptoService
+
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
 		// For password encryption, prompt for new password with confirmation
 		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return err
 		}
-		// Create temporary password provider and crypto service for CA creation
+		// Create temporary password provider and identity provider for CA creation
 		tempPasswordProvider := &password.StaticPasswordProvider{Password: newPassword}
-		tempIdentityProvider, err := a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
+		identityProvider, err = a.identityProviderFactory.CreateIdentityProvider(cfg, tempPasswordProvider)
 		if err != nil {
 			return fmt.Errorf("failed to create identity provider for CA creation: %w", err)
 		}
-		cryptoSvc = a.cryptoServiceFactory.CreateCryptoService(tempIdentityProvider)
+	} else {
+		// For SSH/plugin encryption, create provider from config like reencrypt does
+		var err error
+		identityProvider, err = a.identityProviderFactory.CreateIdentityProvider(cfg, a.passwordProvider)
+		if err != nil {
+			return fmt.Errorf("failed to create identity provider: %w", err)
+		}
+	}
+
+	cryptoSvc = a.cryptoServiceFactory.CreateCryptoService(identityProvider)
+
+	// Perform round-trip validation unless forced to skip
+	if !force {
+		ui.Action("Performing round-trip validation test...")
+		if err := a.validationService.ValidateProviderRoundTrip(identityProvider); err != nil {
+			ui.Warning("Round-trip validation failed: %v", err)
+			ui.Warning("This means you may not be able to decrypt your CA key after creation.")
+
+			// Prompt user for confirmation
+			confirmed, promptErr := a.userInteraction.Confirm("Do you want to proceed anyway? (y/N): ")
+			if promptErr != nil {
+				return promptErr
+			}
+			if !confirmed {
+				return fmt.Errorf("operation cancelled by user")
+			}
+		} else {
+			ui.Action("Round-trip validation successful")
+		}
 	}
 
 	key, err := cryptoSvc.GeneratePrivateKey(cfg.CA.KeyAlgorithm)
