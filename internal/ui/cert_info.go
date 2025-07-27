@@ -69,29 +69,84 @@ func PrintCertInfo(cert *x509.Certificate) {
 	}
 	fmt.Printf("%s\n", green(bold(header)))
 
-	if cert.Subject.CommonName != "" {
-		fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Name")), cert.Subject.CommonName)
+	// Certificate details section
+	if cert.Subject.CommonName != "" && cert.IsCA {
+		fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Name")), cert.Subject.CommonName)
 	}
 	if org != "" {
-		fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Organization")), org)
+		fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Organization")), org)
 	}
 	if email != "" {
-		fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Email")), email)
+		fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Email")), email)
 	}
 	if location != "" {
-		fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Location")), location)
+		fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Location")), location)
+	}
+
+	// For host certificates, show valid names prominently
+	if !cert.IsCA {
+		fmt.Printf("\n%s\n", green(bold("SUBJECT NAMES")))
+
+		// Always show Common Name first if present
+		if cert.Subject.CommonName != "" {
+			fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Common Name")), cert.Subject.CommonName)
+		}
+
+		// Show DNS names
+		if len(cert.DNSNames) > 0 {
+			for i, dns := range cert.DNSNames {
+				label := "DNS"
+				if i > 0 {
+					label = ""
+				}
+				fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", label)), dns)
+			}
+		}
+
+		// Show IP addresses
+		if len(cert.IPAddresses) > 0 {
+			for i, ip := range cert.IPAddresses {
+				label := "IP Address"
+				if i > 0 {
+					label = ""
+				}
+				fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", label)), ip.String())
+			}
+		}
+
+		// Show email addresses if present
+		if len(cert.EmailAddresses) > 0 {
+			for i, email := range cert.EmailAddresses {
+				label := "Email"
+				if i > 0 {
+					label = ""
+				}
+				fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", label)), email)
+			}
+		}
+
+		// Show URIs if present
+		if len(cert.URIs) > 0 {
+			for i, uri := range cert.URIs {
+				label := "URI"
+				if i > 0 {
+					label = ""
+				}
+				fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", label)), uri.String())
+			}
+		}
 	}
 
 	fmt.Printf("\n%s\n", green(bold("VALIDITY PERIOD")))
-	fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Issued")), cert.NotBefore.Format(time.RFC1123))
-	fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Expires")), cert.NotAfter.Format(time.RFC1123))
-	fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Remaining")), remaining)
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Issued")), cert.NotBefore.Format(time.RFC1123))
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Expires")), cert.NotAfter.Format(time.RFC1123))
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Remaining")), remaining)
 
 	fmt.Printf("\n%s\n", green(bold("CRYPTOGRAPHIC DETAILS")))
-	fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Algorithm")), cert.SignatureAlgorithm)
-	fmt.Printf("   %s : %s\n", cyan(fmt.Sprintf("%-13s", "Key Type")), keyType)
-	fmt.Printf("   %s : %x\n", cyan(fmt.Sprintf("%-13s", "Serial")), cert.SerialNumber)
-	fmt.Printf("   %s : SHA256:%s\n", cyan(fmt.Sprintf("%-13s", "Fingerprint")), fingerprint)
+	fmt.Printf("   %s %x\n", cyan(fmt.Sprintf("%-13s", "Serial")), cert.SerialNumber)
+	fmt.Printf("   %s SHA256:%s\n", cyan(fmt.Sprintf("%-13s", "Fingerprint")), fingerprint)
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Key")), keyType)
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Signature")), cert.SignatureAlgorithm)
 	fmt.Println()
 }
 
