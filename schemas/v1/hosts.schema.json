@@ -53,14 +53,11 @@
     "SubjectConfig": {
       "type": "object",
       "description": "Certificate subject distinguished name fields",
-      "required": [
-        "common_name"
-      ],
+      "required": [],
       "properties": {
         "common_name": {
           "type": "string",
-          "description": "Common Name (CN) - typically the primary FQDN",
-          "minLength": 1
+          "description": "Common Name (CN) - optional field for legacy compatibility. Must be included in SAN DNS names if specified"
         },
         "organization": {
           "type": "string",

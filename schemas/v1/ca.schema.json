@@ -40,14 +40,11 @@
     "SubjectConfig": {
       "type": "object",
       "description": "Certificate subject distinguished name fields",
-      "required": [
-        "common_name"
-      ],
+      "required": [],
       "properties": {
         "common_name": {
           "type": "string",
-          "description": "Common Name (CN) - typically the FQDN or CA name",
-          "minLength": 1
+          "description": "Common Name (CN) - optional field for CA identification"
         },
         "organization": {
           "type": "string",

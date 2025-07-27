@@ -3,10 +3,9 @@
 # yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/hosts.schema.json
 
 hosts:
-  # Web server example - typical use case
+  # Web server example - SAN-first approach (no CN required)
   web-server:
-    subject:
-      common_name: "web.reactor.local"
+    # Subject Alternative Names are the primary method for hostname validation
     alternative_names:
       dns:
         - "web.reactor.local"
@@ -27,8 +26,6 @@ hosts:
 
   # VPN server with IPv6 support
   vpn-server:
-    subject:
-      common_name: "vpn.reactor.local"
     alternative_names:
       dns:
         - "vpn.reactor.local"
@@ -49,7 +46,6 @@ hosts:
   # IoT device with custom subject fields
   iot-gateway:
     subject:
-      common_name: "iot.reactor.local"
       organization_unit: "IoT Division"
     alternative_names:
       dns:
@@ -69,14 +65,13 @@ hosts:
         chown iot:iot /opt/iot/certs/*
         systemctl restart mosquitto
 
-  # Client certificate for user authentication
+  # Client certificate for user authentication (VPN, web auth, email signing)
   client-user:
     subject:
-      common_name: "john.doe@reactor.local"
       organization_unit: "Users"
     alternative_names:
-      dns:
-        - "john.doe.reactor.local"
+      email:
+        - "john.doe@reactor.local"
     validity:
       years: 1
     key_algorithm: "RSA3072"
@@ -85,8 +80,6 @@ hosts:
 
   # Development server with multiple domains
   dev-server:
-    subject:
-      common_name: "dev.reactor.local"
     alternative_names:
       dns:
         - "dev.reactor.local"

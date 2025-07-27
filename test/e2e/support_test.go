@@ -393,8 +393,6 @@ encryption:
 const testHostsYAML = `
 hosts:
   web-server:
-    subject:
-      common_name: "web.reactor.test"
     alternative_names:
       dns: [ "web.reactor.test", "grafana.reactor.test" ]
       ip: [ "192.168.1.10", "10.0.0.10" ]
@@ -403,7 +401,7 @@ hosts:
       cert: "exports/web-server.pem"
       chain: "exports/web-server-chain.pem"
   db-server:
-    subject:
-      common_name: "db.reactor.test"
+    alternative_names:
+      dns: [ "db.reactor.test" ]
     validity: { days: 15 }
 `

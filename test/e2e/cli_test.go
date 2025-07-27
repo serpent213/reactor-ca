@@ -258,8 +258,8 @@ func TestE2E_DeployAndClean(t *testing.T) {
 	const deployHostYAML = `
 hosts:
   deploy-target:
-    subject:
-      common_name: "deploy.reactor.test"
+    alternative_names:
+      dns: [ "deploy.reactor.test" ]
     validity: { days: 15 }
     deploy:
       command: "echo DEPLOYED > deployment.flag"
@@ -285,8 +285,8 @@ hosts:
 	const cleanedHostsYAML = `
 hosts:
   web-server:
-    subject:
-      common_name: "web.reactor.test"
+    alternative_names:
+      dns: [ "web.reactor.test" ]
     validity: { days: 15 }
 `
 	e.writeConfig("hosts.yaml", cleanedHostsYAML)

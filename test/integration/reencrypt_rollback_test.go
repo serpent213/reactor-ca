@@ -126,16 +126,16 @@ encryption:
 	hostsConfigContent := `
 hosts:
   web-server:
-    subject:
-      common_name: "web.test.com"
+    alternative_names:
+      dns: ["web.test.com"]
     validity: { days: 90 }
   db-server:
-    subject:
-      common_name: "db.test.com"  
+    alternative_names:
+      dns: ["db.test.com"]
     validity: { days: 90 }
   api-server:
-    subject:
-      common_name: "api.test.com"
+    alternative_names:
+      dns: ["api.test.com"]
     validity: { days: 90 }
 `
 	if err := os.WriteFile(filepath.Join(configDir, "hosts.yaml"), []byte(hostsConfigContent), 0644); err != nil {

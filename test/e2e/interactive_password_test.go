@@ -40,10 +40,8 @@ encryption:
 	hostsConfig := `
 hosts:
   web-server:
-    subject:
-      common_name: "test-server.local"
-    subject_alt_names:
-      dns_names: ["test-server.local", "localhost"]
+    alternative_names:
+      dns: ["test-server.local", "localhost"]
     validity:
       days: 90
     key_algorithm: "ECP256"

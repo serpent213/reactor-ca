@@ -38,9 +38,7 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 	}
 
 	// Manual validation
-	if cfg.CA.Subject.CommonName == "" {
-		return nil, fmt.Errorf("%w: ca.subject.common_name is required in ca.yaml", domain.ErrValidation)
-	}
+	// Note: CommonName is optional following CA best practices (RFC 9525)
 	if cfg.CA.Validity.Years == 0 && cfg.CA.Validity.Months == 0 && cfg.CA.Validity.Days == 0 {
 		return nil, fmt.Errorf("%w: ca.validity must have either 'years', 'months', or 'days' set in ca.yaml", domain.ErrValidation)
 	}
@@ -74,9 +72,21 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 
 	// Manual validation for each host
 	for id, host := range cfg.Hosts {
-		if host.Subject.CommonName == "" {
-			return nil, fmt.Errorf("%w: hosts.%s.subject.common_name is required in hosts.yaml", domain.ErrValidation, id)
+		// CommonName is optional following CA best practices (RFC 9525)
+		// If CN is specified, it must be present in SAN DNS names for browser compatibility
+		if host.Subject.CommonName != "" {
+			cnInSAN := false
+			for _, dnsName := range host.AlternativeNames.DNS {
+				if dnsName == host.Subject.CommonName {
+					cnInSAN = true
+					break
+				}
+			}
+			if !cnInSAN {
+				return nil, fmt.Errorf("%w: hosts.%s.subject.common_name '%s' must be included in alternative_names.dns for modern browser compatibility", domain.ErrValidation, id, host.Subject.CommonName)
+			}
 		}
+
 		if host.Validity.Years == 0 && host.Validity.Months == 0 && host.Validity.Days == 0 {
 			return nil, fmt.Errorf("%w: hosts.%s.validity must have either 'years', 'months', or 'days' set in hosts.yaml", domain.ErrValidation, id)
 		}
