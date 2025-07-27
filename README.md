@@ -1,7 +1,7 @@
 ![ReactorCA screenshot](docs/assets/help_screen.webp)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-51.6%25-orange)
+![Coverage](https://img.shields.io/badge/Coverage-51.9%25-orange)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 
 # ReactorCA
@@ -85,7 +85,11 @@ First, create the default config files:
 ca init
 ```
 
-This creates default configuration files in the `config/` directory. Edit them according to your needs.
+ReactorCA automatically detects your SSH keys and configures encryption accordingly:
+- **SSH keys found**: Uses SSH-based encryption (prefers Ed25519 over RSA)
+- **No SSH keys**: Falls back to password-based encryption
+
+This creates configuration files in the `config/` directory. Edit them according to your needs.
 
 ### 2. Create CA Certificate
 

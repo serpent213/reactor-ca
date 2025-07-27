@@ -341,7 +341,7 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool, rollback bo
 
 	// Perform round-trip validation unless forced to skip
 	if !force {
-		ui.Action("Performing round-trip validation test...")
+		ui.Action("Performing round-trip en- and decryption test...")
 		if err := a.validationService.ValidateProviderRoundTrip(newIdentityProvider); err != nil {
 			a.logger.Log(fmt.Sprintf("Round-trip validation failed: %v", err))
 			ui.Warning("Round-trip validation failed: %v", err)

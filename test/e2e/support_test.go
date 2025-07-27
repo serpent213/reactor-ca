@@ -344,8 +344,6 @@ func (e *ptyTestEnv) waitForPrompt(expectedPrompt string) (string, error) {
 
 	select {
 	case result := <-resultCh:
-		// Ensure we end up on a new line
-		fmt.Println()
 		return result, nil
 	case err := <-errCh:
 		return "", fmt.Errorf("read error: %w", err)

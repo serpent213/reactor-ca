@@ -4,12 +4,75 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
 var forceInit bool
+
+// SSHKeyInfo holds information about a detected SSH key
+type SSHKeyInfo struct {
+	PrivateKeyPath string
+	PublicKeyPath  string
+	PublicKeyData  string
+	KeyType        string
+}
+
+// detectSSHKeys finds available SSH keys, preferring ed25519 over rsa
+func detectSSHKeys() (*SSHKeyInfo, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("unable to determine home directory: %w", err)
+	}
+
+	sshDir := filepath.Join(homeDir, ".ssh")
+
+	// Preferred key types in order (ed25519, then rsa)
+	keyTypes := []string{"id_ed25519", "id_rsa"}
+
+	for _, keyType := range keyTypes {
+		privateKeyPath := filepath.Join(sshDir, keyType)
+		publicKeyPath := privateKeyPath + ".pub"
+
+		// Check if both private and public key exist
+		if _, err := os.Stat(privateKeyPath); err != nil {
+			continue
+		}
+		if _, err := os.Stat(publicKeyPath); err != nil {
+			continue
+		}
+
+		// Read public key data
+		pubKeyBytes, err := os.ReadFile(publicKeyPath)
+		if err != nil {
+			continue
+		}
+
+		pubKeyData := strings.TrimSpace(string(pubKeyBytes))
+		if pubKeyData == "" {
+			continue
+		}
+
+		// Determine actual key type from public key content
+		actualKeyType := "unknown"
+		if strings.Contains(pubKeyData, "ssh-ed25519") {
+			actualKeyType = "ed25519"
+		} else if strings.Contains(pubKeyData, "ssh-rsa") {
+			actualKeyType = "rsa"
+		}
+
+		return &SSHKeyInfo{
+			PrivateKeyPath: privateKeyPath,
+			PublicKeyPath:  publicKeyPath,
+			PublicKeyData:  pubKeyData,
+			KeyType:        actualKeyType,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("no usable SSH keys found (looked for id_ed25519, id_rsa)")
+}
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -22,6 +85,21 @@ var initCmd = &cobra.Command{
 		}
 
 		ui.Action("Initializing Reactor CA in %s...", rootPath)
+
+		// Detect SSH keys for smart configuration
+		sshKey, sshErr := detectSSHKeys()
+		var caConfig string
+
+		if sshErr == nil {
+			// SSH key found - use SSH-based encryption
+			ui.Info("Detected %s SSH key: %s", sshKey.KeyType, sshKey.PrivateKeyPath)
+			caConfig = generateCaConfig(sshKey)
+		} else {
+			// No SSH key - fall back to password-based encryption
+			ui.Warning("No SSH keys detected, using password-based encryption")
+			ui.Info("(Looked for ~/.ssh/id_ed25519 and ~/.ssh/id_rsa)")
+			caConfig = generateCaConfig(nil)
+		}
 
 		dirs := []string{
 			filepath.Join(rootPath, "config"),
@@ -38,7 +116,7 @@ var initCmd = &cobra.Command{
 		}
 
 		files := map[string]string{
-			filepath.Join(rootPath, "config", "ca.yaml"):    defaultCaYAML,
+			filepath.Join(rootPath, "config", "ca.yaml"):    caConfig,
 			filepath.Join(rootPath, "config", "hosts.yaml"): defaultHostsYAML,
 		}
 
@@ -53,6 +131,12 @@ var initCmd = &cobra.Command{
 			ui.Success("Created config file: %s", path)
 		}
 
+		if sshErr == nil {
+			ui.Success("Configured SSH-based encryption using your %s public key", sshKey.KeyType)
+		} else {
+			ui.Success("Configured password-based encryption (set REACTOR_CA_PASSWORD or use interactive prompt)")
+		}
+
 		ui.Success("Initialization complete. Review the files in config/ and then run “ca ca create”.")
 		return nil
 	},
@@ -62,7 +146,25 @@ func init() {
 	initCmd.Flags().BoolVar(&forceInit, "force", false, "Overwrite existing configuration files")
 }
 
-const defaultCaYAML = `# ReactorCA: Certificate Authority Configuration
+// generateCaConfig creates a ca.yaml configuration based on detected SSH key or password fallback
+func generateCaConfig(sshKey *SSHKeyInfo) string {
+	if sshKey == nil {
+		return fmt.Sprintf(baseCaTemplate, passwordEncryptionSection)
+	}
+
+	// Convert absolute path to relative path with ~ if it's in home directory
+	identityPath := sshKey.PrivateKeyPath
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		if strings.HasPrefix(identityPath, homeDir) {
+			identityPath = "~" + identityPath[len(homeDir):]
+		}
+	}
+
+	encryptionSection := fmt.Sprintf(sshEncryptionSection, sshKey.KeyType, identityPath, sshKey.PublicKeyData)
+	return fmt.Sprintf(baseCaTemplate, encryptionSection)
+}
+
+const baseCaTemplate = `# ReactorCA: Certificate Authority Configuration
 # This file defines the properties of your root Certificate Authority.
 # yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json
 
@@ -90,20 +192,36 @@ ca:
   # Supported: SHA256, SHA384, SHA512
   hash_algorithm: "SHA384"
 
-# Defines how private keys are encrypted on disk using age.
+%s`
+
+const sshEncryptionSection = `# Defines how private keys are encrypted on disk using age.
 encryption:
-  # Provider: password | ssh (default) | plugin
+  # Provider: password | ssh | plugin
   provider: "ssh"
 
   # SSH key-based encryption settings (using age-ssh)
+  # Auto-detected %s SSH key
   ssh:
-    identity_file: "~/.ssh/id_ed25519"
+    identity_file: "%s"
     recipients:
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILmlSRRC4SIrIvVCIvH+H9GvhDxGbus907IJByMtgJIm user@host"
+      - "%s"
+`
+
+const passwordEncryptionSection = `# Defines how private keys are encrypted on disk using age.
+encryption:
+  # Provider: password | ssh | plugin
+  provider: "password"
 
   # Password-based encryption settings (using age scrypt)
-  # password:
-  #   min_length: 12
+  # Set REACTOR_CA_PASSWORD environment variable or use interactive prompt
+  password:
+    min_length: 12
+
+  # SSH key-based encryption settings (using age-ssh)
+  # ssh:
+  #   identity_file: "~/.ssh/id_ed25519"
+  #   recipients:
+  #     - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILmlSRRC4SIrIvVCIvH+H9GvhDxGbus907IJByMtgJIm user@host"
 `
 
 const defaultHostsYAML = `# ReactorCA: Host Certificate Configuration
