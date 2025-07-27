@@ -291,7 +291,6 @@ fmt-schemas:
 # Check JSON schema formatting
 fmt-schemas-check:
     #!/usr/bin/env bash
-    echo "Checking JSON schema formatting..."
     for file in schemas/v1/*.json; do
         if [ -f "$file" ]; then
             if ! jq '.' "$file" > /dev/null 2>&1; then
