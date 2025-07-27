@@ -4,6 +4,9 @@
 # Build artifacts
 /dist/
 
+# Coverage reports
+/coverage/
+
 # Ignore store and config directories
 /store/
 /config/

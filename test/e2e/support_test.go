@@ -20,6 +20,8 @@ import (
 var (
 	// reactorCABin holds the path to the compiled test binary.
 	reactorCABin string
+	// coverDir holds the path for e2e coverage data
+	coverDir string
 )
 
 const (
@@ -44,14 +46,32 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// Use existing coverage directory for e2e coverage data
+	// Get absolute path for project root coverage directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("Failed to get current directory: %v\n", err)
+		os.Exit(1)
+	}
+	// Navigate to project root (two levels up from test/e2e)
+	projectRoot := filepath.Join(cwd, "..", "..")
+	coverDir = filepath.Join(projectRoot, "coverage", "e2e-covdata")
+	if err := os.MkdirAll(coverDir, 0755); err != nil {
+		fmt.Printf("Failed to create coverage dir: %v\n", err)
+		os.Exit(1)
+	}
+
 	reactorCABin = filepath.Join(tmpDir, "reactor-ca")
 	if os.PathSeparator == '\\' {
 		reactorCABin += ".exe"
 	}
 
-	buildCmd := exec.Command("go", "build", "-o", reactorCABin, "reactor.de/reactor-ca/cmd/ca")
+	// Build instrumented binary for coverage collection (Go 1.20+ feature)
+	// Change to project root directory for build
+	buildCmd := exec.Command("go", "build", "-cover", "-coverpkg=./...", "-o", reactorCABin, "reactor.de/reactor-ca/cmd/ca")
+	buildCmd.Dir = projectRoot
 	if output, err := buildCmd.CombinedOutput(); err != nil {
-		fmt.Printf("Failed to build reactor-ca binary: %v\n%s\n", err, string(output))
+		fmt.Printf("Failed to build instrumented reactor-ca binary: %v\n%s\n", err, string(output))
 		os.Exit(1)
 	}
 
@@ -100,6 +120,10 @@ func (e *testEnv) run(password string, args ...string) (stdout, stderr string, e
 	cmd.Env = append(cmd.Env, "REACTOR_CA_ROOT="+e.root)
 	if password != "" {
 		cmd.Env = append(cmd.Env, "REACTOR_CA_PASSWORD="+password)
+	}
+	// Enable coverage collection for instrumented binary
+	if coverDir != "" {
+		cmd.Env = append(cmd.Env, "GOCOVERDIR="+coverDir)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -267,6 +291,10 @@ func (e *ptyTestEnv) startInteractiveCommand(args ...string) error {
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "REACTOR_CA_ROOT="+e.root)
 	// IMPORTANT: Do NOT set REACTOR_CA_PASSWORD - we want interactive prompts
+	// Enable coverage collection for instrumented binary
+	if coverDir != "" {
+		cmd.Env = append(cmd.Env, "GOCOVERDIR="+coverDir)
+	}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
