@@ -87,6 +87,8 @@ lint: fmt-check vet staticcheck
 
 test type="all":
     #!/usr/bin/env bash
+    set -e
+
     if [[ "{{type}}" =~ ^u ]]; then # unit
         go test -v ./cmd/... ./internal/...
     elif [[ "{{type}}" =~ ^i ]]; then # integration

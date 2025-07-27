@@ -173,7 +173,7 @@ hosts:
 
 	// 1. Create initial PKI setup with real .age files
 	t.Log("Creating CA...")
-	if err := appInstance.CreateCA(ctx); err != nil {
+	if err := appInstance.CreateCA(ctx, false); err != nil {
 		t.Fatalf("Failed to create CA: %v", err)
 	}
 
