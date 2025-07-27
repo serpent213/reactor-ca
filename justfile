@@ -136,7 +136,7 @@ cov type="all":
         go tool cover -func=coverage/unit.out | tail -1
     elif [[ "{{type}}" =~ ^i ]]; then # integration
         # Run integration tests with traditional text coverage profile
-        go test -coverprofile=coverage/integration.out -covermode=atomic -tags integration ./test/integration/...
+        go test -coverprofile=coverage/integration.out -covermode=atomic -tags integration -coverpkg=./cmd/...,./internal/... ./test/integration/...
         go tool cover -html=coverage/integration.out -o coverage/integration.html
         go tool cover -func=coverage/integration.out | tail -1
     elif [[ "{{type}}" =~ ^e ]]; then # e2e
