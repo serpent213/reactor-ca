@@ -3,9 +3,6 @@
 package e2e
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -146,72 +143,4 @@ func TestE2E_SSHRoundtripValidation(t *testing.T) {
 			t.Fatalf("Exported key is invalid: %v", err)
 		}
 	})
-}
-
-// --- Helper functions ---
-
-// generateSSHKey generates an SSH key pair and returns the private key path and public key content
-func (e *testEnv) generateSSHKey(name string) (privateKeyPath string, publicKeyContent string) {
-	e.t.Helper()
-
-	privateKeyPath = e.path(fmt.Sprintf("%s_ed25519", name))
-	publicKeyPath := e.path(fmt.Sprintf("%s_ed25519.pub", name))
-
-	// Generate Ed25519 key pair using ssh-keygen
-	cmd := []string{"ssh-keygen", "-t", "ed25519", "-f", privateKeyPath, "-N", "", "-C", "test@reactor.test"}
-	if err := e.runCommand(cmd...); err != nil {
-		e.t.Fatalf("Failed to generate SSH key %s: %v", name, err)
-	}
-
-	// Read the public key content
-	pubKeyBytes, err := os.ReadFile(publicKeyPath)
-	if err != nil {
-		e.t.Fatalf("Failed to read public key %s: %v", publicKeyPath, err)
-	}
-
-	return privateKeyPath, string(pubKeyBytes)
-}
-
-// createSSHCAConfig creates a CA config with SSH encryption
-func (e *testEnv) createSSHCAConfig(sshKeyPath, sshPubKey string) string {
-	return fmt.Sprintf(`
-ca:
-  subject:
-    common_name: "Reactor SSH Test CA"
-    organization: "Test Corp"
-    country: "US"
-  validity:
-    days: 30
-  key_algorithm: "ECP256"
-  hash_algorithm: "SHA256"
-
-encryption:
-  provider: "ssh"
-  ssh:
-    identity_file: "%s"
-    recipients:
-      - "%s"
-`, sshKeyPath, strings.TrimSpace(sshPubKey))
-}
-
-// assertFileDoesNotExist checks that a file does not exist
-func (e *testEnv) assertFileDoesNotExist(path string) {
-	e.t.Helper()
-	if _, err := os.Stat(e.path(path)); !os.IsNotExist(err) {
-		e.t.Errorf("Expected file to NOT exist, but it does: %s", path)
-	}
-}
-
-// runCommand executes a command and returns an error if it fails
-func (e *testEnv) runCommand(args ...string) error {
-	e.t.Helper()
-
-	// Use exec.Command like the existing runOpenSSL method
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = e.root
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s command failed: %w\nOutput:\n%s", args[0], err, string(output))
-	}
-	return nil
 }

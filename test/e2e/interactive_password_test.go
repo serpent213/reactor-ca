@@ -3,129 +3,10 @@
 package e2e
 
 import (
-	"bufio"
 	"bytes"
-	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"strings"
 	"testing"
-	"time"
-
-	"github.com/creack/pty"
 )
-
-const (
-	testInteractivePassword        = "interactive-test-password-147"
-	testInteractiveChangedPassword = "interactive-test-password-369"
-	promptTimeout                  = 5 * time.Second
-)
-
-// ptyTestEnv provides PTY-based interactive testing for password prompts
-type ptyTestEnv struct {
-	*testEnv
-	ptmx   *os.File
-	cmd    *exec.Cmd
-	reader *bufio.Reader
-}
-
-// newPtyTestEnv creates a new PTY-based test environment
-func newPtyTestEnv(t *testing.T) *ptyTestEnv {
-	return &ptyTestEnv{
-		testEnv: newTestEnv(t),
-	}
-}
-
-// startInteractiveCommand starts a command with PTY support and returns immediately
-func (e *ptyTestEnv) startInteractiveCommand(args ...string) error {
-	e.t.Helper()
-
-	cmd := exec.Command(reactorCABin, args...)
-	cmd.Dir = e.root
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "REACTOR_CA_ROOT="+e.root)
-	// IMPORTANT: Do NOT set REACTOR_CA_PASSWORD - we want interactive prompts
-
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("failed to start PTY command: %w", err)
-	}
-
-	e.cmd = cmd
-	e.ptmx = ptmx
-	e.reader = bufio.NewReader(ptmx)
-
-	return nil
-}
-
-// waitForPrompt waits for a specific prompt text to appear and returns the full output
-func (e *ptyTestEnv) waitForPrompt(expectedPrompt string) (string, error) {
-	e.t.Helper()
-
-	resultCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		var output strings.Builder
-		buffer := make([]byte, 1024)
-
-		for {
-			n, err := e.ptmx.Read(buffer)
-			if err != nil {
-				if err != io.EOF {
-					errCh <- err
-				}
-				return
-			}
-
-			if n > 0 {
-				chunk := buffer[:n]
-				output.Write(chunk)
-				// Echo all output to console for debugging
-				fmt.Print(string(chunk))
-
-				if strings.Contains(output.String(), expectedPrompt) {
-					resultCh <- output.String()
-					return
-				}
-			}
-		}
-	}()
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return "", fmt.Errorf("read error: %w", err)
-	case <-time.After(promptTimeout):
-		return "", fmt.Errorf("timeout waiting for prompt '%s'", expectedPrompt)
-	}
-}
-
-type readResult struct {
-	n   int
-	err error
-}
-
-// sendPassword sends a password to the PTY and presses enter
-func (e *ptyTestEnv) sendPassword(password string) error {
-	e.t.Helper()
-	_, err := e.ptmx.Write([]byte(password + "\n"))
-	return err
-}
-
-// cleanup waits for command completion and then closes the PTY
-func (e *ptyTestEnv) cleanup() error {
-	var cmdErr error
-	if e.cmd != nil {
-		cmdErr = e.cmd.Wait()
-	}
-	if e.ptmx != nil {
-		e.ptmx.Close()
-	}
-	return cmdErr
-}
 
 // TestE2E_InteractivePasswordPrompts tests password prompts without REACTOR_CA_PASSWORD env var
 func TestE2E_InteractivePasswordPrompts(t *testing.T) {
@@ -178,11 +59,10 @@ hosts:
 		}
 
 		// Wait for initial password prompt
-		output, err := e.waitForPrompt("Enter new CA password: ")
+		_, err = e.waitForPrompt("Enter new CA password: ")
 		if err != nil {
 			t.Fatalf("Failed to get initial password prompt: %v", err)
 		}
-		t.Logf("Got initial prompt output: %s", output)
 
 		// Send password
 		err = e.sendPassword(testInteractivePassword)
@@ -191,11 +71,10 @@ hosts:
 		}
 
 		// Wait for confirmation prompt
-		output, err = e.waitForPrompt("Confirm Password: ")
+		_, err = e.waitForPrompt("Confirm Password: ")
 		if err != nil {
 			t.Fatalf("Failed to get confirmation prompt: %v", err)
 		}
-		t.Logf("Got confirmation prompt output: %s", output)
 
 		// Send password confirmation
 		err = e.sendPassword(testInteractivePassword)
@@ -271,11 +150,10 @@ hosts:
 		}
 
 		// Wait for password prompt (to decrypt CA key)
-		output, err := e.waitForPrompt("Enter current CA password: ")
+		_, err = e.waitForPrompt("Enter current CA password: ")
 		if err != nil {
 			t.Fatalf("Failed to get password prompt: %v", err)
 		}
-		t.Logf("Got password prompt output: %s", output)
 
 		// Send password
 		err = e.sendPassword(testInteractivePassword)
@@ -406,11 +284,10 @@ hosts:
 		}
 
 		// Wait for current password prompt (new: happens first)
-		output, err := e.waitForPrompt("Enter current CA password: ")
+		_, err = e.waitForPrompt("Enter current CA password: ")
 		if err != nil {
 			t.Fatalf("Failed to get current password prompt: %v", err)
 		}
-		t.Logf("Got current password prompt output: %s", output)
 
 		// Send current password
 		err = e.sendPassword(testInteractivePassword)
@@ -419,11 +296,10 @@ hosts:
 		}
 
 		// Wait for new password prompt
-		output, err = e.waitForPrompt("Enter new CA password: ")
+		_, err = e.waitForPrompt("Enter new CA password: ")
 		if err != nil {
 			t.Fatalf("Failed to get new password prompt: %v", err)
 		}
-		t.Logf("Got new password prompt output: %s", output)
 
 		// Send new password
 		err = e.sendPassword(testInteractiveChangedPassword)
@@ -432,11 +308,10 @@ hosts:
 		}
 
 		// Wait for confirmation prompt
-		output, err = e.waitForPrompt("Confirm Password: ")
+		_, err = e.waitForPrompt("Confirm Password: ")
 		if err != nil {
 			t.Fatalf("Failed to get confirmation prompt: %v", err)
 		}
-		t.Logf("Got confirmation prompt output: %s", output)
 
 		// Send password confirmation
 		err = e.sendPassword(testInteractiveChangedPassword)
