@@ -21,13 +21,14 @@ type HostsConfig struct {
 
 // HostConfig holds the configuration for a single host certificate.
 type HostConfig struct {
-	Subject          SubjectConfig `yaml:"subject"`
-	AlternativeNames SANs          `yaml:"alternative_names"`
-	Validity         Validity      `yaml:"validity"`
-	KeyAlgorithm     KeyAlgorithm  `yaml:"key_algorithm"`
-	HashAlgorithm    HashAlgorithm `yaml:"hash_algorithm"`
-	Export           ExportConfig  `yaml:"export"`
-	Deploy           DeployConfig  `yaml:"deploy"`
+	Subject          SubjectConfig   `yaml:"subject"`
+	AlternativeNames SANs            `yaml:"alternative_names"`
+	Validity         Validity        `yaml:"validity"`
+	KeyAlgorithm     KeyAlgorithm    `yaml:"key_algorithm"`
+	HashAlgorithm    HashAlgorithm   `yaml:"hash_algorithm"`
+	Export           ExportConfig    `yaml:"export"`
+	Deploy           DeployConfig    `yaml:"deploy"`
+	Encryption       *HostEncryption `yaml:"encryption,omitempty"`
 }
 
 // SubjectConfig defines the fields for a certificate's subject.
@@ -131,4 +132,9 @@ func (w WarningThresholds) GetWarningDays() int {
 // GetWarningThresholds returns the warning thresholds from CAConfig with defaults applied.
 func (c *CAConfig) GetWarningThresholds() WarningThresholds {
 	return c.Display.Warnings
+}
+
+// HostEncryption defines additional encryption recipients for a specific host.
+type HostEncryption struct {
+	AdditionalRecipients []string `yaml:"additional_recipients,omitempty"`
 }

@@ -3,11 +3,14 @@
 package integration_test
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"filippo.io/age"
 
 	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/infra/identity"
@@ -259,6 +262,172 @@ func generateEd25519TestKey(keyPath string) error {
 func generateRSATestKey(keyPath string) error {
 	cmd := []string{"ssh-keygen", "-t", "rsa", "-b", "2048", "-f", keyPath, "-N", "", "-C", "test@example.com"}
 	return runCommand(cmd...)
+}
+
+func TestMergedProvider_AdditionalRecipients(t *testing.T) {
+	// Create base SSH identity
+	tmpDir := t.TempDir()
+	baseKeyPath := filepath.Join(tmpDir, "base_key")
+	basePubKeyPath := filepath.Join(tmpDir, "base_key.pub")
+
+	if err := generateEd25519TestKey(baseKeyPath); err != nil {
+		t.Fatalf("Failed to generate base test key: %v", err)
+	}
+
+	// Create additional SSH key for recipient
+	additionalKeyPath := filepath.Join(tmpDir, "additional_key")
+	additionalPubKeyPath := filepath.Join(tmpDir, "additional_key.pub")
+
+	if err := generateEd25519TestKey(additionalKeyPath); err != nil {
+		t.Fatalf("Failed to generate additional test key: %v", err)
+	}
+
+	// Read the public keys
+	basePubKey, err := os.ReadFile(basePubKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to read base public key: %v", err)
+	}
+
+	additionalPubKey, err := os.ReadFile(additionalPubKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to read additional public key: %v", err)
+	}
+
+	// Create base SSH provider
+	baseConfig := domain.SSHConfig{
+		IdentityFile: baseKeyPath,
+		Recipients:   []string{string(basePubKey)},
+	}
+	baseProvider := identity.NewSSHProvider(baseConfig)
+
+	// Create merged provider with additional recipients
+	additionalRecipients := []string{strings.TrimSpace(string(additionalPubKey))}
+	mergedProvider := identity.NewMergedProvider(baseProvider, additionalRecipients, "ssh")
+
+	// Test validation
+	if err := mergedProvider.Validate(); err != nil {
+		t.Errorf("MergedProvider validation failed: %v", err)
+	}
+
+	// Test that base identity is preserved
+	identity, err := mergedProvider.GetIdentity()
+	if err != nil {
+		t.Errorf("Failed to get identity from merged provider: %v", err)
+	}
+	if identity == nil {
+		t.Error("MergedProvider identity is nil")
+	}
+
+	// Test that recipients include both base and additional
+	recipients, err := mergedProvider.GetRecipients()
+	if err != nil {
+		t.Errorf("Failed to get recipients from merged provider: %v", err)
+	}
+
+	expectedCount := 2 // base + additional
+	if len(recipients) != expectedCount {
+		t.Errorf("Expected %d recipients, got %d", expectedCount, len(recipients))
+	}
+
+	// Test encryption/decryption round-trip
+	testData := []byte("test message for encryption")
+
+	// Create a minimal crypto service to test encryption with merged recipients
+	cryptoSvc := &testCryptoService{identityProvider: mergedProvider}
+
+	encrypted, err := cryptoSvc.EncryptPrivateKey(testData)
+	if err != nil {
+		t.Errorf("Failed to encrypt with merged provider: %v", err)
+	}
+
+	// Should be able to decrypt with base identity
+	cryptoSvcBase := &testCryptoService{identityProvider: baseProvider}
+	decrypted, err := cryptoSvcBase.DecryptPrivateKey(encrypted)
+	if err != nil {
+		t.Errorf("Failed to decrypt with base provider: %v", err)
+	}
+
+	if string(decrypted) != string(testData) {
+		t.Errorf("Decrypted data doesn't match original")
+	}
+}
+
+func TestMergedProvider_InvalidAdditionalRecipients(t *testing.T) {
+	// Create base SSH identity
+	tmpDir := t.TempDir()
+	baseKeyPath := filepath.Join(tmpDir, "base_key")
+	basePubKeyPath := filepath.Join(tmpDir, "base_key.pub")
+
+	if err := generateEd25519TestKey(baseKeyPath); err != nil {
+		t.Fatalf("Failed to generate base test key: %v", err)
+	}
+
+	basePubKey, err := os.ReadFile(basePubKeyPath)
+	if err != nil {
+		t.Fatalf("Failed to read base public key: %v", err)
+	}
+
+	baseConfig := domain.SSHConfig{
+		IdentityFile: baseKeyPath,
+		Recipients:   []string{string(basePubKey)},
+	}
+	baseProvider := identity.NewSSHProvider(baseConfig)
+
+	// Test with invalid additional recipient
+	invalidRecipients := []string{"invalid-ssh-key-format"}
+	mergedProvider := identity.NewMergedProvider(baseProvider, invalidRecipients, "ssh")
+
+	// Validation should fail
+	err = mergedProvider.Validate()
+	if err == nil {
+		t.Error("Expected validation error for invalid additional recipient, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported recipient format") {
+		t.Errorf("Expected error about unsupported recipient format, got: %v", err)
+	}
+}
+
+// testCryptoService is a minimal implementation for testing encryption/decryption
+type testCryptoService struct {
+	identityProvider domain.IdentityProvider
+}
+
+func (t *testCryptoService) EncryptPrivateKey(data []byte) ([]byte, error) {
+	recipients, err := t.identityProvider.GetRecipients()
+	if err != nil {
+		return nil, err
+	}
+
+	// Simple age encryption for testing
+	out := &strings.Builder{}
+	w, err := age.Encrypt(out, recipients...)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := w.Write(data); err != nil {
+		return nil, err
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+
+	return []byte(out.String()), nil
+}
+
+func (t *testCryptoService) DecryptPrivateKey(encryptedData []byte) ([]byte, error) {
+	identity, err := t.identityProvider.GetIdentity()
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := age.Decrypt(strings.NewReader(string(encryptedData)), identity)
+	if err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(r)
 }
 
 func runCommand(args ...string) error {

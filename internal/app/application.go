@@ -71,11 +71,37 @@ func NewApplication(
 
 // ValidateConfig checks if the configuration files are valid.
 func (a *Application) ValidateConfig(ctx context.Context) error {
-	if _, err := a.configLoader.LoadCA(); err != nil {
+	caCfg, err := a.configLoader.LoadCA()
+	if err != nil {
 		return err
 	}
-	if _, err := a.configLoader.LoadHosts(); err != nil {
+
+	hostsCfg, err := a.configLoader.LoadHosts()
+	if err != nil {
 		return err
+	}
+
+	// Validate each host configuration, including additional recipients
+	for hostID, hostCfg := range hostsCfg.Hosts {
+		if err := a.validateHostConfig(caCfg, &hostCfg, hostID); err != nil {
+			return fmt.Errorf("validation failed for host '%s': %w", hostID, err)
+		}
+	}
+
+	return nil
+}
+
+// validateHostConfig validates a single host configuration.
+func (a *Application) validateHostConfig(caCfg *domain.CAConfig, hostCfg *domain.HostConfig, hostID string) error {
+	// If no host-specific encryption, nothing to validate
+	if hostCfg.Encryption == nil || len(hostCfg.Encryption.AdditionalRecipients) == 0 {
+		return nil
+	}
+
+	// Create and validate the merged provider using interface method
+	_, err := a.identityProviderFactory.CreateHostIdentityProvider(caCfg, hostCfg, a.passwordProvider)
+	if err != nil {
+		return fmt.Errorf("host encryption validation failed: %w", err)
 	}
 
 	return nil
@@ -494,6 +520,19 @@ func (a *Application) GetAllHostIDs(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+// createHostCryptoService creates a crypto service for a specific host,
+// potentially with additional recipients merged in.
+func (a *Application) createHostCryptoService(caCfg *domain.CAConfig, hostCfg *domain.HostConfig) (domain.CryptoService, error) {
+	// Create host-specific identity provider using interface method
+	identityProvider, err := a.identityProviderFactory.CreateHostIdentityProvider(caCfg, hostCfg, a.passwordProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create host identity provider: %w", err)
+	}
+
+	// Create crypto service with host-specific provider
+	return a.cryptoServiceFactory.CreateCryptoService(identityProvider), nil
+}
+
 // IssueHost creates or renews a certificate for a single host.
 func (a *Application) IssueHost(ctx context.Context, hostID string, rekey, shouldDeploy bool) error {
 	return a.withCAKey(ctx, func(caKey crypto.Signer) error {
@@ -520,6 +559,12 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 	// Apply inheritance from CA config to host config
 	resolvedHostCfg := a.resolveHostConfig(hostCfg, caCfg)
 
+	// Create host-specific crypto service for key encryption/decryption
+	hostCryptoSvc, err := a.createHostCryptoService(caCfg, &hostCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create host crypto service: %w", err)
+	}
+
 	caCert, err := a.store.LoadCACert()
 	if err != nil {
 		return err
@@ -543,7 +588,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		if err != nil {
 			return err
 		}
-		encryptedHostKey, err := a.cryptoSvc.EncryptPrivateKey(hostKey)
+		encryptedHostKey, err := hostCryptoSvc.EncryptPrivateKey(hostKey)
 		if err != nil {
 			return err
 		}
@@ -556,7 +601,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 		if err != nil {
 			return err
 		}
-		hostKey, err = a.cryptoSvc.DecryptPrivateKey(hostKeyData)
+		hostKey, err = hostCryptoSvc.DecryptPrivateKey(hostKeyData)
 		if err != nil {
 			if errors.Is(err, domain.ErrIncorrectPassword) {
 				return err
@@ -869,8 +914,20 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 	if err != nil {
 		return err
 	}
-	if _, ok := hostsCfg.Hosts[hostID]; !ok {
+	hostCfg, ok := hostsCfg.Hosts[hostID]
+	if !ok {
 		return domain.ErrHostNotFoundInConfig
+	}
+
+	caCfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return err
+	}
+
+	// Create host-specific crypto service for encryption
+	hostCryptoSvc, err := a.createHostCryptoService(caCfg, &hostCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create host crypto service: %w", err)
 	}
 
 	keyPEM, err := os.ReadFile(keyPath)
@@ -882,7 +939,7 @@ func (a *Application) ImportHostKey(ctx context.Context, hostID, keyPath string)
 		return err
 	}
 
-	encryptedKey, err := a.cryptoSvc.EncryptPrivateKey(key)
+	encryptedKey, err := hostCryptoSvc.EncryptPrivateKey(key)
 	if err != nil {
 		return err
 	}
@@ -1057,13 +1114,35 @@ func (a *Application) loadCAKey(ctx context.Context) (crypto.Signer, error) {
 	return caKey, nil
 }
 
-// loadHostKey loads and decrypts a host private key.
+// loadHostKey loads and decrypts a host private key using host-specific encryption.
 func (a *Application) loadHostKey(ctx context.Context, hostID string) (crypto.Signer, error) {
+	// Load host configuration to get potential additional recipients
+	hostsCfg, err := a.configLoader.LoadHosts()
+	if err != nil {
+		return nil, err
+	}
+	hostCfg, ok := hostsCfg.Hosts[hostID]
+	if !ok {
+		return nil, domain.ErrHostNotFoundInConfig
+	}
+
+	caCfg, err := a.configLoader.LoadCA()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create host-specific crypto service
+	hostCryptoSvc, err := a.createHostCryptoService(caCfg, &hostCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create host crypto service: %w", err)
+	}
+
 	hostKeyData, err := a.store.LoadHostKey(hostID)
 	if err != nil {
 		return nil, err
 	}
-	hostKey, err := a.cryptoSvc.DecryptPrivateKey(hostKeyData)
+
+	hostKey, err := hostCryptoSvc.DecryptPrivateKey(hostKeyData)
 	if err != nil {
 		if errors.Is(err, domain.ErrIncorrectPassword) {
 			return nil, err

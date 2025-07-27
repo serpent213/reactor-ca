@@ -256,6 +256,10 @@ func (m *mockIdentityProviderFactory) CreateIdentityProvider(cfg *domain.CAConfi
 	return &mockIdentityProvider{}, nil
 }
 
+func (m *mockIdentityProviderFactory) CreateHostIdentityProvider(cfg *domain.CAConfig, hostCfg *domain.HostConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	return &mockIdentityProvider{}, nil
+}
+
 type mockCryptoServiceFactory struct {
 	cryptoSvc domain.CryptoService
 }

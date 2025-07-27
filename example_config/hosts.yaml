@@ -14,6 +14,7 @@ hosts:
       ip:
         - "192.168.1.100"
         - "10.10.0.1"
+        - "2001:db8::1"
     validity:
       years: 1
     key_algorithm: "RSA2048"
@@ -23,25 +24,6 @@ hosts:
       chain: "/etc/ssl/certs/web-server-chain.crt"
     deploy:
       command: "systemctl reload nginx"
-
-  # VPN server with IPv6 support
-  vpn-server:
-    alternative_names:
-      dns:
-        - "vpn.reactor.local"
-        - "openvpn.reactor.local"
-      ip:
-        - "192.168.1.200"
-        - "2001:db8::1" # IPv6 example
-    validity:
-      years: 2
-    key_algorithm: "ECP384"
-    hash_algorithm: "SHA384"
-    export:
-      cert: "/etc/openvpn/server.crt"
-      chain: "/etc/openvpn/server-chain.crt"
-    deploy:
-      command: "systemctl restart openvpn@server"
 
   # IoT device with custom subject fields
   iot-gateway:
@@ -78,21 +60,33 @@ hosts:
     hash_algorithm: "SHA256"
     # No export/deploy - stored in secure store only
 
-  # Development server with multiple domains
-  dev-server:
+  # NixOS homelab server with agenix secrets management
+  # Additional recipients for runtime decryption on the target system
+  nixos-homelab:
+    subject:
+      organization_unit: "Infrastructure"
     alternative_names:
       dns:
-        - "dev.reactor.local"
-        - "api.dev.reactor.local"
-        - "staging.reactor.local"
-        - "localhost"
+        - "homelab.reactor.local"
+        - "vault.reactor.local"
+        - "git.reactor.local"
+        - "ci.reactor.local"
       ip:
-        - "127.0.0.1"
-        - "192.168.1.50"
+        - "192.168.1.10"
     validity:
-      months: 6 # Shorter validity for dev environments
-    key_algorithm: "RSA2048"
+      years: 1
+    key_algorithm: "ED25519"
     hash_algorithm: "SHA256"
+    # Include host's SSH host private key for agenix
+    encryption:
+      additional_recipients:
+        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJbG8K9sVt2L4mN3oP1qR5sT6uV7wX8yZ9aB2cD3eF4gH ops-admin@reactor.local"
     export:
-      cert: "/var/www/ssl/dev.crt"
-      chain: "/var/www/ssl/dev-chain.crt"
+      cert: "../myserver/secrets/homelab/cert.pem"
+      # TODO: Add encrypted private key export for agenix integration
+      # key_encrypted: "../myserver/secrets/homelab/key.age"
+    deploy:
+      command: |-
+        # Rebuild NixOS configuration locally and deploy to target host
+        cd ~/infrastructure/myserver
+        nixos-rebuild switch --target-host root@homelab.reactor.local --flake .#homelab

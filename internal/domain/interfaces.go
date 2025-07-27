@@ -97,6 +97,7 @@ type IdentityProvider interface {
 // IdentityProviderFactory creates identity providers based on configuration.
 type IdentityProviderFactory interface {
 	CreateIdentityProvider(cfg *CAConfig, passwordProvider PasswordProvider) (IdentityProvider, error)
+	CreateHostIdentityProvider(cfg *CAConfig, hostCfg *HostConfig, passwordProvider PasswordProvider) (IdentityProvider, error)
 }
 
 // CryptoServiceFactory creates crypto services with specific identity providers.

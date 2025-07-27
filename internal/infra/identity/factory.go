@@ -35,3 +35,26 @@ func (f *Factory) CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider 
 		return nil, fmt.Errorf("unsupported encryption provider: %s", cfg.Encryption.Provider)
 	}
 }
+
+// CreateHostIdentityProvider creates an identity provider for a specific host,
+// potentially merging additional recipients with the base CA provider.
+func (f *Factory) CreateHostIdentityProvider(cfg *domain.CAConfig, hostConfig *domain.HostConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	// Create base provider
+	baseProvider, err := f.CreateIdentityProvider(cfg, passwordProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no host-specific encryption config, use base provider
+	if hostConfig.Encryption == nil || len(hostConfig.Encryption.AdditionalRecipients) == 0 {
+		return baseProvider, nil
+	}
+
+	// Create merged provider with additional recipients
+	mergedProvider := NewMergedProvider(baseProvider, hostConfig.Encryption.AdditionalRecipients, cfg.Encryption.Provider)
+	if err := mergedProvider.Validate(); err != nil {
+		return nil, fmt.Errorf("merged provider validation failed: %w", err)
+	}
+
+	return mergedProvider, nil
+}

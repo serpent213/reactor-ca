@@ -7,6 +7,8 @@ import (
 	"errors"
 	"testing"
 
+	"filippo.io/age"
+
 	"reactor.de/reactor-ca/internal/app"
 	"reactor.de/reactor-ca/internal/domain"
 	cryptosvc "reactor.de/reactor-ca/internal/infra/crypto"
@@ -158,16 +160,77 @@ func (m *MockLogger) Error(msg string, args ...interface{})   {}
 func (m *MockLogger) Warning(msg string, args ...interface{}) {}
 func (m *MockLogger) Log(msg string)                          {}
 
+type MockIdentityProviderFactory struct {
+	CreateIdentityProviderFunc     func(*domain.CAConfig, domain.PasswordProvider) (domain.IdentityProvider, error)
+	CreateHostIdentityProviderFunc func(*domain.CAConfig, *domain.HostConfig, domain.PasswordProvider) (domain.IdentityProvider, error)
+}
+
+func (m *MockIdentityProviderFactory) CreateIdentityProvider(cfg *domain.CAConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	if m.CreateIdentityProviderFunc != nil {
+		return m.CreateIdentityProviderFunc(cfg, passwordProvider)
+	}
+	return &MockIdentityProvider{}, nil
+}
+
+func (m *MockIdentityProviderFactory) CreateHostIdentityProvider(cfg *domain.CAConfig, hostCfg *domain.HostConfig, passwordProvider domain.PasswordProvider) (domain.IdentityProvider, error) {
+	if m.CreateHostIdentityProviderFunc != nil {
+		return m.CreateHostIdentityProviderFunc(cfg, hostCfg, passwordProvider)
+	}
+	// Default to base provider behavior for compatibility
+	return m.CreateIdentityProvider(cfg, passwordProvider)
+}
+
+type MockIdentityProvider struct {
+	GetRecipientsFunc func() ([]age.Recipient, error)
+	GetIdentityFunc   func() (age.Identity, error)
+	ValidateFunc      func() error
+}
+
+func (m *MockIdentityProvider) GetRecipients() ([]age.Recipient, error) {
+	if m.GetRecipientsFunc != nil {
+		return m.GetRecipientsFunc()
+	}
+	return []age.Recipient{}, nil
+}
+
+func (m *MockIdentityProvider) GetIdentity() (age.Identity, error) {
+	if m.GetIdentityFunc != nil {
+		return m.GetIdentityFunc()
+	}
+	return nil, nil
+}
+
+func (m *MockIdentityProvider) Validate() error {
+	if m.ValidateFunc != nil {
+		return m.ValidateFunc()
+	}
+	return nil
+}
+
+type MockCryptoServiceFactory struct {
+	CreateCryptoServiceFunc func(domain.IdentityProvider) domain.CryptoService
+}
+
+func (m *MockCryptoServiceFactory) CreateCryptoService(identityProvider domain.IdentityProvider) domain.CryptoService {
+	if m.CreateCryptoServiceFunc != nil {
+		return m.CreateCryptoServiceFunc(identityProvider)
+	}
+	// Return a default crypto service mock
+	return &MockCryptoService{}
+}
+
 // --- Test Setup Helper ---
 
 // Mocks contains all the mockable dependencies for the Application.
 type Mocks struct {
-	ConfigLoader *MockConfigLoader
-	Store        *MockStore
-	CryptoSvc    *MockCryptoService
-	Password     *MockPasswordProvider
-	Commander    *MockCommander
-	Logger       *MockLogger
+	ConfigLoader            *MockConfigLoader
+	Store                   *MockStore
+	CryptoSvc               *MockCryptoService
+	Password                *MockPasswordProvider
+	Commander               *MockCommander
+	Logger                  *MockLogger
+	IdentityProviderFactory *MockIdentityProviderFactory
+	CryptoServiceFactory    *MockCryptoServiceFactory
 }
 
 // SetupTestApplication initializes the Application service with mocks for unit testing.
@@ -178,25 +241,36 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 	// This makes it easy to test logic without mocking all of crypto.
 	realCryptoSvc := cryptosvc.NewService()
 
+	mockCryptoServiceFactory := &MockCryptoServiceFactory{}
+	mockIdentityProviderFactory := &MockIdentityProviderFactory{}
+
+	// Set up the crypto service factory to return the mock crypto service
+	mockCryptoSvc := &MockCryptoService{
+		GeneratePrivateKeyFunc:     realCryptoSvc.GeneratePrivateKey,
+		CreateRootCertificateFunc:  realCryptoSvc.CreateRootCertificate,
+		CreateHostCertificateFunc:  realCryptoSvc.CreateHostCertificate,
+		SignCSRFunc:                realCryptoSvc.SignCSR,
+		EncodeCertificateToPEMFunc: realCryptoSvc.EncodeCertificateToPEM,
+		EncodeKeyToPEMFunc:         realCryptoSvc.EncodeKeyToPEM,
+		ParseCertificateFunc:       realCryptoSvc.ParseCertificate,
+		ParsePrivateKeyFunc:        realCryptoSvc.ParsePrivateKey,
+		ParseCSRFunc:               realCryptoSvc.ParseCSR,
+		ValidateKeyPairFunc:        realCryptoSvc.ValidateKeyPair,
+		// EncryptPrivateKeyFunc and DecryptPrivateKeyFunc left nil - tests must set these
+	}
+	mockCryptoServiceFactory.CreateCryptoServiceFunc = func(identityProvider domain.IdentityProvider) domain.CryptoService {
+		return mockCryptoSvc
+	}
+
 	mocks := &Mocks{
-		ConfigLoader: &MockConfigLoader{},
-		Store:        &MockStore{},
-		CryptoSvc: &MockCryptoService{
-			GeneratePrivateKeyFunc:     realCryptoSvc.GeneratePrivateKey,
-			CreateRootCertificateFunc:  realCryptoSvc.CreateRootCertificate,
-			CreateHostCertificateFunc:  realCryptoSvc.CreateHostCertificate,
-			SignCSRFunc:                realCryptoSvc.SignCSR,
-			EncodeCertificateToPEMFunc: realCryptoSvc.EncodeCertificateToPEM,
-			EncodeKeyToPEMFunc:         realCryptoSvc.EncodeKeyToPEM,
-			ParseCertificateFunc:       realCryptoSvc.ParseCertificate,
-			ParsePrivateKeyFunc:        realCryptoSvc.ParsePrivateKey,
-			ParseCSRFunc:               realCryptoSvc.ParseCSR,
-			ValidateKeyPairFunc:        realCryptoSvc.ValidateKeyPair,
-			// EncryptPrivateKeyFunc and DecryptPrivateKeyFunc left nil - tests must set these
-		},
-		Password:  &MockPasswordProvider{},
-		Commander: &MockCommander{},
-		Logger:    &MockLogger{},
+		ConfigLoader:            &MockConfigLoader{},
+		Store:                   &MockStore{},
+		CryptoSvc:               mockCryptoSvc,
+		Password:                &MockPasswordProvider{},
+		Commander:               &MockCommander{},
+		Logger:                  &MockLogger{},
+		IdentityProviderFactory: mockIdentityProviderFactory,
+		CryptoServiceFactory:    mockCryptoServiceFactory,
 	}
 
 	application := app.NewApplication(
@@ -209,8 +283,8 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 		nil, // UserInteraction
 		mocks.Commander,
 		nil, // IdentityProvider
-		nil, // IdentityProviderFactory
-		nil, // CryptoServiceFactory
+		mocks.IdentityProviderFactory,
+		mocks.CryptoServiceFactory,
 		nil, // ValidationService
 	)
 
