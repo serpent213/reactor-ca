@@ -660,6 +660,19 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 		}
 		a.logger.Log(fmt.Sprintf("Exported certificate chain to %s", chainPath))
 	}
+
+	// Export encrypted private key
+	if hostCfg.Export.KeyEncrypted != "" {
+		encryptedKeyPath := a.resolvePath(hostCfg.Export.KeyEncrypted)
+		encryptedKey, err := a.store.LoadHostKey(hostID)
+		if err != nil {
+			return fmt.Errorf("failed to load encrypted key: %w", err)
+		}
+		if err := a.writeFileWithDir(encryptedKeyPath, encryptedKey, 0600); err != nil {
+			return fmt.Errorf("failed to export encrypted key: %w", err)
+		}
+		a.logger.Log(fmt.Sprintf("Exported encrypted private key to %s", encryptedKeyPath))
+	}
 	return nil
 }
 

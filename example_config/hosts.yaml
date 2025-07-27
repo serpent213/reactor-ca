@@ -17,13 +17,27 @@ hosts:
         - "2001:db8::1"
     validity:
       years: 1
+
+  mushroom:
+    subject:
+      common_name: "fritz.box"
+
+    alternative_names:
+      dns:
+        - "fritz.box"
+      ip:
+        - "192.168.178.1"
+
+    validity:
+      years: 1
+
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
-    export:
-      cert: "/etc/ssl/certs/web-server.crt"
-      chain: "/etc/ssl/certs/web-server-chain.crt"
+
     deploy:
-      command: "systemctl reload nginx"
+      command: |
+        # using https://github.com/tisba/fritz-tls
+        fritz-tls --manual --host https://admin@fritz.box --insecure --key=${private_key} --fullchain=${cert}
 
   # IoT device with custom subject fields
   iot-gateway:
@@ -80,11 +94,10 @@ hosts:
     # Include host's SSH host private key for agenix
     encryption:
       additional_recipients:
-        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJbG8K9sVt2L4mN3oP1qR5sT6uV7wX8yZ9aB2cD3eF4gH ops-admin@reactor.local"
+        - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEMJHSsJ1rwalBLpOt/JkxQubOwgp1xtZhvwqxkFCVTM test@reactor.local"
     export:
       cert: "../myserver/secrets/homelab/cert.pem"
-      # TODO: Add encrypted private key export for agenix integration
-      # key_encrypted: "../myserver/secrets/homelab/key.age"
+      key_encrypted: "../myserver/secrets/homelab/key.age"
     deploy:
       command: |-
         # Rebuild NixOS configuration locally and deploy to target host

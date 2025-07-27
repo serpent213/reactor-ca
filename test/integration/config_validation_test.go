@@ -45,6 +45,10 @@ func TestValidateAllExampleConfigs(t *testing.T) {
 }
 
 func testValidateExampleConfig(t *testing.T, exampleFilePath string) {
+	// Set test password for validation
+	os.Setenv("TEST_CA_PASSWORD", "test-password-12345")
+	defer os.Unsetenv("TEST_CA_PASSWORD")
+
 	// Create temporary directory for this test
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
@@ -157,6 +161,9 @@ func createMinimalCAConfig(path string) error {
 
 encryption:
   provider: "password"
+  password:
+    min_length: 12
+    env_var: "TEST_CA_PASSWORD"
 `
 	return os.WriteFile(path, []byte(minimalCA), 0644)
 }

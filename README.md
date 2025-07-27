@@ -117,13 +117,26 @@ To list all certificates with their expiration dates:
 ca host list
 ```
 
-### 5. Deploy Certificate
+### 5. Export and Deploy Certificates
 
-To run the deployment command for a host:
+ReactorCA supports flexible certificate export and deployment:
 
+**Export only** (automatic during certificate issuance):
 ```bash
-ca host deploy web-server-example
+ca host issue web-server-example  # Exports to configured paths automatically
 ```
+
+**Deploy only** (run deployment commands independently):
+```bash
+ca host deploy web-server-example  # Runs deployment without re-issuing
+```
+
+**Issue, export and deploy together**:
+```bash
+ca host issue web-server-example --deploy  # Issue certificate then deploy
+```
+
+Deploy will create temp files if the required files are not exported, so `export` and `deploy` options can be used independently from each other.
 
 ## CLI Reference
 
@@ -319,20 +332,24 @@ hosts:
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
 
-    # Export paths (optional). These paths can be used in the deploy commands.
+    # Export paths (optional) - files written during 'host issue'
     export:
-      cert: "/etc/ssl/certs/web-server.pem"
-      chain: "/etc/ssl/certs/web-server-chain.pem"
+      cert: "/etc/ssl/certs/web-server.pem"           # Certificate in PEM format
+      chain: "/etc/ssl/certs/web-server-chain.pem"    # Certificate + CA chain
+      key_encrypted: "/etc/ssl/private/web-server.key.age"  # Encrypted private key (age format)
 
-    # Deployment commands (optional). Executed as a shell script.
-    # Variables:
-    # - ${cert}: Path to the exported certificate.
-    # - ${chain}: Path to the exported chain file.
-    # - ${private_key}: Path to a temporary, unencrypted private key file (securely handled).
+    # Deployment commands (optional) - executed during 'host deploy'
+    # Deploy can run independently or together with issue (--deploy flag)
+    # Variables available:
+    # - ${cert}: Certificate file (from export.cert or temporary file)
+    # - ${chain}: Certificate chain (from export.chain or temporary file)
+    # - ${key_encrypted}: Encrypted private key (from export.key_encrypted or temporary file)
+    # - ${private_key}: Temporary unencrypted private key (secure, auto-cleanup)
     deploy:
-      commands:
-        - "echo 'Reloading NGINX...'"
-        - "systemctl reload nginx"
+      command: |
+        echo 'Deploying certificates...'
+        scp ${cert} ${chain} server:/etc/ssl/
+        ssh server systemctl reload nginx
 ```
 
 ## Store Structure

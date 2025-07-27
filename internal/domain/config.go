@@ -72,8 +72,9 @@ type SANs struct {
 
 // ExportConfig defines paths for exporting generated files.
 type ExportConfig struct {
-	Cert  string `yaml:"cert"`
-	Chain string `yaml:"chain"`
+	Cert         string `yaml:"cert"`
+	Chain        string `yaml:"chain"`
+	KeyEncrypted string `yaml:"key_encrypted"`
 }
 
 // DeployConfig defines the command to run after issuance.
