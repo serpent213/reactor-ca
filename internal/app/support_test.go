@@ -1,4 +1,4 @@
-package testhelper
+package app_test
 
 import (
 	"context"

@@ -9,17 +9,19 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"filippo.io/age"
 	"reactor.de/reactor-ca/internal/app"
-	"reactor.de/reactor-ca/internal/app/testhelper"
 	"reactor.de/reactor-ca/internal/domain"
 )
 
@@ -43,6 +45,7 @@ type mockStore struct {
 	keyData           map[string][]byte
 	updateKeyError    error
 	err               error
+	caCert            *x509.Certificate
 }
 
 func (m *mockStore) ListHostIDs() ([]string, error) {
@@ -75,7 +78,7 @@ func (m *mockStore) UpdateEncryptedKey(path string, data []byte) error {
 // Minimal Store interface implementations
 func (m *mockStore) CAExists() (bool, error)                               { return false, nil }
 func (m *mockStore) SaveCA(cert, encryptedKey []byte) error                { return nil }
-func (m *mockStore) LoadCACert() (*x509.Certificate, error)                { return nil, nil }
+func (m *mockStore) LoadCACert() (*x509.Certificate, error)                { return m.caCert, m.err }
 func (m *mockStore) LoadCAKey() ([]byte, error)                            { return nil, nil }
 func (m *mockStore) HostExists(hostID string) (bool, error)                { return false, nil }
 func (m *mockStore) HostKeyExists(hostID string) (bool, error)             { return false, nil }
@@ -158,7 +161,7 @@ func TestCleanHosts(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup Mocks
-			mockCfgLoader := &testhelper.MockConfigLoader{
+			mockCfgLoader := &MockConfigLoader{
 				HostsConfig: &domain.HostsConfig{Hosts: make(map[string]domain.HostConfig)},
 			}
 			for _, id := range tc.configIDs {
@@ -169,15 +172,15 @@ func TestCleanHosts(t *testing.T) {
 				hostIDs: tc.storeIDs,
 			}
 
-			mockPwProvider := &testhelper.MockPasswordProvider{}
+			mockPwProvider := &MockPasswordProvider{}
 			mockUserInt := &mockUserInteraction{
 				confirmResponse: tc.confirmResponse,
 				confirmErr:      tc.confirmError,
 			}
 
 			application := app.NewApplication(
-				"", &testhelper.MockLogger{}, mockCfgLoader, mockStore, nil,
-				mockPwProvider, mockUserInt, &testhelper.MockCommander{}, nil,
+				"", &MockLogger{}, mockCfgLoader, mockStore, nil,
+				mockPwProvider, mockUserInt, &MockCommander{}, nil,
 				&mockIdentityProviderFactory{}, &mockCryptoServiceFactory{}, &mockValidationService{},
 			)
 
@@ -268,7 +271,7 @@ func (m *mockCryptoServiceFactory) CreateCryptoService(identityProvider domain.I
 	if m.cryptoSvc != nil {
 		return m.cryptoSvc
 	}
-	return &testhelper.MockCryptoService{}
+	return &MockCryptoService{}
 }
 
 type mockValidationService struct {
@@ -426,7 +429,7 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 		mockStore.updateKeyError = updateError.(error)
 	}
 
-	mockCrypto := &testhelper.MockCryptoService{}
+	mockCrypto := &MockCryptoService{}
 	if decryptError, ok := config.mockOptions["decryptError"]; ok {
 		mockCrypto.DecryptPrivateKeyFunc = func(pemData []byte) (crypto.Signer, error) {
 			return nil, decryptError.(error)
@@ -451,19 +454,19 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 		mockValidation.validateError = validateError.(error)
 	}
 
-	mockPwProvider := &testhelper.MockPasswordProvider{MasterPassword: []byte("old-password")}
+	mockPwProvider := &MockPasswordProvider{MasterPassword: []byte("old-password")}
 	if newPassword, ok := config.mockOptions["newPassword"]; ok {
 		mockPwProvider.MasterPassword = newPassword.([]byte)
 	}
-	mockCfgLoader := &testhelper.MockConfigLoader{CAConfig: cfg}
+	mockCfgLoader := &MockConfigLoader{CAConfig: cfg}
 
 	// Create factories that can produce different types of providers/services based on test mode
 	mockIdentityFactory := &mockIdentityProviderFactory{}
 	mockCryptoFactory := &mockCryptoServiceFactory{cryptoSvc: mockCrypto}
 
 	application := app.NewApplication(
-		testRoot, &testhelper.MockLogger{}, mockCfgLoader, mockStore, mockCrypto,
-		mockPwProvider, mockUserInt, &testhelper.MockCommander{}, nil,
+		testRoot, &MockLogger{}, mockCfgLoader, mockStore, mockCrypto,
+		mockPwProvider, mockUserInt, &MockCommander{}, nil,
 		mockIdentityFactory, mockCryptoFactory, mockValidation,
 	)
 
@@ -715,3 +718,62 @@ func TestReencryptKeys_PartialFailure_StoreUpdateError(t *testing.T) {
 		t.Errorf("expected disk full error in chain, got %v", err)
 	}
 }
+
+func TestInfoCA(t *testing.T) {
+	// Create a simple test certificate manually
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "Test CA",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	// Generate test key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+
+	// Create self-signed certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatalf("failed to create test certificate: %v", err)
+	}
+
+	testCert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("failed to parse test certificate: %v", err)
+	}
+
+	// Setup test app with mock store
+	testApp, mockStore, _ := createTestApp(t, testAppConfig{
+		mode: TestModePassword,
+	})
+
+	// Configure mock store to return our test certificate
+	mockStore.caCert = testCert
+
+	// Execute
+	cert, err := testApp.InfoCA(context.Background())
+
+	// Verify
+	if err != nil {
+		t.Fatalf("InfoCA() failed: %v", err)
+	}
+
+	if cert == nil {
+		t.Fatal("InfoCA() returned nil certificate")
+	}
+
+	if cert.Subject.CommonName != "Test CA" {
+		t.Errorf("expected CommonName 'Test CA', got %q", cert.Subject.CommonName)
+	}
+}
+
+// Note: ResolveHostConfig testing deferred due to complex config loader dependencies

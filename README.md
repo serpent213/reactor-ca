@@ -1,7 +1,7 @@
 ![ReactorCA screenshot](docs/assets/help_screen.webp)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-52.5%25-orange)
+![Coverage](https://img.shields.io/badge/Coverage-72.9%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 
 # ReactorCA
