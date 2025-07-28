@@ -26,12 +26,11 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 
 ## Motivation and Design Targets
 
-ReactorCA fills a gap in the homelab PKI space by providing:
-
-- **Command-line focused**: Unlike GUI-heavy tools like [XCA](https://www.hohnstaedt.de/xca/), ReactorCA is built for automation and scripting
-- **Modern implementation**: Addresses limitations of older tools like [easy-ca](https://github.com/redredgroovy/easy-ca) with updated cryptographic standards
+- **Command-line focused**: [XCA](https://www.hohnstaedt.de/xca/) is a great tool for GUI-centric workflows, while ReactorCA is built for automation and scripting in mind
+- **Modern implementation**: Classics like [easy-ca](https://github.com/redredgroovy/easy-ca) don't always integrate well with modern environments
+- **Secure by default**: Strong encryption, secure key storage, and sane defaults built-in
 - **Plug & play**: Minimal configuration required to get started
-- **Secure by default**: Strong encryption, secure key storage, and safe deployment practices built-in
+- **Domain knowledge**: Provide a friendly ecosystem and knowledge base for administrators to practically implement a home-brew PKI
 
 ## Cryptographic Implementation
 
@@ -309,12 +308,13 @@ encryption:
 
 ### Hosts Configuration (`config/hosts.yaml`)
 
+Host certificates inherit CA subject fields (organization, country, etc.) when not specified, **except** `common_name` which must be explicitly set for each host, if desired.
+
+In that case, `common_name` must also be listed in `alternative_names.dns`. [RFC 2818](https://datatracker.ietf.org/doc/html/rfc2818#section-3.1) (2000) deprecates the use of Common Name for host identities.
+
 ```yaml
 hosts:
   web-server-example:
-    subject:
-      common_name: "web.reactor.local"
-
     # Subject Alternative Names
     alternative_names:
       dns:
@@ -370,15 +370,15 @@ store/
 
 ### Supported Key Algorithms
 
-| Algorithm | Key Size | Performance | Security | Compatibility |
-|-----------|----------|-------------|-----------|---------------|
-| RSA2048   | 2048-bit | Medium      | Good      | Excellent     |
-| RSA3072   | 3072-bit | Slow        | Strong    | Excellent     |
-| RSA4096   | 4096-bit | Slow        | Very Strong| Excellent     |
-| ECP256    | P-256    | Fast        | Strong    | Good          |
-| ECP384    | P-384    | Medium      | Very Strong| Good          |
-| ECP521    | P-521    | Medium      | Very Strong| Good        |
-| ED25519   | 256-bit  | Very Fast   | Strong    | Modern only   |
+| Algorithm | Key Size | Performance | Security    | Compatibility |
+|-----------|----------|-------------|-------------|---------------|
+| RSA2048   | 2048-bit | Medium      | Good        | Excellent     |
+| RSA3072   | 3072-bit | Slow        | Strong      | Excellent     |
+| RSA4096   | 4096-bit | Slow        | Very Strong | Excellent     |
+| ECP256    | P-256    | Fast        | Strong      | Good          |
+| ECP384    | P-384    | Medium      | Very Strong | Good          |
+| ECP521    | P-521    | Medium      | Very Strong | Good          |
+| ED25519   | 256-bit  | Very Fast   | Strong      | Modern only   |
 
 ### Supported Hash Algorithms
 
