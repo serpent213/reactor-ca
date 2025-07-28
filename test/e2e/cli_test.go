@@ -202,7 +202,9 @@ func TestE2E_ImportAndSign(t *testing.T) {
 	// 1. Generate an external CA with openssl
 	_, err := e.runOpenSSL("req", "-x509", "-newkey", "rsa:2048", "-nodes",
 		"-keyout", "external_ca.key", "-out", "external_ca.crt",
-		"-subj", "/CN=External Test CA", "-days", "30")
+		"-subj", "/CN=External Test CA", "-days", "30",
+		"-addext", "keyUsage=critical,keyCertSign,cRLSign",
+		"-addext", "basicConstraints=critical,CA:TRUE")
 	if err != nil {
 		t.Fatalf("Failed to generate external CA with openssl: %v", err)
 	}

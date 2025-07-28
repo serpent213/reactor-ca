@@ -335,6 +335,21 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 		return err
 	}
 
+	if !cert.IsCA {
+		ui.Warning("Certificate is not marked as a CA certificate (IsCA=false)")
+		ui.Warning("This may cause issues when signing certificates")
+
+		confirmed, err := a.userInteraction.Confirm("Continue anyway? (y/N): ")
+		if err != nil || !confirmed {
+			return fmt.Errorf("operation cancelled")
+		}
+	}
+
+	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+		ui.Warning("Certificate lacks CertSign key usage - cannot sign certificates")
+		return fmt.Errorf("invalid CA certificate: missing CertSign key usage")
+	}
+
 	cfg, err := a.configLoader.LoadCA()
 	if err != nil {
 		return err
