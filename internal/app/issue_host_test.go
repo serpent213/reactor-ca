@@ -10,6 +10,7 @@ import (
 
 	"reactor.de/reactor-ca/internal/domain"
 	cryptosvc "reactor.de/reactor-ca/internal/infra/crypto"
+	"reactor.de/reactor-ca/internal/testutil"
 )
 
 func TestIssueHost_NewHost(t *testing.T) {
@@ -54,7 +55,10 @@ func TestIssueHost_NewHost(t *testing.T) {
 	mocks.CryptoSvc.DecryptPrivateKeyFunc = func(d []byte) (crypto.Signer, error) { return testCAKey, nil }
 
 	// Act
-	err := app.IssueHost(context.Background(), hostID, false, false)
+	var err error
+	testutil.WithSilentOutput(t, func() {
+		err = app.IssueHost(context.Background(), hostID, false, false)
+	})
 
 	// Assert
 	if err != nil {
@@ -102,7 +106,10 @@ func TestIssueHost_RenewHost(t *testing.T) {
 	mocks.Store.SaveHostCertFunc = func(id string, cert []byte) error { return nil } // We expect this to be called
 
 	// Act
-	err := app.IssueHost(context.Background(), hostID, false, false) // rekey=false
+	var err error
+	testutil.WithSilentOutput(t, func() {
+		err = app.IssueHost(context.Background(), hostID, false, false) // rekey=false
+	})
 
 	// Assert
 	if err != nil {
@@ -139,7 +146,10 @@ func TestIssueHost_RekeyHost(t *testing.T) {
 	mocks.Store.SaveHostCertFunc = func(id string, c []byte) error { return nil }
 
 	// Act
-	err := app.IssueHost(context.Background(), hostID, true, false) // rekey=true
+	var err error
+	testutil.WithSilentOutput(t, func() {
+		err = app.IssueHost(context.Background(), hostID, true, false) // rekey=true
+	})
 
 	// Assert
 	if err != nil {
@@ -197,7 +207,10 @@ func TestIssueHost_Deploy(t *testing.T) {
 	}
 
 	// Act
-	err := app.IssueHost(context.Background(), hostID, false, true) // deploy=true
+	var err error
+	testutil.WithSilentOutput(t, func() {
+		err = app.IssueHost(context.Background(), hostID, false, true) // deploy=true
+	})
 
 	// Assert
 	if err != nil {

@@ -59,28 +59,6 @@ func TestFormatHostStatus(t *testing.T) {
 	}
 }
 
-func TestPrintBlock(t *testing.T) {
-	// Since PrintBlock outputs to stdout, we'll capture it
-	// This is a simple function that just calls fmt.Println
-
-	// Test cases that don't require output capture for basic coverage
-	testCases := []string{
-		"Hello, World!",
-		"Multi-line\ntext block",
-		"",
-		"   spaces   ",
-	}
-
-	// Just call the function - it should not panic
-	for _, testCase := range testCases {
-		t.Run("print_"+testCase, func(t *testing.T) {
-			// This will print to stdout but won't cause test failure
-			PrintBlock(testCase)
-			// If we reach here, the function didn't panic
-		})
-	}
-}
-
 func TestNewHostsTable(t *testing.T) {
 	// Test that NewHostsTable creates a table without panicking
 	table := NewHostsTable()

@@ -15,6 +15,7 @@ import (
 	"reactor.de/reactor-ca/internal/infra/identity"
 	"reactor.de/reactor-ca/internal/infra/password"
 	"reactor.de/reactor-ca/internal/infra/store"
+	"reactor.de/reactor-ca/internal/testutil"
 )
 
 // mockStoreWithWriteFailure wraps a real FileStore but fails on specific UpdateEncryptedKey calls
@@ -173,20 +174,28 @@ hosts:
 
 	// 1. Create initial PKI setup with real .age files
 	t.Log("Creating CA...")
-	if err := appInstance.CreateCA(ctx, false); err != nil {
-		t.Fatalf("Failed to create CA: %v", err)
-	}
+	testutil.WithSilentOutput(t, func() {
+		if err := appInstance.CreateCA(ctx, false); err != nil {
+			t.Fatalf("Failed to create CA: %v", err)
+		}
+	})
 
 	t.Log("Creating host certificates...")
-	if err := appInstance.IssueHost(ctx, "web-server", false, false); err != nil {
-		t.Fatalf("Failed to issue web-server cert: %v", err)
-	}
-	if err := appInstance.IssueHost(ctx, "db-server", false, false); err != nil {
-		t.Fatalf("Failed to issue db-server cert: %v", err)
-	}
-	if err := appInstance.IssueHost(ctx, "api-server", false, false); err != nil {
-		t.Fatalf("Failed to issue api-server cert: %v", err)
-	}
+	testutil.WithSilentOutput(t, func() {
+		if err := appInstance.IssueHost(ctx, "web-server", false, false); err != nil {
+			t.Fatalf("Failed to issue web-server cert: %v", err)
+		}
+	})
+	testutil.WithSilentOutput(t, func() {
+		if err := appInstance.IssueHost(ctx, "db-server", false, false); err != nil {
+			t.Fatalf("Failed to issue db-server cert: %v", err)
+		}
+	})
+	testutil.WithSilentOutput(t, func() {
+		if err := appInstance.IssueHost(ctx, "api-server", false, false); err != nil {
+			t.Fatalf("Failed to issue api-server cert: %v", err)
+		}
+	})
 
 	// 2. Verify initial setup
 	expectedFiles := []string{
@@ -227,7 +236,9 @@ hosts:
 
 	// 4. Attempt reencrypt with rollback flag - should fail on second write, then rollback
 	t.Log("Attempting reencrypt with controlled failure...")
-	err = appInstance.ReencryptKeys(ctx, false, true) // force=false, rollback=true
+	testutil.WithSilentOutput(t, func() {
+		err = appInstance.ReencryptKeys(ctx, false, true) // force=false, rollback=true
+	})
 	if err == nil {
 		t.Fatal("Expected reencrypt to fail due to mock write failure, but it succeeded")
 	}
@@ -288,9 +299,11 @@ hosts:
 	mockStore.failOnPath = "" // Disable failure injection
 	mockStore.callCount = 0   // Reset counter
 
-	if err := appInstance.ReencryptKeys(ctx, false, false); err != nil {
-		t.Fatalf("Normal reencrypt should succeed after removing mock failure: %v", err)
-	}
+	testutil.WithSilentOutput(t, func() {
+		if err := appInstance.ReencryptKeys(ctx, false, false); err != nil {
+			t.Fatalf("Normal reencrypt should succeed after removing mock failure: %v", err)
+		}
+	})
 
 	// 8. Verify .bak files are cleaned up after successful reencrypt
 	for _, bakFile := range expectedBackupFiles {

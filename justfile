@@ -132,11 +132,17 @@ cov type="all":
     if [[ "{{type}}" =~ ^u ]]; then # unit
         # Run unit tests with traditional text coverage profile
         go test -coverprofile=coverage/unit.out -covermode=atomic ./cmd/... ./internal/...
+        # Filter to only reactor.de/reactor-ca packages, excluding testutil
+        (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/unit.out | grep -v 'internal/testutil/') > coverage/unit.filtered.out
+        mv coverage/unit.filtered.out coverage/unit.out
         go tool cover -html=coverage/unit.out -o coverage/unit.html
         go tool cover -func=coverage/unit.out | tail -1
     elif [[ "{{type}}" =~ ^i ]]; then # integration
         # Run integration tests with traditional text coverage profile
         go test -coverprofile=coverage/integration.out -covermode=atomic -tags integration -coverpkg=./cmd/...,./internal/... ./test/integration/...
+        # Filter to only reactor.de/reactor-ca packages, excluding testutil
+        (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/integration.out | grep -v 'internal/testutil/') > coverage/integration.filtered.out
+        mv coverage/integration.filtered.out coverage/integration.out
         go tool cover -html=coverage/integration.out -o coverage/integration.html
         go tool cover -func=coverage/integration.out | tail -1
     elif [[ "{{type}}" =~ ^e ]]; then # e2e
@@ -146,6 +152,9 @@ cov type="all":
         go test -v -tags e2e ./test/e2e/...
         # Convert binary coverage data to profile format
         go tool covdata textfmt -i=coverage/e2e-covdata -o coverage/e2e.out
+        # Filter to only reactor.de/reactor-ca packages, excluding testutil
+        (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/e2e.out | grep -v 'internal/testutil/') > coverage/e2e.filtered.out
+        mv coverage/e2e.filtered.out coverage/e2e.out
         go tool cover -html=coverage/e2e.out -o coverage/e2e.html
         go tool cover -func=coverage/e2e.out | tail -1
     elif [[ "{{type}}" =~ ^a ]]; then # all
@@ -188,8 +197,6 @@ cov type="all":
         go tool cover -html=coverage/merged.out -o coverage/merged.html
         echo "=== Total Coverage ==="
         go tool cover -func=coverage/merged.out | tail -1
-        echo "=== ReactorCA Coverage ==="
-        go tool cover -func=coverage/merged.out | grep "reactor.de/reactor-ca" | awk '{print $3}' | grep -E '^[0-9]+\.[0-9]+%$' | sed 's/%//' | awk '{sum += $1; count++} END {printf "ReactorCA average: %.1f%%\n", sum/count}'
 
         # Generate coverage badge data
         just cov-badge
@@ -206,8 +213,8 @@ cov-badge:
         exit 1
     fi
 
-    # Extract ReactorCA-only coverage percentage
-    coverage_percent=$(go tool cover -func=coverage/merged.out | grep "reactor.de/reactor-ca" | awk '{print $3}' | grep -E '^[0-9]+\.[0-9]+%$' | sed 's/%//' | awk '{sum += $1; count++} END {printf "%.1f", sum/count}')
+    # Extract total coverage percentage (already filtered to reactor.de/reactor-ca only)
+    coverage_percent=$(go tool cover -func=coverage/merged.out | tail -1 | awk '{print $3}' | sed 's/%//')
 
     # Generate badge URL
     color="red"
