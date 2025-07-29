@@ -83,12 +83,12 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 				}
 			}
 			if !cnInSAN {
-				return nil, fmt.Errorf("%w: hosts.%s.subject.common_name '%s' must be included in alternative_names.dns for modern browser compatibility", domain.ErrValidation, id, host.Subject.CommonName)
+				return nil, fmt.Errorf("%w: hosts.%s.subject.common_name “%s” must be included in alternative_names.dns for modern browser compatibility", domain.ErrValidation, id, host.Subject.CommonName)
 			}
 		}
 
 		if host.Validity.Years == 0 && host.Validity.Months == 0 && host.Validity.Days == 0 {
-			return nil, fmt.Errorf("%w: hosts.%s.validity must have either 'years', 'months', or 'days' set in hosts.yaml", domain.ErrValidation, id)
+			return nil, fmt.Errorf("%w: hosts.%s.validity must have either “years”, “months”, or “days” set in hosts.yaml", domain.ErrValidation, id)
 		}
 	}
 

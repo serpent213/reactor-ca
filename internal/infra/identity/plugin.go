@@ -9,6 +9,7 @@ import (
 	"filippo.io/age/plugin"
 
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/pathutil"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -30,7 +31,7 @@ func NewPluginProvider(config domain.PluginConfig) *PluginProvider {
 // GetIdentity returns the plugin-based age identity for decryption.
 func (p *PluginProvider) GetIdentity() (age.Identity, error) {
 	// Load identity from file
-	identityPath := p.expandPath(p.config.IdentityFile)
+	identityPath := pathutil.ExpandHomePath(p.config.IdentityFile)
 
 	identityData, err := os.ReadFile(identityPath)
 	if err != nil {
@@ -91,7 +92,7 @@ func (p *PluginProvider) GetRecipients() ([]age.Recipient, error) {
 // Validate checks the plugin provider configuration.
 func (p *PluginProvider) Validate() error {
 	// Check identity file exists and is readable
-	identityPath := p.expandPath(p.config.IdentityFile)
+	identityPath := pathutil.ExpandHomePath(p.config.IdentityFile)
 	if _, err := os.Stat(identityPath); err != nil {
 		return fmt.Errorf("plugin identity file not accessible: %w", err)
 	}
@@ -144,19 +145,4 @@ func (p *PluginProvider) Validate() error {
 	}
 
 	return nil
-}
-
-// expandPath expands ~ to the user's home directory.
-func (p *PluginProvider) expandPath(path string) string {
-	if !strings.HasPrefix(path, "~/") {
-		return path
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		// Fallback to original path if we can't get home directory
-		return path
-	}
-
-	return homeDir + path[1:] // Remove ~ and keep the /
 }

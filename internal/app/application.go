@@ -19,6 +19,7 @@ import (
 
 	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/infra/password"
+	"reactor.de/reactor-ca/internal/pathutil"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -712,7 +713,7 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 
 	// Export certificate
 	if hostCfg.Export.Cert != "" {
-		certPath := a.resolvePath(hostCfg.Export.Cert)
+		certPath := pathutil.ResolvePath(hostCfg.Export.Cert, a.rootPath)
 		if err := a.writeFileWithDir(certPath, a.cryptoSvc.EncodeCertificateToPEM(hostCert), 0644); err != nil {
 			return fmt.Errorf("failed to export certificate: %w", err)
 		}
@@ -721,7 +722,7 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 
 	// Export chain
 	if hostCfg.Export.Chain != "" {
-		chainPath := a.resolvePath(hostCfg.Export.Chain)
+		chainPath := pathutil.ResolvePath(hostCfg.Export.Chain, a.rootPath)
 		hostCertPEM := a.cryptoSvc.EncodeCertificateToPEM(hostCert)
 		caCertPEM := a.cryptoSvc.EncodeCertificateToPEM(caCert)
 		chain := bytes.Join([][]byte{hostCertPEM, caCertPEM}, []byte{})
@@ -733,7 +734,7 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 
 	// Export encrypted private key
 	if hostCfg.Export.KeyEncrypted != "" {
-		encryptedKeyPath := a.resolvePath(hostCfg.Export.KeyEncrypted)
+		encryptedKeyPath := pathutil.ResolvePath(hostCfg.Export.KeyEncrypted, a.rootPath)
 		encryptedKey, err := a.store.LoadHostKey(hostID)
 		if err != nil {
 			return fmt.Errorf("failed to load encrypted key: %w", err)
@@ -790,8 +791,8 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	}
 
 	// Variable substitution
-	certPath := a.resolvePath(hostCfg.Export.Cert)
-	chainPath := a.resolvePath(hostCfg.Export.Chain)
+	certPath := pathutil.ResolvePath(hostCfg.Export.Cert, a.rootPath)
+	chainPath := pathutil.ResolvePath(hostCfg.Export.Chain, a.rootPath)
 
 	// If export paths are not defined, we must create temporary files for them too.
 	if certPath == a.rootPath { // Heuristic: empty export path resolves to root
@@ -1130,13 +1131,6 @@ func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, err
 		}
 	}
 	return toPrune, nil
-}
-
-func (a *Application) resolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(a.rootPath, path)
 }
 
 func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMode) error {

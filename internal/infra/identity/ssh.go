@@ -3,13 +3,12 @@ package identity
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"filippo.io/age"
 	"filippo.io/age/agessh"
 
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/pathutil"
 )
 
 // SSHProvider implements domain.IdentityProvider using SSH keys for age encryption.
@@ -26,7 +25,7 @@ func NewSSHProvider(config domain.SSHConfig) *SSHProvider {
 
 // GetIdentity returns the SSH-based age identity for decryption.
 func (s *SSHProvider) GetIdentity() (age.Identity, error) {
-	identityPath := s.expandPath(s.config.IdentityFile)
+	identityPath := pathutil.ExpandHomePath(s.config.IdentityFile)
 
 	keyBytes, err := os.ReadFile(identityPath)
 	if err != nil {
@@ -62,7 +61,7 @@ func (s *SSHProvider) GetRecipients() ([]age.Recipient, error) {
 // Validate checks the SSH provider configuration.
 func (s *SSHProvider) Validate() error {
 	// Check identity file exists and is readable
-	identityPath := s.expandPath(s.config.IdentityFile)
+	identityPath := pathutil.ExpandHomePath(s.config.IdentityFile)
 	if _, err := os.Stat(identityPath); err != nil {
 		return fmt.Errorf("SSH identity file not accessible: %w", err)
 	}
@@ -89,19 +88,4 @@ func (s *SSHProvider) Validate() error {
 	}
 
 	return nil
-}
-
-// expandPath expands ~ to the user's home directory.
-func (s *SSHProvider) expandPath(path string) string {
-	if !strings.HasPrefix(path, "~/") {
-		return path
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		// Fallback to original path if we can't get home directory
-		return path
-	}
-
-	return filepath.Join(homeDir, path[2:])
 }
