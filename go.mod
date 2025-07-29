@@ -7,6 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.18.0
 	github.com/olekukonko/tablewriter v1.0.8
+	github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/term v0.33.0
 	golang.org/x/text v0.27.0

@@ -44,6 +44,8 @@ github.com/olekukonko/tablewriter v1.0.8 h1:f6wJzHg4QUtJdvrVPKco4QTrAylgaU0+b9br
 github.com/olekukonko/tablewriter v1.0.8/go.mod h1:H428M+HzoUXC6JU2Abj9IT9ooRmdq9CxuDmKMtrOCMs=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc h1:XSfMXQ75WkkiCA7lBOBaq2dr0+9+KaqmM/QvGfLIzx0=
+github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc/go.mod h1:CjcNvNYhzkvf4UhGSgsUXgUzh+j/gyXNeTto6Coz0Gc=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=

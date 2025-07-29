@@ -24,7 +24,7 @@
             version = "0.4.0";
             src = ./.;
 
-            vendorHash = "sha256-NsCvlymtYUiRcQCFYVGwRa6AGbBDcpGb/e0hmVa3uJw=";
+            vendorHash = "sha256-69u9o71V5rRsV1nW9WbFSR+MTSOrBgOtjmDqwvAgX7Y=";
 
             subPackages = [ "cmd/ca" ];
 
