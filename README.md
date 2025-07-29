@@ -428,16 +428,13 @@ Uses age plugins for hardware-backed key protection:
 - **Supports**: Any age-plugin-* binary (secure-enclave, yubikey, tpm, etc.)
 - **Hardware security**: Private keys never leave the secure hardware
 
-## Security Features
+## Intermediate CAs
 
-- **Multiple encryption providers**: Password-based (scrypt + ChaCha20-Poly1305), SSH key-based (age-ssh), or hardware token-based (age plugins)
-- **Modern authenticated encryption**: All private keys encrypted at rest with age format
-- **SSH key integration**: Leverage existing SSH infrastructure without additional passwords
-- **Hardware token support**: Secure Enclave, YubiKey, and other age plugin-compatible devices
-- **Secure file handling**: Temporary files use 0600 permissions with automatic cleanup
-- **Safe deployment**: Scripts executed securely without exposing private keys
-- **Flexible authentication**: Choose between passwords, SSH keys, or hardware tokens
-- **Future extensibility**: Plugin architecture supports new hardware tokens and authentication methods
+Currently, ReactorCA is primarily designed for a very basic setup: A single root CA directly signs all certificates without intermediaries. But you should be fine creating an intermediate CA manually and importing it into ReactorCA, then use it for your everyday operation.
+
+## agenix integration
+
+If you are using [agenix](https://github.com/ryantm/agenix) (or a similar system) for secret distribution, you can share secrets between ReactorCA and agenix, usually by employing the `additional_recipients` option. Note that password encryption does NOT mix with age-ssh or plugin modes for security reasons.
 
 ## Development Environment
 

@@ -21,19 +21,15 @@ hosts:
   mushroom:
     subject:
       common_name: "fritz.box"
-
     alternative_names:
       dns:
         - "fritz.box"
       ip:
         - "192.168.178.1"
-
     validity:
       years: 1
-
     key_algorithm: "RSA2048"
     hash_algorithm: "SHA256"
-
     deploy:
       command: |
         # using https://github.com/tisba/fritz-tls
