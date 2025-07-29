@@ -1,12 +1,12 @@
 ![ReactorCA screenshot](docs/assets/help_screen.webp)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-63.2%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-63.7%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 
 # ReactorCA
 
-**Currently in development – expect breaking changes!**
+**Currently in development – expect breaking changes! (Nothing too serious, though.)**
 
 A Go CLI tool to manage a homelab/small-office Certificate Authority with [age](https://age-encryption.org/) encrypted private keys.
 
@@ -15,7 +15,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 ## Features
 
 - Create and manage a self-signed Certificate Authority
-- Generate and renew certificates for hosts
+- Generate and renew certificates for hosts/services and other entities
 - Strong key encryption with multiple providers:
   - Password-based encryption using age with scrypt key derivation
   - SSH key-based encryption using existing SSH identities (age-ssh)
@@ -26,45 +26,55 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 
 ## Motivation and Design Targets
 
-- **Command-line focused**: [XCA](https://www.hohnstaedt.de/xca/) is a great tool for GUI-centric workflows, while ReactorCA is built for automation and scripting in mind
-- **Modern implementation**: Classics like [easy-ca](https://github.com/redredgroovy/easy-ca) don't always integrate well with modern environments
-- **Secure by default**: Strong encryption, secure key storage, and sane defaults built-in
-- **Plug & play**: Minimal configuration required to get started
-- **Domain knowledge**: Provide a friendly ecosystem and knowledge base for administrators to practically implement a home-brew PKI
+Running my own CA works well to provide X.509 certificates to my internal hosts and services, for them to offer TLS encryption. But certificate lifetimes are nowadays, 2025, limited to one year (by Apple at least), and as far as I know discussions about further reduction is ongoing.
+
+Therefore I require a one-button reissue & deploy solution, easily manageable as part of my infrastructure Git repo.
+
+- Easily rekey, reissue and deploy to many hosts with a single command, so certificates can be kept fresh with minimal infrastructure and configuration
+- Encryption of private keys, so config and store can be shared via Git
+- Modern CLI
+- Sane and secure defaults
+- Easy to deploy and package
+- Proper documentation including basic X.509/CA knowledge
 
 ## Cryptographic Implementation
 
 ReactorCA is built on proven cryptographic foundations:
 
 ### Core Libraries
+
 - **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
 - **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
 
 ### Key Protection
-Every `.key.age` file is encrypted using one of two methods:
 
-**Password-based encryption**:
-- **ChaCha20-Poly1305**: Modern authenticated encryption for private keys
-- **scrypt**: Strong password-based key derivation
-- **age format**: Battle-tested encryption with simple, secure design
+Private keys are stored as `.key.age` files, protected by the age encryption format. All methods use ChaCha20-Poly1305 for the actual encryption, with different approaches for securing the file key:
 
-**SSH key-based encryption** (age-ssh):
-- Uses existing SSH private keys as age identities
-- SSH public keys serve as age recipients
-- Leverages proven SSH key infrastructure
-- Supports Ed25519, RSA, and ECDSA SSH keys
+Password protection:
 
-**Hardware token encryption** (age plugins):
-- Uses age-plugin-* binaries for hardware token support
-- Secure Enclave integration (macOS)
-- YubiKey support
-- Future-proof plugin architecture for new hardware
+- scrypt derives a key from your password
+- This key encrypts the file key in the age header
+- Password strength directly impacts security
+
+SSH key protection:
+
+- Your SSH private key decrypts the file key
+- Optional additional password protection
+- Works with Ed25519, RSA, and ECDSA keys
+
+Hardware security:
+
+- Hardware device required to decrypt the file key
+- YubiKey PIV slots via [`age-plugin-yubikey`](https://github.com/str4d/age-plugin-yubikey)
+- Apple Secure Enclave via [`age-plugin-se`](https://github.com/remko/age-plugin-se)
+- TPM support via [`age-plugin-tpm`](https://github.com/Foxboron/age-plugin-tpm)
+- Etc.
 
 ## Installation
 
 ### Pre-built Binaries
 
-Download the latest release for your platform from the [releases page](https://github.com/your-org/reactor-ca/releases).
+Download the latest release for your platform from the [releases page](https://github.com/serpent213/reactor-ca/releases).
 
 ### Build from Source
 
@@ -152,7 +162,7 @@ Deploy will create temp files if the required files are not exported, so `export
 | `ca ca rekey` | Create a new key and certificate, replacing the old ones |
 | `ca ca info` | Display detailed information about the CA certificate |
 | `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
-| `ca ca passwd` | Change the master password for all encrypted keys |
+| `ca ca reencrypt` | Change the master password/update recipients for all encrypted keys |
 
 ### Host Certificate Management
 
@@ -430,7 +440,7 @@ Uses age plugins for hardware-backed key protection:
 
 ## Intermediate CAs
 
-Currently, ReactorCA is primarily designed for a very basic setup: A single root CA directly signs all certificates without intermediaries. But you should be fine creating an intermediate CA manually and importing it into ReactorCA, then use it for your everyday operation.
+Currently, ReactorCA is primarily designed for a very basic setup: A single root CA directly signs all certificates without intermediaries. But you should be fine creating an intermediate CA manually and importing it into ReactorCA, then using it for your everyday operation.
 
 ## agenix integration
 
@@ -453,7 +463,14 @@ just test
 
 ## Limitations
 
+- No intermediate CA support
 - No certificate revocation (CRL/OCSP) support
 - No PKCS#12 bundle creation
 - No automated renewal daemon (use cron/systemd timers)
-- Date calculations use fixed multipliers, i.e. 1 year = 365 days, 1 month = 30 days
+
+## Alternative Solutions
+
+- [XCA](https://www.hohnstaedt.de/xca/): great, simple GUI-based CA
+- [EasyRSA](https://github.com/OpenVPN/easy-rsa): a classic
+- [CFSSL](https://github.com/cloudflare/cfssl): powerful client-server solution (there'a also a [wrapper](https://github.com/1nfiniteloop/docker-pki))
+- [certstrap](https://github.com/square/certstrap): didn't know about it before starting  ;)
