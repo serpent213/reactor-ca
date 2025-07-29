@@ -25,6 +25,7 @@ build mode="debug":
 # Cross-compile for multiple platforms
 build-cross platform="all":
     #!/usr/bin/env bash
+    set -e
     mkdir -p dist
 
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "linux" ]; then
