@@ -67,7 +67,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
   - SSH key-based encryption using existing SSH identities (age-ssh)
   - Hardware token encryption using age plugins (Secure Enclave, YubiKey, etc.)
 - Certificate inventory and expiration tracking
-- Simple deployment to target locations via shell scripts, for example directly to your FritzBox, Proxmox PVE instance or NixOS configuration
+- Simple deployment to target locations via shell scripts, for example directly to your [FritzBox](example_config/hosts.yaml#L21), [Proxmox PVE instance](example_config/hosts.yaml#L74) or [NixOS configuration](example_config/hosts.yaml#L92)
 - Single statically-linked binary with no runtime dependencies
 
 ## Motivation and Design Targets
@@ -112,7 +112,7 @@ Hardware security:
 
 - Hardware device required to decrypt the file key
 - YubiKey PIV slots via [`age-plugin-yubikey`](https://github.com/str4d/age-plugin-yubikey)
-- Apple Secure Enclave via [`age-plugin-se`](https://github.com/remko/age-plugin-se)
+- Apple Secure Enclave (Touch ID) via [`age-plugin-se`](https://github.com/remko/age-plugin-se)
 - TPM support via [`age-plugin-tpm`](https://github.com/Foxboron/age-plugin-tpm)
 - Etc.
 

@@ -18,6 +18,7 @@ hosts:
     validity:
       years: 1
 
+  # FritzBox deployment example
   mushroom:
     subject:
       common_name: "fritz.box"
@@ -69,6 +70,24 @@ hosts:
     key_algorithm: "RSA3072"
     hash_algorithm: "SHA256"
     # No export/deploy - stored in secure store only
+
+  # Proxmox PVE deployment example (via SSH)
+  moxbox:
+    subject:
+      common_name: "moxbox"
+    alternative_names:
+      dns:
+        - "moxbox"
+        - "moxbox.fritz.box"
+    validity:
+      months: 1
+    key_algorithm: "ECP384"
+    hash_algorithm: "SHA384"
+    deploy:
+      command: |
+        scp ${cert} moxbox:new.pem
+        scp ${private_key} moxbox:new.key
+        ssh moxbox "pvenode cert set new.pem new.key --force --restart ; rm -f new.pem new.key"
 
   # NixOS homelab server with agenix secrets management
   # Additional recipients for runtime decryption on the target system
