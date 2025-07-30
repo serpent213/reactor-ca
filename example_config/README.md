@@ -30,17 +30,17 @@ ReactorCA supports multiple encryption providers for protecting private keys:
 Uses age scrypt-based encryption with a master password:
 ```yaml
 encryption:
-  provider: "password"
+  provider: password
   password:
     min_length: 12
-    env_var: "REACTOR_CA_PASSWORD"
+    env_var: REACTOR_CA_PASSWORD
 ```
 
 ### SSH Keys
 Uses existing SSH keys with age-ssh:
 ```yaml
 encryption:
-  provider: "ssh"
+  provider: ssh
   ssh:
     identity_file: "~/.ssh/id_ed25519"
     recipients:
@@ -51,7 +51,7 @@ encryption:
 Uses any age plugin (secure-enclave, yubikey, tpm, etc.):
 ```yaml
 encryption:
-  provider: "plugin"
+  provider: plugin
   plugin:
     identity_file: "~/.age/plugin-identity.txt"
     recipients:

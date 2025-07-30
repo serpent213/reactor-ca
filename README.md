@@ -71,6 +71,10 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 - Simple deployment to target locations via shell scripts, for example directly to your [FritzBox](example_config/hosts.yaml#L21), [Proxmox PVE instance](example_config/hosts.yaml#L74) or [NixOS configuration](example_config/hosts.yaml#L92)
 - Single statically-linked binary with no runtime dependencies
 
+For a quick overview, maybe you want to have a look at the [example configs](example_config/).
+
+[↑ TOC](#table-of-contents)
+
 ## Motivation and Design Targets
 
 Running my own CA works well to provide X.509 certificates to my internal hosts and services, for them to offer TLS encryption. But certificate lifetimes are nowadays, 2025, limited to one year (by Apple at least), and as far as I know discussions about further reduction is ongoing.
@@ -83,6 +87,8 @@ Therefore I require a one-button reissue & deploy solution, easily manageable as
 - Sane and secure defaults
 - Easy to deploy and package
 - Proper documentation including basic X.509/CA knowledge
+
+[↑ TOC](#table-of-contents)
 
 ## Cryptographic Implementation
 
@@ -117,6 +123,8 @@ Hardware security:
 - TPM support via [`age-plugin-tpm`](https://github.com/Foxboron/age-plugin-tpm)
 - Etc.
 
+[↑ TOC](#table-of-contents)
+
 ## Installation
 
 ### Pre-built Binaries
@@ -130,6 +138,8 @@ git clone https://github.com/serpent213/reactor-ca.git
 cd reactor-ca
 go build -o ca ./cmd/ca
 ```
+
+[↑ TOC](#table-of-contents)
 
 ## Quick Start
 
@@ -194,6 +204,8 @@ ca host issue web-server-example --deploy  # Issue certificate then deploy
 
 Deploy will create temp files if the required files are not exported, so `export` and `deploy` options can be used independently from each other.
 
+[↑ TOC](#table-of-contents)
+
 ## CLI Reference
 
 ### Global Flags
@@ -239,6 +251,8 @@ Deploy will create temp files if the required files are not exported, so `export
 | Command | Description |
 |---------|-------------|
 | `ca config validate` | Validate configuration files |
+
+[↑ TOC](#table-of-contents)
 
 ## Common Workflows
 
@@ -303,6 +317,8 @@ ca host issue web-server-example --rekey
 ca host issue --all --rekey --deploy
 ```
 
+[↑ TOC](#table-of-contents)
+
 ## Emergency Access
 
 If ReactorCA cannot be run, you can manually decrypt private keys using the `age` command:
@@ -316,6 +332,8 @@ age -d -i ~/.ssh/id_ed25519 store/hosts/web-server/cert.key.age > host.key
 ```
 
 The store structure is simple: certificates are in PEM format (`.crt` files) and private keys are age-encrypted (`.key.age` files). Your encryption method determines which identity file to use with `age -d -i`.
+
+[↑ TOC](#table-of-contents)
 
 ## Configuration
 
@@ -411,9 +429,11 @@ hosts:
         ssh server systemctl reload nginx
 ```
 
+[↑ TOC](#table-of-contents)
+
 ## Store Structure
 
-```
+```raw
 store/
 ├── ca/
 │   ├── ca.crt           # CA certificate (PEM format)
@@ -424,6 +444,8 @@ store/
 │       └── cert.key.age # age-encrypted host private key
 └── ca.log               # Operation log
 ```
+
+[↑ TOC](#table-of-contents)
 
 ## Cryptographic Options
 
@@ -463,6 +485,8 @@ alternative_names:
     - "https://example.com"
 ```
 
+[↑ TOC](#table-of-contents)
+
 ## Key Protection and Authentication
 
 ReactorCA supports multiple encryption providers for private key protection:
@@ -490,13 +514,19 @@ Uses age plugins for hardware-backed key protection:
 - **Supports**: Any age-plugin-* binary (secure-enclave, yubikey, tpm, etc.)
 - **Hardware security**: Private keys never leave the secure hardware
 
+[↑ TOC](#table-of-contents)
+
 ## Intermediate CAs
 
 Currently, ReactorCA is primarily designed for a very basic setup: A single root CA directly signs all certificates without intermediaries. But you should be fine creating an intermediate CA manually and importing it into ReactorCA, then using it for your everyday operation.
 
+[↑ TOC](#table-of-contents)
+
 ## agenix integration
 
 If you are using [agenix](https://github.com/ryantm/agenix) (or a similar system) for secret distribution, you can share secrets between ReactorCA and agenix, usually by employing the `additional_recipients` option. Note that password encryption does NOT mix with age-ssh or plugin modes for security reasons.
+
+[↑ TOC](#table-of-contents)
 
 ## Development Environment
 
@@ -513,12 +543,16 @@ just test
 ./ca --version
 ```
 
+[↑ TOC](#table-of-contents)
+
 ## Limitations
 
 - No intermediate CA support
 - No certificate revocation (CRL/OCSP) support
 - No PKCS#12 bundle creation
 - No automated renewal daemon (use cron/systemd timers)
+
+[↑ TOC](#table-of-contents)
 
 ## Alternative Solutions
 
@@ -527,7 +561,11 @@ just test
 - [CFSSL](https://github.com/cloudflare/cfssl): powerful client-server solution (there'a also a [wrapper](https://github.com/1nfiniteloop/docker-pki))
 - [certstrap](https://github.com/square/certstrap): didn't know about it before starting  ;)
 
+[↑ TOC](#table-of-contents)
+
 ## Further Reading: Introduction to PKI and X.509
 
 - [Zytrax Survival Guide](https://www.zytrax.com/tech/survival/ssl.html): comprehensive guide and explanation
 - [Tutorial by Jamie Nguyen](https://jamielinux.com/docs/openssl-certificate-authority/): demonstrates how to act as your own certificate authority (CA) using the OpenSSL command-line tools
+
+[↑ TOC](#table-of-contents)
