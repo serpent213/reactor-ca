@@ -199,12 +199,27 @@ func TestE2E_ImportAndSign(t *testing.T) {
 	e.runWithCheck("", "init")
 	e.writeConfig("ca.yaml", testCaYAML)
 
-	// 1. Generate an external CA with openssl
+	// 1. Generate an external CA with openssl using config file to avoid duplicate extensions
+	configContent := `[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+CN = External Test CA
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign`
+
+	// Write OpenSSL config file
+	configPath := e.path("external_ca.conf")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write OpenSSL config: %v", err)
+	}
 	_, err := e.runOpenSSL("req", "-x509", "-newkey", "rsa:2048", "-nodes",
 		"-keyout", "external_ca.key", "-out", "external_ca.crt",
-		"-subj", "/CN=External Test CA", "-days", "30",
-		"-addext", "keyUsage=critical,keyCertSign,cRLSign",
-		"-addext", "basicConstraints=critical,CA:TRUE")
+		"-days", "30", "-config", e.path("external_ca.conf"))
 	if err != nil {
 		t.Fatalf("Failed to generate external CA with openssl: %v", err)
 	}
