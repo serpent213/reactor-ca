@@ -10,6 +10,10 @@ on:
 jobs:
   test-https:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [curl, chromium, firefox, webkit]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +26,24 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
+      - name: Setup Node.js for Playwright
+        if: matrix.browser != 'curl'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        if: matrix.browser != 'curl'
+        run: |
+          npm init -y
+          npm install --save-dev playwright@latest
+          npx playwright install ${{ matrix.browser }}
+          npx playwright install-deps ${{ matrix.browser }}
+
       - name: Install Caddy
         run: |
           sudo apt update
-          sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-          sudo apt update
-          sudo apt install caddy
+          sudo apt install -y caddy
 
       - name: Build ReactorCA
         run: just build
@@ -54,7 +68,7 @@ jobs:
               </style>
           </head>
           <body>
-              <h1 class="success">🔒 HTTPS Working!</h1>
+              <h1 class="success">HTTPS Working!</h1>
               <p>ReactorCA self-signed certificate is working correctly.</p>
               <div class="cert-info">
                   <h3>Certificate Information</h3>
@@ -133,6 +147,18 @@ jobs:
           cd /var/lib/test
           $GITHUB_WORKSPACE/ca host export-key localhost -o /var/lib/test/certs/localhost.key
 
+      - name: Install CA certificate in system trust store
+        if: matrix.browser != 'curl'
+        run: |
+          cd /var/lib/test
+          # Install CA cert for browsers
+          sudo cp store/ca/ca.crt /usr/local/share/ca-certificates/reactorca-test.crt
+          sudo update-ca-certificates
+
+          # Also copy to common browser cert locations
+          mkdir -p ~/.pki/nssdb
+          certutil -A -n "ReactorCA Test" -t "TCu,Cu,Tu" -i store/ca/ca.crt -d ~/.pki/nssdb 2>/dev/null || true
+
       - name: Create Caddyfile
         run: |
           cat > /var/lib/test/caddy/Caddyfile << 'EOF'
@@ -166,33 +192,40 @@ jobs:
           # Restart system Caddy service with our config
           sudo systemctl restart caddy || true
           sleep 2
-          journalctl -xeu caddy.service
 
-      - name: Test HTTPS connection
+      - name: Test HTTPS connection - ${{ matrix.browser }}
         run: |
           cd /var/lib/test
 
-          echo "=== Testing HTTPS connection ==="
+          echo "=== Testing HTTPS connection with ${{ matrix.browser }} ==="
 
-          # Test with curl (ignore cert verification for self-signed)
-          echo "Testing with curl..."
-          curl -k -v https://localhost:8443/ > curl-output.txt 2>&1
+          if [ "${{ matrix.browser }}" = "curl" ]; then
+            # Test with curl (ignore cert verification for self-signed)
+            echo "Testing with curl..."
+            curl -k -v https://localhost:8443/ > curl-output.txt 2>&1
 
-          if grep -q "ReactorCA HTTPS Test" curl-output.txt; then
-              echo "HTTPS connection successful!"
-              echo "HTML content served correctly!"
+            if grep -q "ReactorCA HTTPS Test" curl-output.txt; then
+                echo "[PASS] HTTPS connection successful with curl"
+                echo "[PASS] HTML content served correctly"
+            else
+                echo "[FAIL] HTTPS connection failed with curl"
+                cat curl-output.txt
+                exit 1
+            fi
+
+            # Check certificate details
+            echo -e "\n=== Certificate Information ==="
+            openssl s_client -connect localhost:8443 -servername localhost < /dev/null 2>/dev/null | openssl x509 -text -noout | head -20
+
+            echo -e "\n=== Caddy Status ==="
+            sudo systemctl status caddy --no-pager
           else
-              echo "HTTPS connection failed!"
-              cat curl-output.txt
-              exit 1
+            # Test with real browser
+            echo "Testing with ${{ matrix.browser }} browser..."
+
+            # Run the browser test
+            node $GITHUB_WORKSPACE/.github/workflows/support/browser-test.js ${{ matrix.browser }}
           fi
-
-          # Check certificate details
-          echo -e "\n=== Certificate Information ==="
-          openssl s_client -connect localhost:8443 -servername localhost < /dev/null 2>/dev/null | openssl x509 -text -noout | head -20
-
-          echo -e "\n=== Caddy Status ==="
-          sudo systemctl status caddy --no-pager
 
       - name: Test certificate validation
         run: |
@@ -202,9 +235,9 @@ jobs:
 
           # Verify certificate chain
           if openssl verify -CAfile store/ca/ca.crt certs/localhost.crt; then
-              echo "Certificate validates against CA!"
+              echo "[PASS] Certificate validates against CA"
           else
-              echo "Certificate validation failed!"
+              echo "[FAIL] Certificate validation failed"
               exit 1
           fi
 
@@ -216,7 +249,7 @@ jobs:
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.browser }}
           path: |
             /var/lib/test/store/
             /var/lib/test/certs/
