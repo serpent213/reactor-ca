@@ -8,6 +8,7 @@
       openssl
       openssh
       # Formatting
+      github-markdown-toc-go
       jq
       nixfmt-rfc-style
     ]

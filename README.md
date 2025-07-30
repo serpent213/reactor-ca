@@ -3,6 +3,7 @@
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
 ![Coverage](https://img.shields.io/badge/Coverage-63.7%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
+[![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
 # ReactorCA
 
@@ -11,6 +12,51 @@
 A Go CLI tool to manage a homelab/small-office Certificate Authority with [age](https://age-encryption.org/) encrypted private keys.
 
 Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month, while keeping your CA store and config in a Git repo.
+
+## Table of Contents
+
+* [Features](#features)
+* [Motivation and Design Targets](#motivation-and-design-targets)
+* [Cryptographic Implementation](#cryptographic-implementation)
+  * [Core Libraries](#core-libraries)
+  * [Key Protection](#key-protection)
+* [Installation](#installation)
+  * [Pre-built Binaries](#pre-built-binaries)
+  * [Build from Source](#build-from-source)
+* [Quick Start](#quick-start)
+  * [1. Initialize Configuration](#1-initialize-configuration)
+  * [2. Create CA Certificate](#2-create-ca-certificate)
+  * [3. Issue Host Certificate](#3-issue-host-certificate)
+  * [4. List Certificates](#4-list-certificates)
+  * [5. Export and Deploy Certificates](#5-export-and-deploy-certificates)
+* [CLI Reference](#cli-reference)
+  * [Global Flags](#global-flags)
+  * [CA Management](#ca-management)
+  * [Host Certificate Management](#host-certificate-management)
+  * [Configuration Management](#configuration-management)
+* [Common Workflows](#common-workflows)
+  * [New CA Workflow](#new-ca-workflow)
+  * [Import Existing CA](#import-existing-ca)
+  * [Certificate Renewal](#certificate-renewal)
+  * [Key Rotation](#key-rotation)
+* [Emergency Access](#emergency-access)
+* [Configuration](#configuration)
+  * [CA Configuration (config/ca.yaml)](#ca-configuration-configcayaml)
+  * [Hosts Configuration (config/hosts.yaml)](#hosts-configuration-confighostsyaml)
+* [Store Structure](#store-structure)
+* [Cryptographic Options](#cryptographic-options)
+  * [Supported Key Algorithms](#supported-key-algorithms)
+  * [Supported Hash Algorithms](#supported-hash-algorithms)
+  * [Subject Alternative Name Types](#subject-alternative-name-types)
+* [Key Protection and Authentication](#key-protection-and-authentication)
+  * [Password-based Encryption (default)](#password-based-encryption-default)
+  * [SSH Key-based Encryption (age-ssh)](#ssh-key-based-encryption-age-ssh)
+  * [Hardware Token Encryption (age plugins)](#hardware-token-encryption-age-plugins)
+* [Intermediate CAs](#intermediate-cas)
+* [agenix integration](#agenix-integration)
+* [Development Environment](#development-environment)
+* [Limitations](#limitations)
+* [Alternative Solutions](#alternative-solutions)
 
 ## Features
 
@@ -21,7 +67,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
   - SSH key-based encryption using existing SSH identities (age-ssh)
   - Hardware token encryption using age plugins (Secure Enclave, YubiKey, etc.)
 - Certificate inventory and expiration tracking
-- Simple deployment to target locations via shell scripts
+- Simple deployment to target locations via shell scripts, for example directly to your FritzBox, Proxmox PVE instance or NixOS configuration
 - Single statically-linked binary with no runtime dependencies
 
 ## Motivation and Design Targets
@@ -250,8 +296,8 @@ ca ca rekey
 # Rotate a specific host key and certificate
 ca host issue web-server-example --rekey
 
-# Rotate all host keys and certificates
-ca host issue --all --rekey
+# Rotate all host keys and certificates, run all deploy scripts
+ca host issue --all --rekey --deploy
 ```
 
 ## Emergency Access
@@ -367,13 +413,13 @@ hosts:
 ```
 store/
 ├── ca/
-│   ├── ca.crt         # CA certificate (PEM format)
-│   └── ca.key.age     # age-encrypted CA private key
+│   ├── ca.crt           # CA certificate (PEM format)
+│   └── ca.key.age       # age-encrypted CA private key
 ├── hosts/
 │   └── <host-id>/
-│       ├── cert.crt   # Host certificate (PEM format)
+│       ├── cert.crt     # Host certificate (PEM format)
 │       └── cert.key.age # age-encrypted host private key
-└── ca.log             # Operation log
+└── ca.log               # Operation log
 ```
 
 ## Cryptographic Options
@@ -419,12 +465,14 @@ alternative_names:
 ReactorCA supports multiple encryption providers for private key protection:
 
 ### Password-based Encryption (default)
+
 Password sources are checked in order:
 1. **Password File**: Specified in `ca.yaml` under `password.file`
 2. **Environment Variable**: Set via `REACTOR_CA_PASSWORD` (or custom env var)
 3. **Interactive Prompt**: Secure terminal input (fallback)
 
 ### SSH Key-based Encryption (age-ssh)
+
 Uses existing SSH infrastructure for key protection:
 - **Identity File**: Your SSH private key (e.g., `~/.ssh/id_ed25519`)
 - **Recipients**: SSH public keys that can decrypt the private keys
@@ -432,6 +480,7 @@ Uses existing SSH infrastructure for key protection:
 - **No passwords required**: Leverages SSH agent or unlocked SSH keys
 
 ### Hardware Token Encryption (age plugins)
+
 Uses age plugins for hardware-backed key protection:
 - **Identity File**: Plugin identity file (e.g., `~/.age/plugin-identity.txt`)
 - **Recipients**: Hardware token public keys (e.g., Secure Enclave, YubiKey)

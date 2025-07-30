@@ -286,6 +286,39 @@ update-flake:
         fi
     fi
 
+# Update README.md TOC
+update-toc:
+    #!/usr/bin/env bash
+    set -e
+
+    toc_content=$(
+      gh-md-toc --hide-header --hide-footer --start-depth=1 --no-escape README.md \
+      | grep -v '#table-of-contents'
+    )
+
+    awk -v toc="$toc_content" '
+        BEGIN { in_toc = 0; printed_toc = 0 }
+        /^## Table of Contents$/ {
+            print $0
+            print ""
+            print toc
+            in_toc = 1
+            printed_toc = 1
+            next
+        }
+        /^## Features$/ && in_toc {
+            in_toc = 0
+            print ""
+        }
+        !in_toc || !printed_toc { print }
+    ' README.md > README.md.tmp
+    mv README.md.tmp README.md
+
+    echo "Updated TOC in README.md"
+
+# Update documentation (incl. coverage badge)
+docs: cov update-toc
+
 # Format JSON schema files
 fmt-schemas:
     #!/usr/bin/env bash
