@@ -3,7 +3,6 @@ package pathutil
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -11,6 +10,12 @@ func TestExpandHomePath(t *testing.T) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("Could not get home directory: %v", err)
+	}
+
+	// Get a cross-platform absolute path for testing
+	absPath, err := filepath.Abs("test_absolute_path")
+	if err != nil {
+		t.Fatalf("Could not create absolute path: %v", err)
 	}
 
 	tests := []struct {
@@ -25,8 +30,8 @@ func TestExpandHomePath(t *testing.T) {
 		},
 		{
 			name:     "absolute path unchanged",
-			input:    "/absolute/path",
-			expected: "/absolute/path",
+			input:    absPath,
+			expected: absPath,
 		},
 		{
 			name:     "relative path unchanged",
@@ -66,7 +71,15 @@ func TestResolvePath(t *testing.T) {
 		t.Fatalf("Could not get home directory: %v", err)
 	}
 
-	basePath := "/base/path"
+	// Create cross-platform absolute paths for testing
+	basePath, err := filepath.Abs("base/path")
+	if err != nil {
+		t.Fatalf("Could not create base path: %v", err)
+	}
+	absTestPath, err := filepath.Abs("absolute/path")
+	if err != nil {
+		t.Fatalf("Could not create absolute test path: %v", err)
+	}
 
 	tests := []struct {
 		name     string
@@ -76,15 +89,15 @@ func TestResolvePath(t *testing.T) {
 	}{
 		{
 			name:     "absolute path unchanged",
-			path:     "/absolute/path",
+			path:     absTestPath,
 			basePath: basePath,
-			expected: "/absolute/path",
+			expected: absTestPath,
 		},
 		{
 			name:     "relative path resolved",
 			path:     "relative/path",
 			basePath: basePath,
-			expected: "/base/path/relative/path",
+			expected: filepath.Join(basePath, "relative/path"),
 		},
 		{
 			name:     "tilde path expanded and absolute",
@@ -102,7 +115,7 @@ func TestResolvePath(t *testing.T) {
 			name:     "dot path resolved",
 			path:     "./config",
 			basePath: basePath,
-			expected: "/base/path/config",
+			expected: filepath.Join(basePath, "config"),
 		},
 	}
 
@@ -129,7 +142,7 @@ func TestExpandHomePathFallback(t *testing.T) {
 	result := ExpandHomePath(input)
 
 	// Result should either be expanded (if home dir available) or unchanged (fallback)
-	if !strings.HasPrefix(result, "/") && result != input {
+	if !filepath.IsAbs(result) && result != input {
 		t.Errorf("ExpandHomePath fallback behavior incorrect: got %q", result)
 	}
 }
