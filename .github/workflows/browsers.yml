@@ -155,6 +155,9 @@ jobs:
           sudo cp store/ca/ca.crt /usr/local/share/ca-certificates/reactorca-test.crt
           sudo update-ca-certificates
 
+          # Set NODE_EXTRA_CA_CERTS for Node.js/Playwright
+          echo "NODE_EXTRA_CA_CERTS=$(pwd)/store/ca/ca.crt" >> $GITHUB_ENV
+
           # Also copy to common browser cert locations
           mkdir -p ~/.pki/nssdb
           certutil -A -n "ReactorCA Test" -t "TCu,Cu,Tu" -i store/ca/ca.crt -d ~/.pki/nssdb 2>/dev/null || true

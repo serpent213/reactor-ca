@@ -1,14 +1,28 @@
 const playwright = require('playwright');
 
 async function testBrowser(browserType) {
-  const browser = await playwright[browserType].launch({
+  let launchOptions = {
     headless: true,
-    args: ['--ignore-certificate-errors', '--ignore-ssl-errors', '--ignore-certificate-errors-spki-list']
-  });
+  };
+
+  // Browser-specific configuration for certificate handling
+  if (browserType === 'firefox') {
+    // Firefox user preferences for certificate handling
+    launchOptions.firefoxUserPrefs = {
+      'security.enterprise_roots.enabled': true,
+      'security.tls.insecure_fallback_hosts': 'localhost',
+      'security.cert_pinning.enforcement_level': 0
+    };
+  } else {
+    // Chromium/WebKit args for certificate handling
+    launchOptions.args = ['--ignore-certificate-errors', '--ignore-ssl-errors', '--ignore-certificate-errors-spki-list'];
+  }
+
+  const browser = await playwright[browserType].launch(launchOptions);
 
   try {
     const context = await browser.newContext({
-      ignoreHTTPSErrors: false  // We want to test real cert validation
+      ignoreHTTPSErrors: false  // Test real cert validation with NODE_EXTRA_CA_CERTS
     });
 
     const page = await context.newPage();
