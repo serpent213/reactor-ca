@@ -55,6 +55,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 * [Intermediate CAs](#intermediate-cas)
 * [agenix integration](#agenix-integration)
 * [Development Environment](#development-environment)
+* [Browser Compatibility Matrix](#browser-compatibility-matrix)
 * [Limitations](#limitations)
 * [Alternative Solutions](#alternative-solutions)
 * [Further Reading: Introduction to PKI and X.509](#further-reading-introduction-to-pki-and-x509)
@@ -542,6 +543,27 @@ just lint
 just test
 ./ca --version
 ```
+
+[↑ TOC](#table-of-contents)
+
+## Browser Compatibility Matrix
+
+| Certificate | Chromium | Firefox | Webkit | Curl |
+| --- | --- | --- | --- | --- |
+| ECP256-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP256-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP384-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP384-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP521-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP521-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ED25519-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ED25519-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA2048-SHA256 | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS |
+| RSA2048-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA3072-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA3072-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA4096-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA4096-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
 
 [↑ TOC](#table-of-contents)
 

@@ -389,3 +389,81 @@ validate-schemas:
     else
         echo "No example_config directory found"
     fi
+
+# Download and process browser test artifacts
+update-browser-matrix:
+    #!/usr/bin/env bash
+    set -e
+
+    echo "Downloading browser test artifacts..."
+
+    # Get latest Browser Test run ID
+    run_id=$(gh run list -w "Browser Test" -L 1 --json databaseId --jq '.[0].databaseId')
+    echo "Latest Browser Test run: $run_id"
+
+    # Create temp directory and download artifacts
+    mkdir -p tmp/browser-artifacts
+    cd tmp/browser-artifacts
+    gh run download "$run_id"
+
+    # Artifacts are already extracted as directories, no zip files to extract
+    echo "Processing artifacts..."
+
+    # Combine all results arrays from all browsers using jq
+    echo "Combining JSON files..."
+    mkdir -p ../../docs
+
+    jq -s '[.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]' */*-results.json > ../../docs/browser-matrix.json
+
+    # Convert to markdown table and update README
+    echo "Converting to markdown table..."
+    cd ../..
+
+    # Generate markdown table with browsers as columns and cert combos as rows
+    full_table=$(jq -r '
+        # Group by certificate, then create pivot table
+        group_by(.certificate) |
+        map({
+            cert: (.[0].certificate | ascii_upcase),
+            chromium: (map(select(.browser == "chromium"))[0].status // "N/A"),
+            firefox: (map(select(.browser == "firefox"))[0].status // "N/A"),
+            webkit: (map(select(.browser == "webkit"))[0].status // "N/A"),
+            curl: (map(select(.browser == "curl"))[0].status // "N/A")
+        }) |
+        # Create header
+        (["Key/Signature", "Curl", "Chromium", "Firefox", "Webkit"] | @tsv),
+        (["---", "---", "---", "---", "---"] | @tsv),
+        # Create data rows with colored status
+        (.[] | [
+            .cert,
+            (if .curl == "PASS" then "🟢 PASS" elif .curl == "FAIL" then "🔴 FAIL" else .curl end),
+            (if .chromium == "PASS" then "🟢 PASS" elif .chromium == "FAIL" then "🔴 FAIL" else .chromium end),
+            (if .firefox == "PASS" then "🟢 PASS" elif .firefox == "FAIL" then "🔴 FAIL" else .firefox end),
+            (if .webkit == "PASS" then "🟢 PASS" elif .webkit == "FAIL" then "🔴 FAIL" else .webkit end)
+        ] | @tsv)
+        | gsub("\t"; " | ") | "| " + . + " |"
+    ' docs/browser-matrix.json)
+
+    # Update README.md with browser matrix table
+    awk -v table="$full_table" '
+        BEGIN { in_matrix = 0; printed_table = 0 }
+        /^## Browser Compatibility Matrix$/ {
+            print $0
+            print ""
+            print table
+            in_matrix = 1
+            printed_table = 1
+            next
+        }
+        /^## / && in_matrix {
+            in_matrix = 0
+            print ""
+        }
+        !in_matrix || !printed_table { print }
+    ' README.md > README.md.tmp
+    mv README.md.tmp README.md
+
+    # Clean up temp directory
+    rm -rf tmp/browser-artifacts
+
+    echo "Browser matrix updated in docs/browser-matrix.json and README.md"

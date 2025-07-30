@@ -35,7 +35,7 @@ async function testSingleCertificate(browser, cert, browserType) {
 
   try {
     let contextOptions = {};
-    
+
     // Browser-specific configuration for certificate validation
     if (browserType === 'firefox') {
       contextOptions.ignoreHTTPSErrors = true;
@@ -51,16 +51,16 @@ async function testSingleCertificate(browser, cert, browserType) {
     // Navigate to the specific certificate's hostname
     const url = `https://${cert.hostname}:8443`;
     console.log(`Testing ${cert.name} at ${url}...`);
-    
+
     await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 });
 
     // Check if page loaded successfully
     const title = await page.title();
     const content = await page.textContent('h1');
-    
+
     if (content && content.includes('HTTPS Working')) {
       result.status = 'PASS';
-      
+
       // Get security info and certificate details
       const securityInfo = await page.evaluate(() => {
         return {
@@ -69,29 +69,29 @@ async function testSingleCertificate(browser, cert, browserType) {
           origin: location.origin
         };
       });
-      
+
       // Try to get certificate type from response headers
       const response = await page.goto(url, { waitUntil: 'networkidle' });
       const headers = response.headers();
-      
+
       result.details = {
         title: title,
         securityInfo: securityInfo,
         certTypeHeader: headers['x-cert-type'] || 'unknown'
       };
-      
+
       console.log(`[PASS] ${cert.name}: Certificate loaded successfully`);
     } else {
       result.error = 'Page content not found or incorrect';
       console.log(`[FAIL] ${cert.name}: ${result.error}`);
     }
-    
+
     await context.close();
   } catch (error) {
     result.error = error.message;
     console.log(`[FAIL] ${cert.name}: ${error.message}`);
   }
-  
+
   return result;
 }
 
@@ -120,34 +120,34 @@ async function testBrowser(browserType) {
 
   try {
     console.log(`\n=== Testing ${certCombinations.length} certificate combinations with ${browserType} ===`);
-    
+
     // Test each certificate combination
     for (const cert of certCombinations) {
       const result = await testSingleCertificate(browser, cert, browserType);
       results.results.push(result);
     }
-    
+
     // Save results to file
     const resultsDir = '/var/lib/test/test-results';
     if (!fs.existsSync(resultsDir)) {
       fs.mkdirSync(resultsDir, { recursive: true });
     }
-    
+
     const resultsFile = path.join(resultsDir, `${browserType}-results.json`);
     fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
-    
+
     // Print summary
     const passed = results.results.filter(r => r.status === 'PASS').length;
     const failed = results.results.filter(r => r.status === 'FAIL').length;
-    
+
     console.log(`\n=== ${browserType} Summary ===`);
     console.log(`Certificates passed: ${passed}`);
     console.log(`Certificates failed: ${failed}`);
     console.log(`Results saved to: ${resultsFile}`);
-    
+
     // Return success if any certificates passed (don't fail on individual cert failures)
     return passed > 0;
-    
+
   } catch (error) {
     console.error(`[FAIL] Browser test setup failed: ${error.message}`);
     return false;
