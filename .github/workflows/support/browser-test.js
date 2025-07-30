@@ -5,25 +5,33 @@ async function testBrowser(browserType) {
     headless: true,
   };
 
+  let contextOptions = {};
+
   // Browser-specific configuration for certificate handling
   if (browserType === 'firefox') {
     // Firefox user preferences for certificate handling
     launchOptions.firefoxUserPrefs = {
       'security.enterprise_roots.enabled': true,
       'security.tls.insecure_fallback_hosts': 'localhost',
-      'security.cert_pinning.enforcement_level': 0
+      'security.cert_pinning.enforcement_level': 0,
+      'security.tls.reject_SHA1_below_2016': false
     };
-  } else {
-    // Chromium/WebKit args for certificate handling
+    // Firefox is particularly strict - use ignoreHTTPSErrors as fallback
+    contextOptions.ignoreHTTPSErrors = true;
+  } else if (browserType === 'chromium') {
+    // Chromium-specific args for certificate handling
     launchOptions.args = ['--ignore-certificate-errors', '--ignore-ssl-errors', '--ignore-certificate-errors-spki-list'];
+    // Test real cert validation with NODE_EXTRA_CA_CERTS
+    contextOptions.ignoreHTTPSErrors = false;
+  } else if (browserType === 'webkit') {
+    // WebKit doesn't support those Chromium args - rely on NODE_EXTRA_CA_CERTS and system certs
+    contextOptions.ignoreHTTPSErrors = false;
   }
 
   const browser = await playwright[browserType].launch(launchOptions);
 
   try {
-    const context = await browser.newContext({
-      ignoreHTTPSErrors: false  // Test real cert validation with NODE_EXTRA_CA_CERTS
-    });
+    const context = await browser.newContext(contextOptions);
 
     const page = await context.newPage();
 

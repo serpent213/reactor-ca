@@ -10,6 +10,10 @@ on:
 jobs:
   test-https:
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.54.0-noble
+      env:
+        HOME: /root
     strategy:
       matrix:
         browser: [curl, chromium, firefox, webkit]
@@ -17,6 +21,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -26,33 +33,30 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Setup Node.js for Playwright
+      - name: Setup Node.js
         if: matrix.browser != 'curl'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Playwright
+      - name: Install Playwright dependency
         if: matrix.browser != 'curl'
         run: |
           npm init -y
           npm install --save-dev playwright@latest
-          npx playwright install ${{ matrix.browser }}
-          npx playwright install-deps ${{ matrix.browser }}
 
       - name: Install Caddy
         run: |
-          sudo apt update
-          sudo apt install -y caddy
+          apt update
+          apt install -y caddy
 
       - name: Build ReactorCA
         run: just build
 
       - name: Create test directory structure
         run: |
-          sudo mkdir -p /var/lib/test/caddy/site
-          sudo mkdir -p /var/lib/test/certs
-          sudo chown -R $USER:$USER /var/lib/test
+          mkdir -p /var/lib/test/caddy/site
+          mkdir -p /var/lib/test/certs
 
       - name: Create test HTML page
         run: |
@@ -151,14 +155,19 @@ jobs:
         if: matrix.browser != 'curl'
         run: |
           cd /var/lib/test
-          # Install CA cert for browsers
-          sudo cp store/ca/ca.crt /usr/local/share/ca-certificates/reactorca-test.crt
-          sudo update-ca-certificates
+
+          # Install p11-kit for Firefox certificate support
+          apt-get update
+          apt-get install -y p11-kit p11-kit-modules
+
+          # Install CA cert in system trust store
+          cp store/ca/ca.crt /usr/local/share/ca-certificates/reactorca-test.crt
+          update-ca-certificates
 
           # Set NODE_EXTRA_CA_CERTS for Node.js/Playwright
-          echo "NODE_EXTRA_CA_CERTS=$(pwd)/store/ca/ca.crt" >> $GITHUB_ENV
+          echo "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt" >> $GITHUB_ENV
 
-          # Also copy to common browser cert locations
+          # Also copy to common browser cert locations for fallback
           mkdir -p ~/.pki/nssdb
           certutil -A -n "ReactorCA Test" -t "TCu,Cu,Tu" -i store/ca/ca.crt -d ~/.pki/nssdb 2>/dev/null || true
 
@@ -186,17 +195,17 @@ jobs:
 
       - name: Start Caddy with test config
         run: |
-          # Fix permissions so Caddy user can read certificate files
-          sudo chown -R caddy:caddy /var/lib/test/certs/
-          sudo chmod 644 /var/lib/test/certs/*
+          # Fix permissions so Caddy can read certificate files
+          chmod 644 /var/lib/test/certs/*
 
-          # Replace system Caddy config with our test config
-          sudo cp /var/lib/test/caddy/Caddyfile /etc/caddy/Caddyfile
-          # Restart system Caddy service with our config
-          sudo systemctl restart caddy || true
+          # Start Caddy directly with our test config (no systemd in container)
+          cd /var/lib/test/caddy
+          caddy start --config Caddyfile
           sleep 2
 
       - name: Test HTTPS connection - ${{ matrix.browser }}
+        env:
+          HOME: /root
         run: |
           cd /var/lib/test
 
@@ -219,9 +228,6 @@ jobs:
             # Check certificate details
             echo -e "\n=== Certificate Information ==="
             openssl s_client -connect localhost:8443 -servername localhost < /dev/null 2>/dev/null | openssl x509 -text -noout | head -20
-
-            echo -e "\n=== Caddy Status ==="
-            sudo systemctl status caddy --no-pager
           else
             # Test with real browser
             echo "Testing with ${{ matrix.browser }} browser..."
