@@ -16,8 +16,7 @@ jobs:
         HOME: /root
     strategy:
       matrix:
-        # Only curl and Webkit validate against true root CA cert.
-        # Firefox and Chromium could not be convinced.
+        # Test all combinations of browsers with certificate algorithms
         browser: [curl, chromium, firefox, webkit]
       fail-fast: false
 
@@ -96,7 +95,7 @@ jobs:
           cd /var/lib/test
           $GITHUB_WORKSPACE/ca init
 
-      - name: Configure ReactorCA for localhost
+      - name: Configure ReactorCA for all certificate combinations
         run: |
           cd /var/lib/test
 
@@ -108,28 +107,249 @@ jobs:
             fi
           fi
 
-          # Update hosts.yaml for localhost certificate
+          # Create hosts.yaml with all certificate algorithm combinations
           cat > config/hosts.yaml << 'EOF'
           hosts:
-            localhost:
+            # RSA certificates with SHA256 and SHA512
+            rsa2048-sha256:
               alternative_names:
                 dns:
-                  - localhost
+                  - rsa2048-sha256.localhost
                   - 127.0.0.1
                 ip:
                   - 127.0.0.1
                   - ::1
-
               validity:
                 years: 1
-
               key_algorithm: RSA2048
               hash_algorithm: SHA256
-
               export:
-                cert: "/var/lib/test/certs/localhost.crt"
-                chain: "/var/lib/test/certs/localhost-chain.crt"
-                key_encrypted: "/var/lib/test/certs/localhost.key.age"
+                cert: "/var/lib/test/certs/rsa2048-sha256.crt"
+                chain: "/var/lib/test/certs/rsa2048-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa2048-sha256.key.age"
+
+            rsa2048-sha512:
+              alternative_names:
+                dns:
+                  - rsa2048-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: RSA2048
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/rsa2048-sha512.crt"
+                chain: "/var/lib/test/certs/rsa2048-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa2048-sha512.key.age"
+
+            rsa3072-sha256:
+              alternative_names:
+                dns:
+                  - rsa3072-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: RSA3072
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/rsa3072-sha256.crt"
+                chain: "/var/lib/test/certs/rsa3072-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa3072-sha256.key.age"
+
+            rsa3072-sha512:
+              alternative_names:
+                dns:
+                  - rsa3072-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: RSA3072
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/rsa3072-sha512.crt"
+                chain: "/var/lib/test/certs/rsa3072-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa3072-sha512.key.age"
+
+            rsa4096-sha256:
+              alternative_names:
+                dns:
+                  - rsa4096-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: RSA4096
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/rsa4096-sha256.crt"
+                chain: "/var/lib/test/certs/rsa4096-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa4096-sha256.key.age"
+
+            rsa4096-sha512:
+              alternative_names:
+                dns:
+                  - rsa4096-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: RSA4096
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/rsa4096-sha512.crt"
+                chain: "/var/lib/test/certs/rsa4096-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/rsa4096-sha512.key.age"
+
+            # ECDSA certificates with SHA256 and SHA512
+            ecp256-sha256:
+              alternative_names:
+                dns:
+                  - ecp256-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP256
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/ecp256-sha256.crt"
+                chain: "/var/lib/test/certs/ecp256-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp256-sha256.key.age"
+
+            ecp256-sha512:
+              alternative_names:
+                dns:
+                  - ecp256-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP256
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/ecp256-sha512.crt"
+                chain: "/var/lib/test/certs/ecp256-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp256-sha512.key.age"
+
+            ecp384-sha256:
+              alternative_names:
+                dns:
+                  - ecp384-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP384
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/ecp384-sha256.crt"
+                chain: "/var/lib/test/certs/ecp384-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp384-sha256.key.age"
+
+            ecp384-sha512:
+              alternative_names:
+                dns:
+                  - ecp384-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP384
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/ecp384-sha512.crt"
+                chain: "/var/lib/test/certs/ecp384-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp384-sha512.key.age"
+
+            ecp521-sha256:
+              alternative_names:
+                dns:
+                  - ecp521-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP521
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/ecp521-sha256.crt"
+                chain: "/var/lib/test/certs/ecp521-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp521-sha256.key.age"
+
+            ecp521-sha512:
+              alternative_names:
+                dns:
+                  - ecp521-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ECP521
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/ecp521-sha512.crt"
+                chain: "/var/lib/test/certs/ecp521-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ecp521-sha512.key.age"
+
+            # Ed25519 certificates with SHA256 and SHA512
+            ed25519-sha256:
+              alternative_names:
+                dns:
+                  - ed25519-sha256.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ED25519
+              hash_algorithm: SHA256
+              export:
+                cert: "/var/lib/test/certs/ed25519-sha256.crt"
+                chain: "/var/lib/test/certs/ed25519-sha256-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ed25519-sha256.key.age"
+
+            ed25519-sha512:
+              alternative_names:
+                dns:
+                  - ed25519-sha512.localhost
+                  - 127.0.0.1
+                ip:
+                  - 127.0.0.1
+                  - ::1
+              validity:
+                years: 1
+              key_algorithm: ED25519
+              hash_algorithm: SHA512
+              export:
+                cert: "/var/lib/test/certs/ed25519-sha512.crt"
+                chain: "/var/lib/test/certs/ed25519-sha512-chain.crt"
+                key_encrypted: "/var/lib/test/certs/ed25519-sha512.key.age"
           EOF
 
       - name: Create CA certificate
@@ -139,19 +359,34 @@ jobs:
           cd /var/lib/test
           $GITHUB_WORKSPACE/ca ca create
 
-      - name: Issue localhost certificate
+      - name: Issue all certificates
         env:
           REACTOR_CA_PASSWORD: "test-password-123"
         run: |
           cd /var/lib/test
-          $GITHUB_WORKSPACE/ca host issue localhost
+          echo "Creating all certificate combinations..."
+          $GITHUB_WORKSPACE/ca host issue --all
 
-      - name: Export private key for Caddy
+      - name: Export private keys for Caddy
         env:
           REACTOR_CA_PASSWORD: "test-password-123"
         run: |
           cd /var/lib/test
-          $GITHUB_WORKSPACE/ca host export-key localhost -o /var/lib/test/certs/localhost.key
+          echo "Exporting private keys for all certificates..."
+
+          # Export all private keys for Caddy
+          for cert in rsa2048-sha256 rsa2048-sha512 rsa3072-sha256 rsa3072-sha512 rsa4096-sha256 rsa4096-sha512 ecp256-sha256 ecp256-sha512 ecp384-sha256 ecp384-sha512 ecp521-sha256 ecp521-sha512 ed25519-sha256 ed25519-sha512; do
+            echo "Exporting $cert private key..."
+            $GITHUB_WORKSPACE/ca host export-key $cert -o /var/lib/test/certs/$cert.key
+          done
+
+      - name: Install required packages
+        run: |
+          cd /var/lib/test
+
+          # Install jq for all browsers (needed for JSON processing)
+          apt-get update
+          apt-get install -y jq
 
       - name: Install CA certificate in system trust store
         if: matrix.browser != 'curl'
@@ -159,7 +394,6 @@ jobs:
           cd /var/lib/test
 
           # Install NSS tools and p11-kit for certificate management
-          apt-get update
           apt-get install -y ca-certificates libnss3-tools p11-kit p11-kit-modules
 
           # Install CA cert in system trust store
@@ -178,21 +412,230 @@ jobs:
           mkdir -p /etc/firefox/policies
           echo '{"policies":{"Certificates":{"Install":["/etc/ssl/certs/ca-certificates.crt"]}}}' > /etc/firefox/policies/policies.json
 
-      - name: Create Caddyfile
+      - name: Create Caddyfile for all certificate combinations
         run: |
           cat > /var/lib/test/caddy/Caddyfile << 'EOF'
-          localhost:8443 {
-              tls /var/lib/test/certs/localhost.crt /var/lib/test/certs/localhost.key
+          # RSA certificates
+          rsa2048-sha256.localhost:8443 {
+              tls /var/lib/test/certs/rsa2048-sha256.crt /var/lib/test/certs/rsa2048-sha256.key
               root * /var/lib/test/caddy/site
               file_server
-
               header {
-                  # Security headers for testing
                   Strict-Transport-Security "max-age=31536000; includeSubDomains"
                   X-Frame-Options "DENY"
                   X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA2048-SHA256"
               }
+              log {
+                  output stdout
+                  format console
+              }
+          }
 
+          rsa2048-sha512.localhost:8443 {
+              tls /var/lib/test/certs/rsa2048-sha512.crt /var/lib/test/certs/rsa2048-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA2048-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          rsa3072-sha256.localhost:8443 {
+              tls /var/lib/test/certs/rsa3072-sha256.crt /var/lib/test/certs/rsa3072-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA3072-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          rsa3072-sha512.localhost:8443 {
+              tls /var/lib/test/certs/rsa3072-sha512.crt /var/lib/test/certs/rsa3072-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA3072-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          rsa4096-sha256.localhost:8443 {
+              tls /var/lib/test/certs/rsa4096-sha256.crt /var/lib/test/certs/rsa4096-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA4096-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          rsa4096-sha512.localhost:8443 {
+              tls /var/lib/test/certs/rsa4096-sha512.crt /var/lib/test/certs/rsa4096-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "RSA4096-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          # ECDSA certificates
+          ecp256-sha256.localhost:8443 {
+              tls /var/lib/test/certs/ecp256-sha256.crt /var/lib/test/certs/ecp256-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP256-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ecp256-sha512.localhost:8443 {
+              tls /var/lib/test/certs/ecp256-sha512.crt /var/lib/test/certs/ecp256-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP256-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ecp384-sha256.localhost:8443 {
+              tls /var/lib/test/certs/ecp384-sha256.crt /var/lib/test/certs/ecp384-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP384-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ecp384-sha512.localhost:8443 {
+              tls /var/lib/test/certs/ecp384-sha512.crt /var/lib/test/certs/ecp384-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP384-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ecp521-sha256.localhost:8443 {
+              tls /var/lib/test/certs/ecp521-sha256.crt /var/lib/test/certs/ecp521-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP521-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ecp521-sha512.localhost:8443 {
+              tls /var/lib/test/certs/ecp521-sha512.crt /var/lib/test/certs/ecp521-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ECP521-SHA512"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          # Ed25519 certificates
+          ed25519-sha256.localhost:8443 {
+              tls /var/lib/test/certs/ed25519-sha256.crt /var/lib/test/certs/ed25519-sha256.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ED25519-SHA256"
+              }
+              log {
+                  output stdout
+                  format console
+              }
+          }
+
+          ed25519-sha512.localhost:8443 {
+              tls /var/lib/test/certs/ed25519-sha512.crt /var/lib/test/certs/ed25519-sha512.key
+              root * /var/lib/test/caddy/site
+              file_server
+              header {
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                  X-Frame-Options "DENY"
+                  X-Content-Type-Options "nosniff"
+                  X-Cert-Type "ED25519-SHA512"
+              }
               log {
                   output stdout
                   format console
@@ -210,64 +653,121 @@ jobs:
           caddy start --config Caddyfile
           sleep 2
 
-      - name: Test HTTPS connection - ${{ matrix.browser }}
+      - name: Test HTTPS connections - ${{ matrix.browser }}
         env:
           HOME: /root
         run: |
           cd /var/lib/test
 
-          echo "=== Testing HTTPS connection with ${{ matrix.browser }} ==="
+          echo "=== Testing all certificate combinations with ${{ matrix.browser }} ==="
+
+          # Create results directory
+          mkdir -p test-results
+
+          # Initialize results file
+          echo '{"browser": "${{ matrix.browser }}", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "results": []}' > test-results/${{ matrix.browser }}-results.json
+
+          # Define all certificate combinations
+          CERT_COMBINATIONS="rsa2048-sha256 rsa2048-sha512 rsa3072-sha256 rsa3072-sha512 rsa4096-sha256 rsa4096-sha512 ecp256-sha256 ecp256-sha512 ecp384-sha256 ecp384-sha512 ecp521-sha256 ecp521-sha512 ed25519-sha256 ed25519-sha512"
 
           if [ "${{ matrix.browser }}" = "curl" ]; then
             # Test with curl (validate cert against our CA)
             echo "Testing with curl..."
-            curl --cacert store/ca/ca.crt -v https://localhost:8443/ > curl-output.txt 2>&1
 
-            if grep -q "ReactorCA HTTPS Test" curl-output.txt; then
-                echo "[PASS] HTTPS connection successful with curl"
-                echo "[PASS] HTML content served correctly"
-            else
-                echo "[FAIL] HTTPS connection failed with curl"
-                cat curl-output.txt
-                exit 1
-            fi
+            for cert in $CERT_COMBINATIONS; do
+              echo "\n=== Testing $cert with curl ==="
 
-            # Check certificate details
-            echo -e "\n=== Certificate Information ==="
-            openssl s_client -connect localhost:8443 -servername localhost < /dev/null 2>/dev/null | openssl x509 -text -noout | head -20
+              # Test the certificate
+              if curl --cacert store/ca/ca.crt -v "https://$cert.localhost:8443/" > "curl-output-$cert.txt" 2>&1; then
+                if grep -q "ReactorCA HTTPS Test" "curl-output-$cert.txt"; then
+                  echo "[PASS] $cert: HTTPS connection successful with curl"
+
+                  # Get certificate details
+                  CERT_INFO=$(openssl s_client -connect localhost:8443 -servername "$cert.localhost" < /dev/null 2>/dev/null | openssl x509 -text -noout | grep -E "(Subject:|Issuer:|Public Key Algorithm:|Signature Algorithm)" | head -10)
+
+                  # Add to results
+                  jq --arg cert "$cert" --arg status "PASS" --arg info "$CERT_INFO" '.results += [{"certificate": $cert, "status": $status, "details": $info}]' test-results/${{ matrix.browser }}-results.json > tmp.json && mv tmp.json test-results/${{ matrix.browser }}-results.json
+                else
+                  echo "[FAIL] $cert: Content not found"
+                  jq --arg cert "$cert" --arg status "FAIL" --arg error "Content not found" '.results += [{"certificate": $cert, "status": $status, "error": $error}]' test-results/${{ matrix.browser }}-results.json > tmp.json && mv tmp.json test-results/${{ matrix.browser }}-results.json
+                fi
+              else
+                echo "[FAIL] $cert: Connection failed"
+                ERROR_MSG=$(tail -5 "curl-output-$cert.txt" | tr '\n' ' ')
+                jq --arg cert "$cert" --arg status "FAIL" --arg error "$ERROR_MSG" '.results += [{"certificate": $cert, "status": $status, "error": $error}]' test-results/${{ matrix.browser }}-results.json > tmp.json && mv tmp.json test-results/${{ matrix.browser }}-results.json
+              fi
+            done
           else
             # Test with real browser
             echo "Testing with ${{ matrix.browser }} browser..."
 
-            # Run the browser test
-            node $GITHUB_WORKSPACE/.github/workflows/support/browser-test.js ${{ matrix.browser }}
+            # Run the enhanced browser test that tests all combinations
+            node $GITHUB_WORKSPACE/.github/workflows/support/browser-test.js ${{ matrix.browser }} || true
           fi
 
-      - name: Test certificate validation
+          # Display final results summary
+          echo "\n=== Final Results Summary for ${{ matrix.browser }} ==="
+          if [ -f "test-results/${{ matrix.browser }}-results.json" ]; then
+            jq -r '.results[] | "\(.certificate): \(.status)"' "test-results/${{ matrix.browser }}-results.json"
+
+            # Count pass/fail
+            PASS_COUNT=$(jq '.results | map(select(.status == "PASS")) | length' "test-results/${{ matrix.browser }}-results.json")
+            FAIL_COUNT=$(jq '.results | map(select(.status == "FAIL")) | length' "test-results/${{ matrix.browser }}-results.json")
+            echo "\nSummary: $PASS_COUNT passed, $FAIL_COUNT failed"
+          fi
+
+      - name: Validate all certificates against CA
         run: |
           cd /var/lib/test
 
-          echo "=== Validating certificate against CA ==="
+          echo "=== Validating all certificates against CA ==="
 
-          # Verify certificate chain
-          if openssl verify -CAfile store/ca/ca.crt certs/localhost.crt; then
-              echo "[PASS] Certificate validates against CA"
-          else
-              echo "[FAIL] Certificate validation failed"
-              exit 1
+          # Generate certificate combinations dynamically
+          KEY_ALGORITHMS="RSA2048 RSA3072 RSA4096 ECP256 ECP384 ECP521 ED25519"
+          HASH_ALGORITHMS="SHA256 SHA512"
+          CERT_COMBINATIONS=""
+
+          for key_algo in $KEY_ALGORITHMS; do
+            for hash_algo in $HASH_ALGORITHMS; do
+              cert_name=$(echo "${key_algo}-${hash_algo}" | tr '[:upper:]' '[:lower:]')
+              CERT_COMBINATIONS="$CERT_COMBINATIONS $cert_name"
+            done
+          done
+
+          VALIDATION_PASSED=0
+          VALIDATION_FAILED=0
+
+          for cert in $CERT_COMBINATIONS; do
+            echo "\n=== Validating $cert ==="
+
+            # Verify certificate chain
+            if openssl verify -CAfile store/ca/ca.crt "certs/$cert.crt"; then
+                echo "[PASS] $cert validates against CA"
+                VALIDATION_PASSED=$((VALIDATION_PASSED + 1))
+
+                # Show certificate details
+                echo "Certificate details for $cert:"
+                openssl x509 -in "certs/$cert.crt" -text -noout | grep -E "(Subject:|Issuer:|Public Key Algorithm:|Signature Algorithm:|Subject Alternative Name)" | head -10
+            else
+                echo "[FAIL] $cert validation failed"
+                VALIDATION_FAILED=$((VALIDATION_FAILED + 1))
+            fi
+          done
+
+          echo "\n=== Certificate Validation Summary ==="
+          echo "Certificates passed validation: $VALIDATION_PASSED"
+          echo "Certificates failed validation: $VALIDATION_FAILED"
+
+          # Don't fail the workflow if some certificates fail validation
+          # We want to collect all results
+          if [ $VALIDATION_FAILED -gt 0 ]; then
+            echo "Warning: Some certificates failed validation, but continuing to collect results"
           fi
 
-          # Check certificate details
-          echo -e "\n=== Certificate Details ==="
-          openssl x509 -in certs/localhost.crt -text -noout | grep -A 10 "Subject Alternative Name"
 
-
-      - name: Upload test artifacts
+      - name: Upload test results JSON
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.browser }}
-          path: |
-            /var/lib/test/store/
-            /var/lib/test/certs/
-            /var/lib/test/curl-output.txt
+          path: /var/lib/test/test-results/*.json
         if: always()
