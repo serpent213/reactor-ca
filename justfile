@@ -17,10 +17,19 @@ help:
 build mode="debug":
     #!/usr/bin/env bash
     set -e
+
+    version_string="{{version}}"
+
+    # Add unstable suffix if current commit doesn't have a semver release tag
+    if ! git tag --points-at HEAD 2>/dev/null | grep -q '^v[0-9]\+\.[0-9]\+\.[0-9]\+$'; then
+        commit_hash=$(git rev-parse --short=6 HEAD)
+        version_string="${version_string}-unstable-${commit_hash}"
+    fi
+
     if [[ "{{mode}}" =~ ^r ]]; then # release
-        go build -ldflags="-s -w -X main.version={{version}}" -v ./cmd/ca
+        go build -ldflags="-s -w -X main.version=${version_string}" -v ./cmd/ca
     else
-        go build -ldflags="-X main.version={{version}}-debug" -v ./cmd/ca
+        go build -ldflags="-X main.version=${version_string}-debug" -v ./cmd/ca
     fi
 
 # Cross-compile for multiple platforms
@@ -29,32 +38,40 @@ build-cross platform="all":
     set -e
     mkdir -p dist
 
+    version_string="{{version}}"
+
+    # Add unstable suffix if current commit doesn't have a semver release tag
+    if ! git tag --points-at HEAD 2>/dev/null | grep -q '^v[0-9]\+\.[0-9]\+\.[0-9]\+$'; then
+        commit_hash=$(git rev-parse --short=6 HEAD)
+        version_string="${version_string}-unstable-${commit_hash}"
+    fi
+
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "linux" ]; then
         echo "Building for Linux x86_64..."
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-linux-amd64 ./cmd/ca
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-linux-amd64 ./cmd/ca
         echo "Building for Linux ARM64..."
-        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-linux-arm64 ./cmd/ca
+        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-linux-arm64 ./cmd/ca
     fi
 
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "darwin" ]; then
         echo "Building for macOS x86_64..."
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-darwin-amd64 ./cmd/ca
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-darwin-amd64 ./cmd/ca
         echo "Building for macOS ARM64..."
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-darwin-arm64 ./cmd/ca
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-darwin-arm64 ./cmd/ca
     fi
 
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "windows" ]; then
         echo "Building for Windows x86_64..."
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-windows-amd64.exe ./cmd/ca
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-windows-amd64.exe ./cmd/ca
         echo "Building for Windows ARM64..."
-        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-windows-arm64.exe ./cmd/ca
+        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-windows-arm64.exe ./cmd/ca
     fi
 
     if [ "{{platform}}" = "all" ] || [ "{{platform}}" = "freebsd" ]; then
         echo "Building for FreeBSD x86_64..."
-        GOOS=freebsd GOARCH=amd64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-freebsd-amd64 ./cmd/ca
+        GOOS=freebsd GOARCH=amd64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-freebsd-amd64 ./cmd/ca
         echo "Building for FreeBSD ARM64..."
-        GOOS=freebsd GOARCH=arm64 go build -ldflags="-s -w -X main.version={{version}}" -o dist/reactor-ca-freebsd-arm64 ./cmd/ca
+        GOOS=freebsd GOARCH=arm64 go build -ldflags="-s -w -X main.version=${version_string}" -o dist/reactor-ca-freebsd-arm64 ./cmd/ca
     fi
 
 # Build using Nix
