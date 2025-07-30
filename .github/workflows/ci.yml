@@ -10,7 +10,10 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +26,13 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Run CI pipeline
+      - name: Run CI pipeline (Ubuntu)
+        if: runner.os == 'Linux'
         run: just ci
+
+      - name: Run tests (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: just test
 
       - name: Upload test artifacts
         if: failure()
