@@ -8,29 +8,29 @@ hosts:
     # Subject Alternative Names are the primary method for hostname validation
     alternative_names:
       dns:
-        - "web.reactor.local"
-        - "www.reactor.local"
-        - "grafana.reactor.local"
+        - web.reactor.local
+        - www.reactor.local
+        - grafana.reactor.local
       ip:
-        - "192.168.1.100"
-        - "10.10.0.1"
-        - "2001:db8::1"
+        - 192.168.1.100
+        - 10.10.0.1
+        - 2001:db8::1
     validity:
       years: 1
 
   # FritzBox deployment example
   mushroom:
     subject:
-      common_name: "fritz.box"
+      common_name: fritz.box
     alternative_names:
       dns:
-        - "fritz.box"
+        - fritz.box
       ip:
-        - "192.168.178.1"
+        - 192.168.178.1
     validity:
       years: 1
-    key_algorithm: "RSA2048"
-    hash_algorithm: "SHA256"
+    key_algorithm: RSA2048
+    hash_algorithm: SHA256
     deploy:
       command: |
         # using https://github.com/tisba/fritz-tls
@@ -39,17 +39,17 @@ hosts:
   # IoT device with custom subject fields
   iot-gateway:
     subject:
-      organization_unit: "IoT Division"
+      organization_unit: IoT Division
     alternative_names:
       dns:
-        - "iot.reactor.local"
-        - "mqtt.reactor.local"
+        - iot.reactor.local
+        - mqtt.reactor.local
       ip:
-        - "192.168.1.150"
+        - 192.168.1.150
     validity:
       days: 365
-    key_algorithm: "ED25519"
-    hash_algorithm: "SHA256"
+    key_algorithm: ED25519
+    hash_algorithm: SHA256
     export:
       cert: "/opt/iot/certs/gateway.crt"
       chain: "/opt/iot/certs/gateway-chain.crt"
@@ -61,28 +61,28 @@ hosts:
   # Client certificate for user authentication (VPN, web auth, email signing)
   client-user:
     subject:
-      organization_unit: "Users"
+      organization_unit: Users
     alternative_names:
       email:
         - "john.doe@reactor.local"
     validity:
       years: 1
-    key_algorithm: "RSA3072"
-    hash_algorithm: "SHA256"
+    key_algorithm: RSA3072
+    hash_algorithm: SHA256
     # No export/deploy - stored in secure store only
 
   # Proxmox PVE deployment example (via SSH)
   moxbox:
     subject:
-      common_name: "moxbox"
+      common_name: moxbox
     alternative_names:
       dns:
-        - "moxbox"
-        - "moxbox.fritz.box"
+        - moxbox
+        - moxbox.fritz.box
     validity:
       months: 1
-    key_algorithm: "ECP384"
-    hash_algorithm: "SHA384"
+    key_algorithm: ECP384
+    hash_algorithm: SHA384
     deploy:
       command: |
         scp ${cert} moxbox:new.pem
@@ -93,19 +93,19 @@ hosts:
   # Additional recipients for runtime decryption on the target system
   nixos-homelab:
     subject:
-      organization_unit: "Infrastructure"
+      organization_unit: Infrastructure
     alternative_names:
       dns:
-        - "homelab.reactor.local"
-        - "vault.reactor.local"
-        - "git.reactor.local"
-        - "ci.reactor.local"
+        - homelab.reactor.local
+        - vault.reactor.local
+        - git.reactor.local
+        - ci.reactor.local
       ip:
-        - "192.168.1.10"
+        - 192.168.1.10
     validity:
       years: 1
-    key_algorithm: "ED25519"
-    hash_algorithm: "SHA256"
+    key_algorithm: ED25519
+    hash_algorithm: SHA256
     # Include host's SSH host private key for agenix
     encryption:
       additional_recipients:

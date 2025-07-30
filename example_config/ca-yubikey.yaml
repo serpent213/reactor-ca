@@ -4,24 +4,24 @@
 
 ca:
   subject:
-    common_name: "Reactor Homelab CA"
-    organization: "Reactor Industries"
-    organization_unit: "IT Department"
-    country: "US"
-    state: "New York"
-    locality: "New York"
-    email: "admin@example.dev"
+    common_name: Reactor Homelab CA
+    organization: Reactor Industries
+    organization_unit: IT Department
+    country: US
+    state: New York
+    locality: New York
+    email: admin@example.dev
 
   validity:
     years: 10
 
-  key_algorithm: "ECP256"
-  hash_algorithm: "SHA256"
+  key_algorithm: ECP256
+  hash_algorithm: SHA256
 
 
 # YubiKey Configuration
 encryption:
-  provider: "plugin"
+  provider: plugin
 
   plugin:
     # Path to the age-plugin-yubikey identity file

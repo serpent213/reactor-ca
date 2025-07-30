@@ -4,24 +4,24 @@
 
 ca:
   subject:
-    common_name: "Reactor Homelab CA"
-    organization: "Reactor Industries"
-    organization_unit: "IT Department"
-    country: "US"
-    state: "California"
-    locality: "San Francisco"
-    email: "admin@example.dev"
+    common_name: Reactor Homelab CA
+    organization: Reactor Industries
+    organization_unit: IT Department
+    country: US
+    state: California
+    locality: San Francisco
+    email: admin@example.dev
 
   validity:
     years: 10
 
-  key_algorithm: "ECP384"
-  hash_algorithm: "SHA384"
+  key_algorithm: ECP384
+  hash_algorithm: SHA384
 
 
 # Apple Secure Enclave Configuration
 encryption:
-  provider: "plugin"
+  provider: plugin
 
   plugin:
     # Path to the age-plugin-se identity file

@@ -325,12 +325,12 @@ The store structure is simple: certificates are in PEM format (`.crt` files) and
 ca:
   # Subject details for the CA certificate
   subject:
-    common_name: "Reactor Homelab CA"
-    organization: "Reactor Industries"
-    organization_unit: "IT Department"
-    country: "DE"
-    state: "Berlin"
-    locality: "Berlin"
+    common_name: Reactor Homelab CA
+    organization: Reactor Industries
+    organization_unit: IT Department
+    country: DE
+    state: Berlin
+    locality: Berlin
     email: "admin@example.dev"
 
   # Certificate validity
@@ -338,21 +338,21 @@ ca:
     years: 10
 
   # Cryptographic settings
-  key_algorithm: "ECP384"    # RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
-  hash_algorithm: "SHA384"   # SHA256, SHA384, SHA512
+  key_algorithm: ECP384    # RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
+  hash_algorithm: SHA384   # SHA256, SHA384, SHA512
 
   # Password management
   password:
     min_length: 12
-    env_var: "REACTOR_CA_PASSWORD"  # Environment variable for password
+    env_var: REACTOR_CA_PASSWORD  # Environment variable for password
     # file: "/path/to/password/file"  # Optional: password file path
 
 # Encryption configuration
 encryption:
-  provider: "password"  # password | ssh | plugin
+  provider: password  # password | ssh | plugin
   password:
     min_length: 12
-    env_var: "REACTOR_CA_PASSWORD"
+    env_var: REACTOR_CA_PASSWORD
   ssh:
     identity_file: "~/.ssh/id_ed25519"  # SSH private key for decryption
     recipients:  # SSH public keys for encryption
@@ -377,19 +377,19 @@ hosts:
     # Subject Alternative Names
     alternative_names:
       dns:
-        - "web.reactor.local"
-        - "grafana.reactor.local"
+        - web.reactor.local
+        - grafana.reactor.local
       ip:
-        - "192.168.1.100"
-        - "10.10.0.1"
+        - 192.168.1.100
+        - 10.10.0.1
 
     # Certificate validity
     validity:
       years: 1
 
     # Cryptographic settings (optional, defaults to CA settings)
-    key_algorithm: "RSA2048"
-    hash_algorithm: "SHA256"
+    key_algorithm: RSA2048
+    hash_algorithm: SHA256
 
     # Export paths (optional) - files written during 'host issue'
     export:
@@ -452,10 +452,10 @@ ReactorCA supports multiple SAN types:
 ```yaml
 alternative_names:
   dns:
-    - "example.com"
+    - example.com
     - "*.example.com"
   ip:
-    - "192.168.1.100"
+    - 192.168.1.100
     - "2001:db8::1"
   email:
     - "admin@example.com"
@@ -500,7 +500,7 @@ If you are using [agenix](https://github.com/ryantm/agenix) (or a similar system
 
 ## Development Environment
 
-This project uses `devenv.nix` for reproducible development and *Just* as build helper:
+This project uses `devenv.nix` for reproducible development and Just as build helper:
 
 ```bash
 # Enter development shell

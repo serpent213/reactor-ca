@@ -171,13 +171,13 @@ const baseCaTemplate = `# ReactorCA: Certificate Authority Configuration
 ca:
   # These values are used to build the distinguished name (DN) of the CA certificate.
   subject:
-    common_name: "Reactor Homelab CA"
-    organization: "Reactor Industries"
-    organization_unit: "EDV"
-    country: "DE"                 # 2-letter country code
-    state: "Niedersachsen"        # State or province
-    locality: "Springfeld"        # City or locality
-    email: "admin@example.dev"    # Administrative contact
+    common_name: Reactor Homelab CA
+    organization: Reactor Industries
+    organization_unit: EDV
+    country: DE                 # 2-letter country code
+    state: Niedersachsen        # State or province
+    locality: Springfeld        # City or locality
+    email: "admin@example.dev"  # Administrative contact
 
   # How long the CA certificate will be valid for.
   # Specify any combination of 'years', 'months' and 'days'.
@@ -187,17 +187,17 @@ ca:
 
   # The algorithm used for the CA's private key.
   # Supported: RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
-  key_algorithm: "ECP384"
+  key_algorithm: ECP384
   # The hash algorithm used for the certificate signature.
   # Supported: SHA256, SHA384, SHA512
-  hash_algorithm: "SHA384"
+  hash_algorithm: SHA384
 
 %s`
 
 const sshEncryptionSection = `# Defines how private keys are encrypted on disk using age.
 encryption:
   # Provider: password | ssh | plugin
-  provider: "ssh"
+  provider: ssh
 
   # SSH key-based encryption settings (using age-ssh)
   # Auto-detected %s SSH key
@@ -210,7 +210,7 @@ encryption:
 const passwordEncryptionSection = `# Defines how private keys are encrypted on disk using age.
 encryption:
   # Provider: password | ssh | plugin
-  provider: "password"
+  provider: password
 
   # Password-based encryption settings (using age scrypt)
   # Set REACTOR_CA_PASSWORD environment variable or use interactive prompt
@@ -231,20 +231,19 @@ const defaultHostsYAML = `# ReactorCA: Host Certificate Configuration
 hosts:
   # This is a unique ID for the certificate, used in CLI commands (e.g., 'ca host issue web-server').
   web-server-example:
-    # The Common Name (CN) is typically the primary fully-qualified domain name (FQDN).
-    subject:
-      common_name: "web.reactor.local"
-      # Other subject fields are optional and will inherit from ca.yaml if not specified.
-      # organization_unit: "Web Services"
+    # Subject is optional and will inherit from ca.yaml if not specified (except for 'common_name').
+    # subject:
+    #   common_name: web.reactor.local
+    #   organization_unit: "Web Services"
 
-    # A list of additional names (SANs) the certificate should be valid for. This is highly recommended.
+    # The names (SANs) the certificate should be valid for. Make sure they match!
     alternative_names:
       dns:
-        - "web.reactor.local"
-        - "grafana.reactor.local"
+        - web.reactor.local
+        - grafana.reactor.local
       ip:
-        - "192.168.1.100"
-        - "10.10.0.1"
+        - 192.168.1.100
+        - 10.10.0.1
 
     # How long the host certificate will be valid for.
     validity:
@@ -253,10 +252,10 @@ hosts:
 
     # Algorithm for this specific host's key. Defaults to CA's key_algorithm if unset.
     # Supported: RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
-    key_algorithm: "RSA2048"
+    key_algorithm: RSA2048
     # Signing hash for this specific certificate. Defaults to CA's hash_algorithm if unset.
     # Supported: SHA256, SHA384, SHA512
-    hash_algorithm: "SHA256"
+    hash_algorithm: SHA256
 
     # Optional: Defines where to copy the certificate files after they are issued.
     # The parent directory will be created if it doesn't exist.
