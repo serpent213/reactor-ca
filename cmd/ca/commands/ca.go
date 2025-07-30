@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/exec"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -116,6 +117,11 @@ var caInfoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Display detailed information about the CA certificate",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		openssl, _ := cmd.Flags().GetBool("openssl")
+		if openssl {
+			return exec.ExecOpenSSLCertInfo(getApp(cmd).GetStore().GetCACertPath())
+		}
+
 		ui.Action("Retrieving CA certificate information")
 		app := getApp(cmd)
 		cert, err := app.InfoCA(cmd.Context())
@@ -192,6 +198,8 @@ func init() {
 	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation")
 	caReencryptCmd.Flags().Bool("rollback", false, "Automatically rollback from .bak files on failure")
+
+	caInfoCmd.Flags().Bool("openssl", false, "Use openssl to display certificate information")
 
 	caCmd.AddCommand(caCreateCmd)
 	caCmd.AddCommand(caRenewCmd)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/exec"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -173,6 +174,11 @@ var hostInfoCmd = &cobra.Command{
 	Short: "Display detailed information about a specific host certificate",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		openssl, _ := cmd.Flags().GetBool("openssl")
+		if openssl {
+			return exec.ExecOpenSSLCertInfo(getApp(cmd).GetStore().GetHostCertPath(args[0]))
+		}
+
 		ui.Action("Retrieving certificate information for host “%s”", args[0])
 		app := getApp(cmd)
 		cert, err := app.InfoHost(cmd.Context(), args[0])
@@ -330,6 +336,7 @@ func init() {
 	hostCmd.AddCommand(hostListCmd)
 
 	// host info
+	hostInfoCmd.Flags().Bool("openssl", false, "Use openssl to display certificate information")
 	hostCmd.AddCommand(hostInfoCmd)
 
 	// host deploy

@@ -83,7 +83,6 @@ type CryptoService interface {
 
 // Commander defines the interface for executing external commands.
 type Commander interface {
-	Execute(name string, args ...string) ([]byte, error)
 	ExecuteInteractive(name string, args ...string) error
 }
 

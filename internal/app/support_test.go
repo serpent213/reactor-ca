@@ -135,15 +135,7 @@ func (m *MockPasswordProvider) GetPasswordForImport(ctx context.Context, minLeng
 }
 
 type MockCommander struct {
-	ExecuteFunc            func(name string, args ...string) ([]byte, error)
 	ExecuteInteractiveFunc func(name string, args ...string) error
-}
-
-func (m *MockCommander) Execute(name string, args ...string) ([]byte, error) {
-	if m.ExecuteFunc != nil {
-		return m.ExecuteFunc(name, args...)
-	}
-	return []byte("ok"), nil
 }
 
 func (m *MockCommander) ExecuteInteractive(name string, args ...string) error {

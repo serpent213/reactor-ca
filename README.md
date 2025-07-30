@@ -1,7 +1,7 @@
 ![ReactorCA screenshot](docs/assets/help_screen.webp)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-63.7%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-63.6%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
@@ -208,6 +208,7 @@ Deploy will create temp files if the required files are not exported, so `export
 | `ca ca renew` | Renew the CA certificate using the existing key |
 | `ca ca rekey` | Create a new key and certificate, replacing the old ones |
 | `ca ca info` | Display detailed information about the CA certificate |
+| `ca ca info --openssl` | Invoke `openssl` to display full text dump |
 | `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
 | `ca ca reencrypt` | Change the master password/update recipients for all encrypted keys |
 
@@ -224,6 +225,7 @@ Deploy will create temp files if the required files are not exported, so `export
 | `ca host list --expiring-in 30` | Show certificates expiring in next 30 days |
 | `ca host list --json` | Output in JSON format |
 | `ca host info <host-id>` | Display detailed certificate information |
+| `ca host info <host-id> --openssl` | Invoke `openssl` to display full text dump |
 | `ca host deploy <host-id>` | Run deployment command for a host |
 | `ca host deploy --all` | Deploy all host certificates |
 | `ca host export-key <host-id>` | Export unencrypted private key to stdout |
@@ -329,7 +331,7 @@ ca:
     country: "DE"
     state: "Berlin"
     locality: "Berlin"
-    email: "admin@reactor.dev"
+    email: "admin@example.dev"
 
   # Certificate validity
   validity:

@@ -9,10 +9,10 @@ ca:
     common_name: "Reactor Homelab CA"
     organization: "Reactor Industries"
     organization_unit: "IT Department"
-    country: "DE" # 2-letter country code
+    country: DE # 2-letter country code
     state: "Berlin" # State or province
     locality: "Berlin" # City or locality
-    email: "admin@reactor.dev" # Administrative contact
+    email: "admin@example.dev" # Administrative contact
 
   # --- Validity Period ---
   # How long the CA certificate will be valid for.

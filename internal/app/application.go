@@ -161,6 +161,11 @@ func (a *Application) GetCAConfig() (*domain.CAConfig, error) {
 	return a.configLoader.LoadCA()
 }
 
+// GetStore returns the store instance.
+func (a *Application) GetStore() domain.Store {
+	return a.store
+}
+
 // CreateCA creates a new Certificate Authority.
 func (a *Application) CreateCA(ctx context.Context, force bool) error {
 	return a.createCA(ctx, force)

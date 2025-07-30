@@ -10,7 +10,7 @@ ca:
     country: "US"
     state: "California"
     locality: "San Francisco"
-    email: "admin@reactor.dev"
+    email: "admin@example.dev"
 
   validity:
     years: 10

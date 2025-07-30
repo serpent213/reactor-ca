@@ -3,27 +3,29 @@
 package exec
 
 import (
+	"os"
 	"runtime"
-	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/term"
 )
 
-func TestCommander_Execute(t *testing.T) {
+func TestCommander_ExecuteInteractive(t *testing.T) {
 	commander := NewCommander()
 
 	tests := []struct {
-		name     string
-		command  string
-		args     []string
-		wantErr  bool
-		contains string
+		name    string
+		command string
+		args    []string
+		wantErr bool
+		skip    string
 	}{
 		{
-			name:     "echo command",
-			command:  "echo",
-			args:     []string{"hello world"},
-			wantErr:  false,
-			contains: "hello world",
+			name:    "echo command in non-TTY",
+			command: "echo",
+			args:    []string{"hello world"},
+			wantErr: false,
 		},
 		{
 			name:    "invalid command",
@@ -36,39 +38,51 @@ func TestCommander_Execute(t *testing.T) {
 	// Add platform-specific test
 	if runtime.GOOS != "windows" {
 		tests = append(tests, struct {
-			name     string
-			command  string
-			args     []string
-			wantErr  bool
-			contains string
+			name    string
+			command string
+			args    []string
+			wantErr bool
+			skip    string
 		}{
-			name:     "pwd command",
-			command:  "pwd",
-			args:     []string{},
-			wantErr:  false,
-			contains: "/", // should contain a path separator
+			name:    "true command",
+			command: "true",
+			args:    []string{},
+			wantErr: false,
 		})
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := commander.Execute(tt.command, tt.args...)
+			if tt.skip != "" {
+				t.Skip(tt.skip)
+			}
 
-			if tt.wantErr {
-				if err == nil {
-					t.Error("Execute() expected error, got nil")
+			// Since we're running in a test environment (non-TTY),
+			// ExecuteInteractive should fall back to regular execution
+			if term.IsTerminal(int(os.Stdin.Fd())) {
+				t.Skip("Test running in TTY environment, skipping non-TTY test")
+			}
+
+			// Use a timeout to prevent hanging
+			done := make(chan error, 1)
+			go func() {
+				done <- commander.ExecuteInteractive(tt.command, tt.args...)
+			}()
+
+			select {
+			case err := <-done:
+				if tt.wantErr {
+					if err == nil {
+						t.Error("ExecuteInteractive() expected error, got nil")
+					}
+					return
 				}
-				return
-			}
 
-			if err != nil {
-				t.Errorf("Execute() unexpected error: %v", err)
-				return
-			}
-
-			outputStr := string(output)
-			if tt.contains != "" && !strings.Contains(outputStr, tt.contains) {
-				t.Errorf("Execute() output %q does not contain %q", outputStr, tt.contains)
+				if err != nil {
+					t.Errorf("ExecuteInteractive() unexpected error: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("ExecuteInteractive() timed out - command may have hung")
 			}
 		})
 	}
