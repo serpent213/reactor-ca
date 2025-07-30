@@ -3,18 +3,13 @@
 package e2e
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/creack/pty"
 )
 
 var (
@@ -28,7 +23,6 @@ const (
 	testPassword                   = "super-secret-password-for-testing"
 	testInteractivePassword        = "interactive-test-password-147"
 	testInteractiveChangedPassword = "interactive-test-password-369"
-	promptTimeout                  = 5 * time.Second
 )
 
 // TestMain sets up the test environment. It checks for the `openssl` dependency,
@@ -247,8 +241,13 @@ func (e *testEnv) generateSSHKey(name string) (privateKeyPath string, publicKeyC
 }
 
 func (e *testEnv) createSSHCAConfig(sshKeyPath, sshPubKey string) string {
-	return fmt.Sprintf(`
-ca:
+	// Convert Windows backslashes to forward slashes for YAML
+	normalizedPath := filepath.ToSlash(sshKeyPath)
+
+	// Ensure SSH public key is properly quoted if it contains special characters
+	pubKey := strings.TrimSpace(sshPubKey)
+
+	return fmt.Sprintf(`ca:
   subject:
     common_name: "Reactor SSH Test CA"
     organization: "Test Corp"
@@ -264,111 +263,7 @@ encryption:
     identity_file: "%s"
     recipients:
       - "%s"
-`, sshKeyPath, strings.TrimSpace(sshPubKey))
-}
-
-// ptyTestEnv provides PTY-based interactive testing for password prompts
-type ptyTestEnv struct {
-	*testEnv
-	ptmx   *os.File
-	cmd    *exec.Cmd
-	reader *bufio.Reader
-}
-
-// newPtyTestEnv creates a new PTY-based test environment
-func newPtyTestEnv(t *testing.T) *ptyTestEnv {
-	return &ptyTestEnv{
-		testEnv: newTestEnv(t),
-	}
-}
-
-// startInteractiveCommand starts a command with PTY support and returns immediately
-func (e *ptyTestEnv) startInteractiveCommand(args ...string) error {
-	e.t.Helper()
-
-	cmd := exec.Command(reactorCABin, args...)
-	cmd.Dir = e.root
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "REACTOR_CA_ROOT="+e.root)
-	// IMPORTANT: Do NOT set REACTOR_CA_PASSWORD - we want interactive prompts
-	// Enable coverage collection for instrumented binary
-	if coverDir != "" {
-		cmd.Env = append(cmd.Env, "GOCOVERDIR="+coverDir)
-	}
-
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("failed to start PTY command: %w", err)
-	}
-
-	e.cmd = cmd
-	e.ptmx = ptmx
-	e.reader = bufio.NewReader(ptmx)
-
-	return nil
-}
-
-// waitForPrompt waits for a specific prompt text to appear and returns the full output
-func (e *ptyTestEnv) waitForPrompt(expectedPrompt string) (string, error) {
-	e.t.Helper()
-
-	resultCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		var output strings.Builder
-		buffer := make([]byte, 1024)
-
-		for {
-			n, err := e.ptmx.Read(buffer)
-			if err != nil {
-				if err != io.EOF {
-					errCh <- err
-				}
-				return
-			}
-
-			if n > 0 {
-				chunk := buffer[:n]
-				output.Write(chunk)
-				// Echo all output to console for debugging
-				// fmt.Print(string(chunk))
-
-				if strings.Contains(output.String(), expectedPrompt) {
-					resultCh <- output.String()
-					return
-				}
-			}
-		}
-	}()
-
-	select {
-	case result := <-resultCh:
-		return result, nil
-	case err := <-errCh:
-		return "", fmt.Errorf("read error: %w", err)
-	case <-time.After(promptTimeout):
-		return "", fmt.Errorf("timeout waiting for prompt '%s'", expectedPrompt)
-	}
-}
-
-// sendPassword sends a password to the PTY and presses enter
-func (e *ptyTestEnv) sendPassword(password string) error {
-	e.t.Helper()
-	_, err := e.ptmx.Write([]byte(password + "\n"))
-	return err
-}
-
-// cleanup waits for command completion and then closes the PTY
-func (e *ptyTestEnv) cleanup() error {
-	var cmdErr error
-	if e.cmd != nil {
-		cmdErr = e.cmd.Wait()
-	}
-	if e.ptmx != nil {
-		e.ptmx.Close()
-	}
-	return cmdErr
+`, normalizedPath, pubKey)
 }
 
 // Common test configurations
