@@ -16,6 +16,8 @@ jobs:
         HOME: /root
     strategy:
       matrix:
+        # Only curl and Webkit validate against true root CA cert.
+        # Firefox and Chromium could not be convinced.
         browser: [curl, chromium, firefox, webkit]
       fail-fast: false
 
@@ -156,9 +158,9 @@ jobs:
         run: |
           cd /var/lib/test
 
-          # Install p11-kit for Firefox certificate support
+          # Install NSS tools and p11-kit for certificate management
           apt-get update
-          apt-get install -y p11-kit p11-kit-modules
+          apt-get install -y ca-certificates libnss3-tools p11-kit p11-kit-modules
 
           # Install CA cert in system trust store
           cp store/ca/ca.crt /usr/local/share/ca-certificates/reactorca-test.crt
@@ -167,9 +169,14 @@ jobs:
           # Set NODE_EXTRA_CA_CERTS for Node.js/Playwright
           echo "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt" >> $GITHUB_ENV
 
-          # Also copy to common browser cert locations for fallback
-          mkdir -p ~/.pki/nssdb
-          certutil -A -n "ReactorCA Test" -t "TCu,Cu,Tu" -i store/ca/ca.crt -d ~/.pki/nssdb 2>/dev/null || true
+          # Configure NSS database for Chromium (uses sql: format)
+          mkdir -p $HOME/.pki/nssdb
+          certutil -d sql:$HOME/.pki/nssdb -N --empty-password
+          certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "reactorca-test" -i store/ca/ca.crt
+
+          # Create Firefox policies for certificate installation
+          mkdir -p /etc/firefox/policies
+          echo '{"policies":{"Certificates":{"Install":["/etc/ssl/certs/ca-certificates.crt"]}}}' > /etc/firefox/policies/policies.json
 
       - name: Create Caddyfile
         run: |
@@ -212,9 +219,9 @@ jobs:
           echo "=== Testing HTTPS connection with ${{ matrix.browser }} ==="
 
           if [ "${{ matrix.browser }}" = "curl" ]; then
-            # Test with curl (ignore cert verification for self-signed)
+            # Test with curl (validate cert against our CA)
             echo "Testing with curl..."
-            curl -k -v https://localhost:8443/ > curl-output.txt 2>&1
+            curl --cacert store/ca/ca.crt -v https://localhost:8443/ > curl-output.txt 2>&1
 
             if grep -q "ReactorCA HTTPS Test" curl-output.txt; then
                 echo "[PASS] HTTPS connection successful with curl"

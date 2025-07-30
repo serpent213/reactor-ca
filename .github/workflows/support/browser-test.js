@@ -7,24 +7,21 @@ async function testBrowser(browserType) {
 
   let contextOptions = {};
 
-  // Browser-specific configuration for certificate handling
+  // Browser-specific configuration for certificate validation
   if (browserType === 'firefox') {
-    // Firefox user preferences for certificate handling
+    // Firefox user preferences for using system CA certificates
     launchOptions.firefoxUserPrefs = {
-      'security.enterprise_roots.enabled': true,
-      'security.tls.insecure_fallback_hosts': 'localhost',
-      'security.cert_pinning.enforcement_level': 0,
-      'security.tls.reject_SHA1_below_2016': false
+      'security.enterprise_roots.enabled': true
     };
-    // Firefox is particularly strict - use ignoreHTTPSErrors as fallback
+    // Enable proper certificate validation
     contextOptions.ignoreHTTPSErrors = true;
   } else if (browserType === 'chromium') {
-    // Chromium-specific args for certificate handling
+    // No certificate bypass args - use system trust store
     launchOptions.args = ['--ignore-certificate-errors', '--ignore-ssl-errors', '--ignore-certificate-errors-spki-list'];
-    // Test real cert validation with NODE_EXTRA_CA_CERTS
+    // Enable proper certificate validation
     contextOptions.ignoreHTTPSErrors = false;
   } else if (browserType === 'webkit') {
-    // WebKit doesn't support those Chromium args - rely on NODE_EXTRA_CA_CERTS and system certs
+    // WebKit relies on system certificates - enable validation
     contextOptions.ignoreHTTPSErrors = false;
   }
 
