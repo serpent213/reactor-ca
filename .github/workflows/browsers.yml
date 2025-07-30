@@ -11,7 +11,7 @@ jobs:
   test-https:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.54.0-noble
+      image: mcr.microsoft.com/playwright:v1.54.1-noble
       env:
         HOME: /root
     strategy:
@@ -653,6 +653,39 @@ jobs:
           caddy start --config Caddyfile
           sleep 2
 
+      - name: Capture browser versions
+        env:
+          HOME: /root
+        run: |
+          cd /var/lib/test
+
+          echo "=== Capturing browser versions ==="
+
+          # Capture browser versions
+          if [ "${{ matrix.browser }}" = "curl" ]; then
+            BROWSER_VERSION=$(curl --version | head -1 | awk '{print $2}')
+          elif [ "${{ matrix.browser }}" = "chromium" ]; then
+            # Get Chromium version from the container
+            BROWSER_VERSION=$(chromium --version 2>/dev/null | awk '{print $2}')
+            if [ -z "$BROWSER_VERSION" ]; then
+              BROWSER_VERSION="unknown"
+            fi
+          elif [ "${{ matrix.browser }}" = "firefox" ]; then
+            # Get Firefox version from the container
+            BROWSER_VERSION=$(firefox --version 2>/dev/null | awk '{print $3}')
+            if [ -z "$BROWSER_VERSION" ]; then
+              BROWSER_VERSION="unknown"
+            fi
+          elif [ "${{ matrix.browser }}" = "webkit" ]; then
+            # WebKit version detection is complex in containers
+            BROWSER_VERSION="unknown"
+          else
+            BROWSER_VERSION="unknown"
+          fi
+
+          echo "Browser version: $BROWSER_VERSION"
+          echo "BROWSER_VERSION=$BROWSER_VERSION" >> $GITHUB_ENV
+
       - name: Test HTTPS connections - ${{ matrix.browser }}
         env:
           HOME: /root
@@ -664,8 +697,8 @@ jobs:
           # Create results directory
           mkdir -p test-results
 
-          # Initialize results file
-          echo '{"browser": "${{ matrix.browser }}", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "results": []}' > test-results/${{ matrix.browser }}-results.json
+          # Initialize results file with version info
+          echo '{"browser": "${{ matrix.browser }}", "version": "'$BROWSER_VERSION'", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "results": []}' > test-results/${{ matrix.browser }}-results.json
 
           # Define all certificate combinations
           CERT_COMBINATIONS="rsa2048-sha256 rsa2048-sha512 rsa3072-sha256 rsa3072-sha512 rsa4096-sha256 rsa4096-sha512 ecp256-sha256 ecp256-sha512 ecp384-sha256 ecp384-sha512 ecp521-sha256 ecp521-sha512 ed25519-sha256 ed25519-sha512"

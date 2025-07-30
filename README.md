@@ -548,24 +548,22 @@ just test
 
 ## Browser Compatibility Matrix
 
-| Certificate | Chromium | Firefox | Webkit | Curl |
+| Key/Signature | Curl<sub>8.5.0</sub> | Chromium<sub></sub> | Firefox<sub></sub> | WebKit<sub>unknown</sub> |
 | --- | --- | --- | --- | --- |
-| ECP256-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP256-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP384-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP384-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP521-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP521-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ED25519-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ED25519-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP256-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ECP256-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ECP384-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ECP384-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ECP521-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ECP521-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ED25519-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| ED25519-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
 | RSA2048-SHA256 | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS |
-| RSA2048-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA3072-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA3072-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA4096-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA4096-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-
-[↑ TOC](#table-of-contents)
+| RSA2048-SHA512 | 🟢 PASS | 🟢 PASS | 🔴 FAIL | 🔴 FAIL |
+| RSA3072-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| RSA3072-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| RSA4096-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
+| RSA4096-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL |
 
 ## Limitations
 

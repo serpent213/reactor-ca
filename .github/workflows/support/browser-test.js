@@ -96,11 +96,27 @@ async function testSingleCertificate(browser, cert, browserType) {
 }
 
 async function testBrowser(browserType) {
-  const results = {
+  const resultsFile = path.join('/var/lib/test/test-results', `${browserType}-results.json`);
+  
+  // Read existing results file to preserve version info
+  let results = {
     browser: browserType,
     timestamp: new Date().toISOString(),
     results: []
   };
+  
+  if (fs.existsSync(resultsFile)) {
+    try {
+      const existingData = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+      results = {
+        ...existingData,
+        timestamp: new Date().toISOString(),
+        results: []
+      };
+    } catch (error) {
+      console.warn(`Could not read existing results file: ${error.message}`);
+    }
+  }
 
   let launchOptions = {
     headless: true,

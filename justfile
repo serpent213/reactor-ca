@@ -402,6 +402,7 @@ update-browser-matrix:
     echo "Latest Browser Test run: $run_id"
 
     # Create temp directory and download artifacts
+    rm -rf tmp/browser-artifacts
     mkdir -p tmp/browser-artifacts
     cd tmp/browser-artifacts
     gh run download "$run_id"
@@ -413,7 +414,15 @@ update-browser-matrix:
     echo "Combining JSON files..."
     mkdir -p ../../docs
 
-    jq -s '[.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]' */*-results.json > ../../docs/browser-matrix.json
+    # Create structured JSON with metadata and results
+    jq -s '
+    {
+      metadata: {
+        timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+        browsers: (reduce .[] as $file ({}; .[$file.browser] = $file.version // "unknown"))
+      },
+      results: [.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]
+    }' */*-results.json > ../../docs/browser-matrix.json
 
     # Convert to markdown table and update README
     echo "Converting to markdown table..."
@@ -421,8 +430,10 @@ update-browser-matrix:
 
     # Generate markdown table with browsers as columns and cert combos as rows
     full_table=$(jq -r '
+        # Extract version info for headers
+        .metadata.browsers as $versions |
         # Group by certificate, then create pivot table
-        group_by(.certificate) |
+        .results | group_by(.certificate) |
         map({
             cert: (.[0].certificate | ascii_upcase),
             chromium: (map(select(.browser == "chromium"))[0].status // "N/A"),
@@ -430,8 +441,13 @@ update-browser-matrix:
             webkit: (map(select(.browser == "webkit"))[0].status // "N/A"),
             curl: (map(select(.browser == "curl"))[0].status // "N/A")
         }) |
-        # Create header
-        (["Key/Signature", "Curl", "Chromium", "Firefox", "Webkit"] | @tsv),
+        # Create header with version subscripts
+        (["Key/Signature",
+          ("Curl<sub>" + ($versions.curl // "unknown") + "</sub>"),
+          ("Chromium<sub>" + ($versions.chromium // "unknown") + "</sub>"),
+          ("Firefox<sub>" + ($versions.firefox // "unknown") + "</sub>"),
+          ("WebKit<sub>" + ($versions.webkit // "unknown") + "</sub>")
+        ] | @tsv),
         (["---", "---", "---", "---", "---"] | @tsv),
         # Create data rows with colored status
         (.[] | [
@@ -463,7 +479,6 @@ update-browser-matrix:
     ' README.md > README.md.tmp
     mv README.md.tmp README.md
 
-    # Clean up temp directory
     rm -rf tmp/browser-artifacts
 
     echo "Browser matrix updated in docs/browser-matrix.json and README.md"
