@@ -57,6 +57,7 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 * [Development Environment](#development-environment)
 * [Limitations](#limitations)
 * [Alternative Solutions](#alternative-solutions)
+* [Further Reading: Introduction to PKI and X.509](#further-reading-introduction-to-pki-and-x509)
 
 ## Features
 
@@ -89,7 +90,7 @@ ReactorCA is built on proven cryptographic foundations:
 
 ### Core Libraries
 
-- **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation (RSA 2048-4096, ECDSA P-256/384/521, Ed25519), and `crypto/rand` for secure randomness
+- **Go Standard Crypto**: Uses `crypto/x509` for certificate operations, `crypto/rsa` and `crypto/ecdsa` for key generation, and `crypto/rand` for secure randomness
 - **age Encryption**: Modern file encryption using [Filippo Valsorda's age library](https://github.com/FiloSottile/age) for private key protection
 
 ### Key Protection
@@ -523,3 +524,8 @@ just test
 - [EasyRSA](https://github.com/OpenVPN/easy-rsa): a classic
 - [CFSSL](https://github.com/cloudflare/cfssl): powerful client-server solution (there'a also a [wrapper](https://github.com/1nfiniteloop/docker-pki))
 - [certstrap](https://github.com/square/certstrap): didn't know about it before starting  ;)
+
+## Further Reading: Introduction to PKI and X.509
+
+- [Zytrax Survival Guide](https://www.zytrax.com/tech/survival/ssl.html): comprehensive guide and explanation
+- [Tutorial by Jamie Nguyen](https://jamielinux.com/docs/openssl-certificate-authority/): demonstrates how to act as your own certificate authority (CA) using the OpenSSL command-line tools
