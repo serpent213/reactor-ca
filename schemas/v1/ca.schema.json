@@ -7,6 +7,7 @@
   "required": [
     "ca"
   ],
+  "additionalProperties": false,
   "properties": {
     "ca": {
       "type": "object",
@@ -14,6 +15,7 @@
       "required": [
         "subject"
       ],
+      "additionalProperties": false,
       "properties": {
         "subject": {
           "$ref": "#/$defs/SubjectConfig"
@@ -41,6 +43,7 @@
       "type": "object",
       "description": "Certificate subject distinguished name fields",
       "required": [],
+      "additionalProperties": false,
       "properties": {
         "common_name": {
           "type": "string",
@@ -77,6 +80,7 @@
     "Validity": {
       "type": "object",
       "description": "Certificate validity period - specify any combination of years, months, days",
+      "additionalProperties": false,
       "properties": {
         "years": {
           "type": "integer",
@@ -145,6 +149,7 @@
       "required": [
         "provider"
       ],
+      "additionalProperties": false,
       "properties": {
         "provider": {
           "type": "string",
@@ -170,6 +175,7 @@
     "PasswordConfig": {
       "type": "object",
       "description": "Password-based encryption configuration using scrypt + age",
+      "additionalProperties": false,
       "properties": {
         "min_length": {
           "type": "integer",
@@ -194,6 +200,7 @@
       "required": [
         "identity_file"
       ],
+      "additionalProperties": false,
       "properties": {
         "identity_file": {
           "type": "string",
@@ -215,6 +222,7 @@
       "required": [
         "identity_file"
       ],
+      "additionalProperties": false,
       "properties": {
         "identity_file": {
           "type": "string",
@@ -225,7 +233,7 @@
           "description": "Plugin-specific recipient strings (age*)",
           "items": {
             "type": "string",
-            "pattern": "^age"
+            "pattern": "^(age1|ssh-)"
           }
         }
       }
@@ -233,6 +241,7 @@
     "DisplayConfig": {
       "type": "object",
       "description": "Certificate status display configuration",
+      "additionalProperties": false,
       "properties": {
         "warnings": {
           "$ref": "#/$defs/WarningThresholds"
@@ -242,6 +251,7 @@
     "WarningThresholds": {
       "type": "object",
       "description": "Day thresholds for certificate expiry warnings",
+      "additionalProperties": false,
       "properties": {
         "critical": {
           "type": "integer",

@@ -24,6 +24,7 @@
       "type": "object",
       "description": "Configuration for a single host certificate",
       "required": [],
+      "additionalProperties": false,
       "properties": {
         "subject": {
           "$ref": "#/$defs/SubjectConfig"
@@ -45,6 +46,9 @@
         },
         "deploy": {
           "$ref": "#/$defs/DeployConfig"
+        },
+        "encryption": {
+          "$ref": "#/$defs/EncryptionConfig"
         }
       }
     },
@@ -52,6 +56,7 @@
       "type": "object",
       "description": "Certificate subject distinguished name fields",
       "required": [],
+      "additionalProperties": false,
       "properties": {
         "common_name": {
           "type": "string",
@@ -88,6 +93,7 @@
     "SubjectAlternativeNames": {
       "type": "object",
       "description": "Subject Alternative Names (SANs) for the certificate",
+      "additionalProperties": false,
       "properties": {
         "dns": {
           "type": "array",
@@ -139,6 +145,7 @@
     "Validity": {
       "type": "object",
       "description": "Certificate validity period - specify any combination of years, months, days",
+      "additionalProperties": false,
       "properties": {
         "years": {
           "type": "integer",
@@ -202,6 +209,7 @@
     "ExportConfig": {
       "type": "object",
       "description": "Paths for exporting certificate files after issuance",
+      "additionalProperties": false,
       "properties": {
         "cert": {
           "type": "string",
@@ -210,6 +218,10 @@
         "chain": {
           "type": "string",
           "description": "Path to save the full certificate chain (host + CA certificates)"
+        },
+        "key_encrypted": {
+          "type": "string",
+          "description": "Path to save the age-encrypted private key"
         }
       }
     },
@@ -219,11 +231,29 @@
       "required": [
         "command"
       ],
+      "additionalProperties": false,
       "properties": {
         "command": {
           "type": "string",
           "description": "Shell command to execute (supports variables: ${cert}, ${chain}, ${private_key})",
           "minLength": 1
+        }
+      }
+    },
+    "EncryptionConfig": {
+      "type": "object",
+      "description": "Additional encryption configuration for this host",
+      "additionalProperties": false,
+      "properties": {
+        "additional_recipients": {
+          "type": "array",
+          "description": "Additional age public keys for encrypting the private key (for agenix or multi-party access)",
+          "items": {
+            "type": "string",
+            "description": "Age public key or SSH public key",
+            "pattern": "^(age|ssh-)"
+          },
+          "uniqueItems": true
         }
       }
     }
