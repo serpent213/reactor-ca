@@ -16,6 +16,7 @@ help:
 # Compile binary (debug or release)
 build mode="debug":
     #!/usr/bin/env bash
+    set -e
     if [[ "{{mode}}" =~ ^r ]]; then # release
         go build -ldflags="-s -w -X main.version={{version}}" -v ./cmd/ca
     else
@@ -98,7 +99,7 @@ staticcheck:
     go tool staticcheck {{packages}}
 
 # Run all linting checks
-lint: fmt-check vet staticcheck
+lint: fmt-check vet staticcheck validate-schemas
 
 # Run tests (unit, integration, e2e, or all)
 test type="all":
@@ -209,6 +210,7 @@ cov type="all":
 # Generate coverage badge
 cov-badge:
     #!/usr/bin/env bash
+    set -e
     if [ ! -f coverage/merged.out ]; then
         echo "No merged coverage file found. Run 'just coverage all' first."
         exit 1
@@ -253,6 +255,7 @@ update:
 # Update Nix flake vendor hash
 update-flake:
     #!/usr/bin/env bash
+    set -e
     echo "Updating vendor hash in flake.nix..."
 
     sed -i.bak 's/vendorHash = ".*";/vendorHash = pkgs.lib.fakeHash;/' flake.nix
@@ -322,6 +325,7 @@ docs: cov update-toc
 # Format JSON schema files
 fmt-schemas:
     #!/usr/bin/env bash
+    set -e
     for file in schemas/v1/*.json; do
         if [ -f "$file" ]; then
             jq '.' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
@@ -332,6 +336,7 @@ fmt-schemas:
 # Check JSON schema formatting
 fmt-schemas-check:
     #!/usr/bin/env bash
+    set -e
     for file in schemas/v1/*.json; do
         if [ -f "$file" ]; then
             if ! jq '.' "$file" > /dev/null 2>&1; then
@@ -349,17 +354,18 @@ fmt-schemas-check:
 # Validate example configs against schemas
 validate-schemas:
     #!/usr/bin/env bash
+    set -e
+    echo "Validating example configs against schemas..."
+
     if [ -d "example_config" ]; then
         for config in example_config/ca*.yaml example_config/ca*.yml; do
             if [ -f "$config" ]; then
-                echo "Validating $config against ca.schema.json..."
                 go tool yajsv -s schemas/v1/ca.schema.json "$config"
             fi
         done
 
         for config in example_config/hosts.yaml example_config/hosts.yml; do
             if [ -f "$config" ]; then
-                echo "Validating $config against hosts.schema.json..."
                 go tool yajsv -s schemas/v1/hosts.schema.json "$config"
             fi
         done

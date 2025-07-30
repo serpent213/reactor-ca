@@ -23,9 +23,7 @@
     "HostConfig": {
       "type": "object",
       "description": "Configuration for a single host certificate",
-      "required": [
-        "subject"
-      ],
+      "required": [],
       "properties": {
         "subject": {
           "$ref": "#/$defs/SubjectConfig"
