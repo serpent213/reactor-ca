@@ -115,6 +115,7 @@ fmt-check:
 
 # Run Go vet analysis
 vet:
+    go generate ./internal/infra/config
     go vet {{packages}}
 
 # Run staticcheck linter
