@@ -606,6 +606,7 @@ func (a *Application) GetAllHostIDs(ctx context.Context) ([]string, error) {
 	for id := range hostsCfg.Hosts {
 		ids = append(ids, id)
 	}
+	sort.Strings(ids)
 	return ids, nil
 }
 
