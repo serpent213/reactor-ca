@@ -26,6 +26,10 @@
 
             vendorHash = "sha256-e8LT/yaMAkzTXcni0I6vNSXK7NI1mHeVn1KtWIPnKmo=";
 
+            preBuild = ''
+              go generate ./...
+            '';
+
             subPackages = [ "cmd/ca" ];
 
             meta = with pkgs.lib; {

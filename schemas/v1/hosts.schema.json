@@ -63,15 +63,23 @@
       "properties": {
         "common_name": {
           "type": "string",
-          "description": "Common Name (CN) - optional field for legacy compatibility. Must be included in SAN DNS names if specified"
+          "description": "Common Name (CN) - optional field for legacy compatibility. Must be included in SAN DNS names if specified",
+          "minLength": 1,
+          "maxLength": 64
         },
         "organization": {
           "type": "string",
-          "description": "Organization (O) - inherits from CA if not specified"
+          "description": "Organization (O) - inherits from CA if not specified",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9\\s\\-\\._,&()]*$"
         },
         "organization_unit": {
           "type": "string",
-          "description": "Organizational Unit (OU) - inherits from CA if not specified"
+          "description": "Organizational Unit (OU) - inherits from CA if not specified",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9\\s\\-\\._,&()]*$"
         },
         "country": {
           "type": "string",
@@ -80,11 +88,17 @@
         },
         "state": {
           "type": "string",
-          "description": "State or Province (ST) - inherits from CA if not specified"
+          "description": "State or Province (ST) - inherits from CA if not specified",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z\\s\\-\\.]*$"
         },
         "locality": {
           "type": "string",
-          "description": "Locality or City (L) - inherits from CA if not specified"
+          "description": "Locality or City (L) - inherits from CA if not specified",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z\\s\\-\\.]*$"
         },
         "email": {
           "type": "string",
@@ -104,7 +118,9 @@
           "items": {
             "type": "string",
             "description": "Fully qualified domain name",
-            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
+            "pattern": "^(\\*\\.)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$",
+            "minLength": 1,
+            "maxLength": 253
           },
           "uniqueItems": true
         },
@@ -226,15 +242,21 @@
       "properties": {
         "cert": {
           "type": "string",
-          "description": "Path to save the host certificate (PEM format)"
+          "description": "Path to save the host certificate (PEM format)",
+          "minLength": 1,
+          "maxLength": 4096
         },
         "chain": {
           "type": "string",
-          "description": "Path to save the full certificate chain (host + CA certificates)"
+          "description": "Path to save the full certificate chain (host + CA certificates)",
+          "minLength": 1,
+          "maxLength": 4096
         },
         "key_encrypted": {
           "type": "string",
-          "description": "Path to save the age-encrypted private key"
+          "description": "Path to save the age-encrypted private key",
+          "minLength": 1,
+          "maxLength": 4096
         }
       }
     },
@@ -249,7 +271,8 @@
         "command": {
           "type": "string",
           "description": "Shell command to execute (supports variables: ${cert}, ${chain}, ${private_key})",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 8192
         }
       }
     },

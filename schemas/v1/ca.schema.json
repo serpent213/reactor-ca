@@ -50,15 +50,23 @@
       "properties": {
         "common_name": {
           "type": "string",
-          "description": "Common Name (CN) - optional field for CA identification"
+          "description": "Common Name (CN) - optional field for CA identification",
+          "minLength": 1,
+          "maxLength": 64
         },
         "organization": {
           "type": "string",
-          "description": "Organization (O) - company or entity name"
+          "description": "Organization (O) - company or entity name",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9\\s\\-\\._,&()]*$"
         },
         "organization_unit": {
           "type": "string",
-          "description": "Organizational Unit (OU) - department or division"
+          "description": "Organizational Unit (OU) - department or division",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9\\s\\-\\._,&()]*$"
         },
         "country": {
           "type": "string",
@@ -67,11 +75,17 @@
         },
         "state": {
           "type": "string",
-          "description": "State or Province (ST)"
+          "description": "State or Province (ST)",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z\\s\\-\\.]*$"
         },
         "locality": {
           "type": "string",
-          "description": "Locality or City (L)"
+          "description": "Locality or City (L)",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z\\s\\-\\.]*$"
         },
         "email": {
           "type": "string",
@@ -198,12 +212,17 @@
         },
         "file": {
           "type": "string",
-          "description": "Path to file containing the password"
+          "description": "Path to file containing the password",
+          "minLength": 1,
+          "maxLength": 4096
         },
         "env_var": {
           "type": "string",
           "description": "Environment variable containing the password",
-          "default": "REACTOR_CA_PASSWORD"
+          "default": "REACTOR_CA_PASSWORD",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
         }
       }
     },
@@ -217,7 +236,9 @@
       "properties": {
         "identity_file": {
           "type": "string",
-          "description": "Path to SSH private key file (RSA, Ed25519, ECDSA)"
+          "description": "Path to SSH private key file (RSA, Ed25519, ECDSA)",
+          "minLength": 1,
+          "maxLength": 4096
         },
         "recipients": {
           "type": "array",
@@ -239,7 +260,9 @@
       "properties": {
         "identity_file": {
           "type": "string",
-          "description": "Path to age identity file for the plugin"
+          "description": "Path to age identity file for the plugin",
+          "minLength": 1,
+          "maxLength": 4096
         },
         "recipients": {
           "type": "array",

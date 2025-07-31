@@ -129,6 +129,9 @@ test type="all":
     #!/usr/bin/env bash
     set -e
 
+    # Copy embedded schema files
+    go generate ./internal/infra/config
+
     if [[ "{{type}}" =~ ^u ]]; then # unit
         go test -v ./cmd/... ./internal/...
     elif [[ "{{type}}" =~ ^i ]]; then # integration
@@ -155,6 +158,9 @@ cov type="all":
     set -e
     mkdir -p coverage
     go clean -testcache
+
+    # Copy embedded schema files
+    go generate ./internal/infra/config
 
     if [[ "{{type}}" =~ ^u ]]; then # unit
         # Run unit tests with traditional text coverage profile
