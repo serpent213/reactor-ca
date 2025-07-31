@@ -5,8 +5,10 @@
     with pkgs;
     [
       # Test support
-      openssl
+      chromedriver
+      geckodriver
       openssh
+      openssl
       # Formatting
       github-markdown-toc-go
       jq

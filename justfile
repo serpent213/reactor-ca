@@ -129,6 +129,8 @@ test type="all":
         go test -v -tags integration ./test/integration/...
     elif [[ "{{type}}" =~ ^e ]]; then # e2e
         go test -v -tags e2e ./test/e2e/...
+    elif [[ "{{type}}" =~ ^b ]]; then # browser
+        go test -v -tags browser ./test/e2e/... -timeout=10m
     elif [[ "{{type}}" =~ ^a ]]; then # all
         echo "Running unit tests..."
         just test unit
@@ -137,7 +139,7 @@ test type="all":
         echo "Running e2e tests..."
         just test e2e
     else
-        echo "Invalid test type: {{type}}. Use 'unit', 'integration', 'e2e', or 'all'."
+        echo "Invalid test type: {{type}}. Use 'unit', 'integration', 'e2e', 'browser', or 'all'."
         exit 1
     fi
 
@@ -395,6 +397,10 @@ update-browser-matrix:
     #!/usr/bin/env bash
     set -e
 
+    # Browser whitelists - control which browsers are included in the table
+    local_browsers=("firefox")
+    ci_browsers=("firefox" "webkit" "curl")
+
     echo "Downloading browser test artifacts..."
 
     # Get latest Browser Test run ID
@@ -414,7 +420,7 @@ update-browser-matrix:
     echo "Combining JSON files..."
     mkdir -p ../../docs
 
-    # Create structured JSON with metadata and results
+    # Create structured JSON with metadata and results from CI
     jq -s '
     {
       metadata: {
@@ -422,42 +428,76 @@ update-browser-matrix:
         browsers: (reduce .[] as $file ({}; .[$file.browser] = $file.version // "unknown"))
       },
       results: [.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]
-    }' */*-results.json > ../../docs/browser-matrix.json
+    }' */*-results.json > ../../docs/browser-matrix-ci.json
+
+    cd ../..
+
+    # Merge CI and local results if local file exists
+    echo "Merging CI and local browser test results..."
+    if [ -f "docs/browser-matrix-local.json" ]; then
+        jq -s '
+        {
+          metadata: {
+            timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+            browsers: (.[0].metadata.browsers + .[1].metadata.browsers)
+          },
+          results: (.[0].results + .[1].results)
+        }' docs/browser-matrix-ci.json docs/browser-matrix-local.json > docs/browser-matrix.json
+        echo "Merged CI and local results"
+    else
+        echo "No local results found, using CI results only"
+        cp docs/browser-matrix-ci.json docs/browser-matrix.json
+    fi
 
     # Convert to markdown table and update README
     echo "Converting to markdown table..."
-    cd ../..
 
     # Generate markdown table with browsers as columns and cert combos as rows
-    full_table=$(jq -r '
-        # Extract version info for headers
+    # Read CI and local data separately to differentiate in table
+    ci_data='{}'
+    local_data='{}'
+    if [ -f "docs/browser-matrix-ci.json" ]; then
+        ci_data=$(cat docs/browser-matrix-ci.json)
+    fi
+    if [ -f "docs/browser-matrix-local.json" ]; then
+        local_data=$(cat docs/browser-matrix-local.json)
+    fi
+
+    full_table=$(jq -r --argjson ci "$ci_data" --argjson local "$local_data" \
+        --argjson local_browsers "$(printf '%s\n' "${local_browsers[@]}" | jq -R . | jq -s .)" \
+        --argjson ci_browsers "$(printf '%s\n' "${ci_browsers[@]}" | jq -R . | jq -s .)" '
+        # Helper function to format status with colors
+        def format_status: if . == "PASS" then "🟢 PASS" elif . == "FAIL" then "🔴 FAIL" else . end;
+
+        # Create lookup tables for easy access: {cert: {browser: status}}
+        def create_lookup(data):
+            (data.results // []) | group_by(.certificate) |
+            map(.[0].certificate as $cert | {($cert): (group_by(.browser) | map({(.[0].browser): .[0].status}) | add)}) | add;
+
+        # Get all unique certificates from both datasets
+        def get_certificates:
+            [($ci.results // [])[], ($local.results // [])[]] |
+            map(.certificate) | unique | sort;
+
+        # Create lookup tables and variables
+        get_certificates as $certs |
+        create_lookup($ci) as $ci_lookup |
+        create_lookup($local) as $local_lookup |
         .metadata.browsers as $versions |
-        # Group by certificate, then create pivot table
-        .results | group_by(.certificate) |
-        map({
-            cert: (.[0].certificate | ascii_upcase),
-            chromium: (map(select(.browser == "chromium"))[0].status // "N/A"),
-            firefox: (map(select(.browser == "firefox"))[0].status // "N/A"),
-            webkit: (map(select(.browser == "webkit"))[0].status // "N/A"),
-            curl: (map(select(.browser == "curl"))[0].status // "N/A")
-        }) |
-        # Create header with version subscripts
-        (["Key/Signature",
-          ("Curl<sub>" + ($versions.curl // "unknown") + "</sub>"),
-          ("Chromium<sub>" + ($versions.chromium // "unknown") + "</sub>"),
-          ("Firefox<sub>" + ($versions.firefox // "unknown") + "</sub>"),
-          ("WebKit<sub>" + ($versions.webkit // "unknown") + "</sub>")
-        ] | @tsv),
-        (["---", "---", "---", "---", "---"] | @tsv),
-        # Create data rows with colored status
-        (.[] | [
-            .cert,
-            (if .curl == "PASS" then "🟢 PASS" elif .curl == "FAIL" then "🔴 FAIL" else .curl end),
-            (if .chromium == "PASS" then "🟢 PASS" elif .chromium == "FAIL" then "🔴 FAIL" else .chromium end),
-            (if .firefox == "PASS" then "🟢 PASS" elif .firefox == "FAIL" then "🔴 FAIL" else .firefox end),
-            (if .webkit == "PASS" then "🟢 PASS" elif .webkit == "FAIL" then "🔴 FAIL" else .webkit end)
-        ] | @tsv)
-        | gsub("\t"; " | ") | "| " + . + " |"
+
+        # Generate dynamic headers: Key/Signature + Local browsers + CI browsers
+        (["Key/Signature"] +
+         [$local_browsers[] as $browser | ($browser | ascii_upcase) + "<sub>" + (($local.metadata.browsers[$browser] // $versions[$browser]) // "unknown") + " macOS</sub>"] +
+         [$ci_browsers[] as $browser | ($browser | ascii_upcase) + "<sub>" + (($ci.metadata.browsers[$browser] // $versions[$browser]) // "unknown") + " CI</sub>"] | @tsv),
+        (["---"] + [range(($local_browsers | length) + ($ci_browsers | length)) | "---"] | @tsv),
+
+        # Generate data rows with dynamic columns
+        ($certs[] as $cert |
+            [($cert | ascii_upcase)] +
+            [$local_browsers[] | ($local_lookup[$cert][.] // "N/A") | format_status] +
+            [$ci_browsers[] | ($ci_lookup[$cert][.] // "N/A") | format_status]
+            | @tsv
+        ) | gsub("\t"; " | ") | "| " + . + " |"
     ' docs/browser-matrix.json)
 
     # Update README.md with browser matrix table

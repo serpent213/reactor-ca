@@ -1,0 +1,222 @@
+{
+  "metadata": {
+    "timestamp": "2025-07-31T06:15:51Z",
+    "browsers": {
+      "curl": "8.14.1",
+      "firefox": "141.0",
+      "webkit": "unknown"
+    }
+  },
+  "results": [
+    {
+      "browser": "curl",
+      "certificate": "rsa2048-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "rsa2048-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "rsa3072-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "rsa3072-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "rsa4096-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "rsa4096-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp256-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp256-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp384-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp384-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp521-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ecp521-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ed25519-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "curl",
+      "certificate": "ed25519-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa2048-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa2048-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa3072-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa3072-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa4096-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "rsa4096-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp256-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp256-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp384-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp384-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp521-sha256",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ecp521-sha512",
+      "status": "PASS"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ed25519-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "firefox",
+      "certificate": "ed25519-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa2048-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa2048-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa3072-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa3072-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa4096-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "rsa4096-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp256-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp256-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp384-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp384-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp521-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ecp521-sha512",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ed25519-sha256",
+      "status": "FAIL"
+    },
+    {
+      "browser": "webkit",
+      "certificate": "ed25519-sha512",
+      "status": "FAIL"
+    }
+  ]
+}

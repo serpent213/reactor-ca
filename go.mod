@@ -9,6 +9,7 @@ require (
 	github.com/olekukonko/tablewriter v1.0.8
 	github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc
 	github.com/spf13/cobra v1.9.1
+	github.com/tebeka/selenium v0.9.9
 	golang.org/x/term v0.33.0
 	golang.org/x/text v0.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -23,6 +24,7 @@ tool (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
+	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar/v4 v4.7.1 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
