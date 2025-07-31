@@ -153,8 +153,8 @@ func createMinimalCAConfig(path string) error {
     country: "US"
   validity:
     years: 1
-  key_algorithm: "ECP256"
-  hash_algorithm: "SHA256"
+  key_algorithm: "ecp256"
+  hash_algorithm: "sha256"
 
 encryption:
   provider: "password"
@@ -170,8 +170,8 @@ func createMinimalSSHCAConfig(path string) error {
     country: "US"
   validity:
     years: 1
-  key_algorithm: "ECP256"
-  hash_algorithm: "SHA256"
+  key_algorithm: "ecp256"
+  hash_algorithm: "sha256"
 
 encryption:
   provider: "ssh"

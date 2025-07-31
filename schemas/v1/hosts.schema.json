@@ -192,12 +192,19 @@
       "description": "Cryptographic key algorithm - defaults to CA's key_algorithm if not specified",
       "enum": [
         "RSA2048",
+        "rsa2048",
         "RSA3072",
+        "rsa3072",
         "RSA4096",
+        "rsa4096",
         "ECP256",
+        "ecp256",
         "ECP384",
+        "ecp384",
         "ECP521",
-        "ED25519"
+        "ecp521",
+        "ED25519",
+        "ed25519"
       ]
     },
     "HashAlgorithm": {
@@ -205,8 +212,11 @@
       "description": "Hash algorithm for certificate signature - defaults to CA's hash_algorithm if not specified",
       "enum": [
         "SHA256",
+        "sha256",
         "SHA384",
-        "SHA512"
+        "sha384",
+        "SHA512",
+        "sha512"
       ]
     },
     "ExportConfig": {

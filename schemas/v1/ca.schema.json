@@ -127,12 +127,19 @@
       "description": "Cryptographic key algorithm for certificate generation",
       "enum": [
         "RSA2048",
+        "rsa2048",
         "RSA3072",
+        "rsa3072",
         "RSA4096",
+        "rsa4096",
         "ECP256",
+        "ecp256",
         "ECP384",
+        "ecp384",
         "ECP521",
-        "ED25519"
+        "ecp521",
+        "ED25519",
+        "ed25519"
       ],
       "default": "ECP384"
     },
@@ -141,8 +148,11 @@
       "description": "Hash algorithm for certificate signature",
       "enum": [
         "SHA256",
+        "sha256",
         "SHA384",
-        "SHA512"
+        "sha384",
+        "SHA512",
+        "sha512"
       ],
       "default": "SHA384"
     },
