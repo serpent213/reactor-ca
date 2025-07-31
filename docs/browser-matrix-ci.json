@@ -1,11 +1,11 @@
 {
   "metadata": {
-    "timestamp": "2025-07-31T06:46:12Z",
+    "timestamp": "2025-07-31T07:19:52Z",
     "browsers": {
-      "chromium": "unknown",
+      "chromium": "139.0.7258.5",
       "curl": "8.5.0",
-      "firefox": "unknown",
-      "webkit": "unknown"
+      "firefox": "140.0.2",
+      "webkit": "26.0"
     }
   },
   "results": [

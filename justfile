@@ -392,59 +392,49 @@ validate-schemas:
         echo "No example_config directory found"
     fi
 
-# Download and process browser test artifacts
-update-browser-matrix:
+# Download browser test artifacts, combine with local, update README
+update-browser-matrix mode="local":
     #!/usr/bin/env bash
     set -e
 
     # Browser whitelists - control which browsers are included in the table
     local_browsers=("firefox")
-    ci_browsers=("firefox" "webkit" "curl")
+    ci_browsers=("firefox" "chromium" "webkit" "curl")
 
     # Algorithm ordering - control the order of certificate rows
     algo_order=("RSA" "ECP" "ED")
 
-    echo "Downloading browser test artifacts..."
+    if [[ "{{mode}}" =~ ^d ]]; then # download
+        echo "Downloading browser test artifacts..."
 
-    run_id=$(gh run list -w "Browser Test" -L 1 --json databaseId --jq '.[0].databaseId')
-    echo "Latest Browser Test run: $run_id"
+        run_id=$(gh run list -w "Browser Test" -L 1 --json databaseId --jq '.[0].databaseId')
+        echo "Latest Browser Test run: $run_id"
 
-    rm -rf tmp/browser-artifacts
-    mkdir -p tmp/browser-artifacts
-    cd tmp/browser-artifacts
-    gh run download "$run_id"
+        rm -rf tmp/browser-artifacts
+        mkdir -p tmp/browser-artifacts
+        cd tmp/browser-artifacts
+        gh run download "$run_id"
 
-    echo "Processing artifacts..."
+        echo "Processing artifacts..."
 
-    echo "Combining JSON files..."
-    mkdir -p ../../docs
+        echo "Combining JSON files..."
+        mkdir -p ../../docs
 
-    jq -s '
-    {
-      metadata: {
-        timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
-        browsers: (reduce .[] as $file ({}; .[$file.browser] = $file.version // "unknown"))
-      },
-      results: [.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]
-    }' */*-results.json > ../../docs/browser-matrix-ci.json
-
-    cd ../..
-
-    # Merge CI and local results if local file exists
-    echo "Merging CI and local browser test results..."
-    if [ -f "docs/browser-matrix-local.json" ]; then
         jq -s '
         {
           metadata: {
             timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
-            browsers: (.[0].metadata.browsers + .[1].metadata.browsers)
+            browsers: (reduce .[] as $file ({}; .[$file.browser] = $file.version // "unknown"))
           },
-          results: (.[0].results + .[1].results)
-        }' docs/browser-matrix-ci.json docs/browser-matrix-local.json > docs/browser-matrix.json
-        echo "Merged CI and local results"
+          results: [.[] as $file | $file.results[] | {browser: $file.browser, certificate: .certificate, status: .status}]
+        }' */*-results.json > ../../docs/browser-matrix-ci.json
+
+        cd ../..
     else
-        echo "No local results found, using CI results only"
-        cp docs/browser-matrix-ci.json docs/browser-matrix.json
+        echo "Skipping download, using existing artifacts..."
+        if [ ! -f "docs/browser-matrix-ci.json" ]; then
+            echo "Warning: No existing CI results found at docs/browser-matrix-ci.json"
+        fi
     fi
 
     echo "Converting to markdown table..."
@@ -459,12 +449,18 @@ update-browser-matrix:
         local_data=$(cat docs/browser-matrix-local.json)
     fi
 
-    full_table=$(jq -r --argjson ci "$ci_data" --argjson local "$local_data" \
+    full_table=$(jq -rn --argjson ci "$ci_data" --argjson local "$local_data" \
         --argjson local_browsers "$(printf '%s\n' "${local_browsers[@]}" | jq -R . | jq -s .)" \
         --argjson ci_browsers "$(printf '%s\n' "${ci_browsers[@]}" | jq -R . | jq -s .)" \
         --argjson algo_order "$(printf '%s\n' "${algo_order[@]}" | jq -R . | jq -s .)" '
         # Helper function to format status with colors
         def format_status: if . == "PASS" then "🟢 PASS" elif . == "FAIL" then "🔴 FAIL" else . end;
+
+        # Helper function to truncate version to major.minor
+        def truncate_version: if . == "unknown" then . else split(".") | .[0:2] | join(".") end;
+
+        # Helper function to capitalize first letter only
+        def capitalize: (.[0:1] | ascii_upcase) + (.[1:] | ascii_downcase);
 
         # Create lookup tables for easy access: {cert: {browser: status}}
         def create_lookup(data):
@@ -487,12 +483,11 @@ update-browser-matrix:
         get_certificates as $certs |
         create_lookup($ci) as $ci_lookup |
         create_lookup($local) as $local_lookup |
-        .metadata.browsers as $versions |
 
         # Generate dynamic headers: Key/Signature + Local browsers + CI browsers
         (["Key/Signature"] +
-         [$local_browsers[] as $browser | ($browser | ascii_upcase) + "<sub>" + (($local.metadata.browsers[$browser] // $versions[$browser]) // "unknown") + " macOS</sub>"] +
-         [$ci_browsers[] as $browser | ($browser | ascii_upcase) + "<sub>" + (($ci.metadata.browsers[$browser] // $versions[$browser]) // "unknown") + " CI</sub>"] | @tsv),
+         [$local_browsers[] as $browser | ($browser | capitalize) + "<br>" + (($local.metadata.browsers[$browser] // "unknown") | truncate_version) + "-macOS"] +
+         [$ci_browsers[] as $browser | ($browser | capitalize) + "<br>" + (($ci.metadata.browsers[$browser] // "unknown") | truncate_version) + "-CI"] | @tsv),
         (["---"] + [range(($local_browsers | length) + ($ci_browsers | length)) | "---"] | @tsv),
 
         # Generate data rows with dynamic columns
@@ -502,26 +497,33 @@ update-browser-matrix:
             [$ci_browsers[] | ($ci_lookup[$cert][.] // "N/A") | format_status]
             | @tsv
         ) | gsub("\t"; " | ") | "| " + . + " |"
-    ' docs/browser-matrix.json)
+    ')
 
     awk -v table="$full_table" '
-        BEGIN { in_matrix = 0; printed_table = 0 }
+        BEGIN { in_matrix = 0; printed_table = 0; skip_table = 0 }
         /^## Browser Compatibility Matrix$/ {
             print $0
             print ""
             print table
+            print ""
             in_matrix = 1
             printed_table = 1
+            skip_table = 1
             next
         }
         /^## / && in_matrix {
             in_matrix = 0
-            print ""
+            skip_table = 0
         }
-        !in_matrix || !printed_table { print }
+        # Skip table content (lines starting with | or ---)
+        skip_table && (/^[[:space:]]*\|/ || /^[[:space:]]*[-|[:space:]]+$/) { next }
+        # Skip empty lines immediately after table
+        skip_table && /^[[:space:]]*$/ && !printed_non_table { next }
+        skip_table && !/^[[:space:]]*$/ { skip_table = 0; printed_non_table = 1 }
+        { print }
     ' README.md > README.md.tmp
     mv README.md.tmp README.md
 
     rm -rf tmp/browser-artifacts
 
-    echo "Browser matrix updated in docs/browser-matrix.json, merged with docs/browser-matrix-local.json and README.md updated"
+    echo "Browser compatibility matrix updated in README.md from CI and local results"

@@ -450,6 +450,8 @@ store/
 
 ## Cryptographic Options
 
+See [browser support matrix](#browser-compatibility-matrix) for real-life test results.
+
 ### Supported Key Algorithms
 
 | Algorithm | Key Size | Performance | Security    | Compatibility |
@@ -460,7 +462,7 @@ store/
 | ECP256    | P-256    | Fast        | Strong      | Good          |
 | ECP384    | P-384    | Medium      | Very Strong | Good          |
 | ECP521    | P-521    | Medium      | Very Strong | Good          |
-| ED25519   | 256-bit  | Very Fast   | Strong      | Modern only   |
+| ED25519   | 256-bit  | Very Fast   | Strong      | Limited       |
 
 ### Supported Hash Algorithms
 
@@ -548,22 +550,33 @@ just test
 
 ## Browser Compatibility Matrix
 
-| Key/Signature | FIREFOX<sub>141.0 macOS</sub> | FIREFOX<sub>unknown CI</sub> | WEBKIT<sub>unknown CI</sub> | CURL<sub>8.5.0 CI</sub> |
-| --- | --- | --- | --- | --- |
-| RSA2048-SHA256 | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS |
-| RSA2048-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA3072-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA3072-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA4096-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| RSA4096-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP256-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP256-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP384-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP384-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP521-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ECP521-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ED25519-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
-| ED25519-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| Key/Signature | Firefox<br>141.0-macOS | Firefox<br>140.0-CI | Chromium<br>139.0-CI | Webkit<br>26.0-CI | Curl<br>8.5-CI |
+| --- | --- | --- | --- | --- | --- |
+| RSA2048-SHA256 | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS |
+| RSA2048-SHA512 | 🟢 PASS | 🔴 FAIL | 🟢 PASS | 🔴 FAIL | 🟢 PASS |
+| RSA3072-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA3072-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA4096-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| RSA4096-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP256-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP256-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP384-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP384-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP521-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ECP521-SHA512 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ED25519-SHA256 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+| ED25519-SHA512 | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
+
+* ED25519 not recommended for general public in 2025.
+* Apparently, the browsers used by Microsoft's Playwright container in the [Github Action](https://github.com/serpent213/reactor-ca/actions/workflows/browsers.yml) have very limited crypto support.
+* Local tests won't run with Chrome, so far, and won't succeed with Safari on my machine. To run:
+
+  ```sh
+  just test browser
+  just update-browser-matrix
+  ```
+
+[↑ TOC](#table-of-contents)
 
 ## Limitations
 
