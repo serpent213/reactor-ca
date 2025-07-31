@@ -74,6 +74,7 @@ just check
 ./ca ca rekey                   # Regenerate CA private key
 ./ca ca info                    # Show CA information
 ./ca ca import                  # Import external CA
+./ca ca export-key              # Export CA private key
 ./ca ca reencrypt               # Change master password
 
 # Host Certificate Management
@@ -101,6 +102,7 @@ Central orchestrator that coordinates between domain interfaces. Key methods:
 - `RekeyCA()` - Generate new CA key and certificate
 - `InfoCA()` - Display CA certificate information
 - `ImportCA()` - Import external CA certificate and key
+- `ExportCAKey()` - Export CA private key
 - `IssueHost()` - Create/renew host certificates
 - `DeployHost()` - Execute deployment commands with variable substitution
 - `ExportHostKey()` - Export host private key

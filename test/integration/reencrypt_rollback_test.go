@@ -34,15 +34,6 @@ func (m *mockStoreWithWriteFailure) UpdateEncryptedKey(path string, data []byte)
 	return m.FileStore.UpdateEncryptedKey(path, data)
 }
 
-// mockUserInteraction for testing rollback confirmation
-type mockUserInteraction struct {
-	confirmResponse bool
-}
-
-func (m *mockUserInteraction) Confirm(prompt string) (bool, error) {
-	return m.confirmResponse, nil
-}
-
 func TestReencryptRollback_Integration(t *testing.T) {
 	// Set password environment variable
 	t.Setenv("REACTOR_CA_PASSWORD", "test-password-123")

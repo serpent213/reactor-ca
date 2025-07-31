@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -163,6 +164,33 @@ var caImportCmd = &cobra.Command{
 	},
 }
 
+// ca export-key
+var exportCAKeyOutPath string
+var caExportKeyCmd = &cobra.Command{
+	Use:   "export-key",
+	Short: "Export the unencrypted CA private key",
+	Long:  `Exports the unencrypted CA private key to a specified file or stdout.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.Action("Exporting unencrypted CA private key")
+		app := getApp(cmd)
+		pemKey, err := app.ExportCAKey(cmd.Context())
+		if err != nil {
+			return err
+		}
+
+		if exportCAKeyOutPath == "" || exportCAKeyOutPath == "-" {
+			fmt.Print(string(pemKey))
+		} else {
+			// Write with secure permissions (0600)
+			if err := os.WriteFile(exportCAKeyOutPath, pemKey, 0600); err != nil {
+				return fmt.Errorf("failed to write key to %s: %w", exportCAKeyOutPath, err)
+			}
+			ui.Success("Unencrypted CA key exported to %s", exportCAKeyOutPath)
+		}
+		return nil
+	},
+}
+
 // ca reencrypt
 var caReencryptCmd = &cobra.Command{
 	Use:   "reencrypt",
@@ -194,6 +222,8 @@ func init() {
 	_ = caImportCmd.MarkFlagRequired("cert")
 	_ = caImportCmd.MarkFlagRequired("key")
 
+	caExportKeyCmd.Flags().StringVarP(&exportCAKeyOutPath, "out", "o", "", "Output file path for the key (default: stdout)")
+
 	caCreateCmd.Flags().Bool("force", false, "Skip round-trip validation")
 	caRekeyCmd.Flags().Bool("force", false, "Skip confirmation prompt")
 	caReencryptCmd.Flags().Bool("force", false, "Skip round-trip validation")
@@ -206,5 +236,6 @@ func init() {
 	caCmd.AddCommand(caRekeyCmd)
 	caCmd.AddCommand(caInfoCmd)
 	caCmd.AddCommand(caImportCmd)
+	caCmd.AddCommand(caExportKeyCmd)
 	caCmd.AddCommand(caReencryptCmd)
 }

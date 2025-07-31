@@ -390,6 +390,26 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 	return nil
 }
 
+// ExportCAKey returns the unencrypted CA private key.
+func (a *Application) ExportCAKey(ctx context.Context) ([]byte, error) {
+	var result []byte
+	err := a.withCAKey(ctx, func(caKey crypto.Signer) error {
+		return a.exportCAKeyWithKey(caKey, &result)
+	})
+	return result, err
+}
+
+// exportCAKeyWithKey implements the business logic for exporting the CA key.
+func (a *Application) exportCAKeyWithKey(caKey crypto.Signer, result *[]byte) error {
+	keyPEM, err := a.cryptoSvc.EncodeKeyToPEM(caKey)
+	if err != nil {
+		return err
+	}
+	*result = keyPEM
+	a.logger.Log("Exported CA private key")
+	return nil
+}
+
 // ReencryptKeys re-encrypts all keys in the store with new encryption parameters.
 // For password mode: prompts for new password
 // For SSH/plugin mode: uses current configuration (allowing manual recipient updates)

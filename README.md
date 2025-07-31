@@ -1,7 +1,7 @@
 ![ReactorCA screenshot](docs/assets/help_screen.webp)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-63.6%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-63.8%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
@@ -223,6 +223,8 @@ Deploy will create temp files if the required files are not exported, so `export
 | `ca ca info` | Display detailed information about the CA certificate |
 | `ca ca info --openssl` | Invoke `openssl` to display full text dump |
 | `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
+| `ca ca export-key` | Export unencrypted CA private key to stdout |
+| `ca ca export-key -o file.key` | Export CA private key to file |
 | `ca ca reencrypt` | Change the master password/update recipients for all encrypted keys |
 
 ### Host Certificate Management
