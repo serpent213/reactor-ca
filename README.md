@@ -1,7 +1,7 @@
 [![asciicast](docs/assets/asciinema_thumbnail.webp)](https://asciinema.org/a/730862)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-63.8%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-63.9%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
@@ -78,10 +78,16 @@ For a quick overview, maybe you want to have a look at the [example configs](exa
 
 ## Motivation and Design Targets
 
-Running my own CA works well to provide X.509 certificates to my internal hosts and services, for them to offer TLS encryption. But certificate lifetimes are nowadays, 2025, limited to one year (by Apple at least), and as far as I know discussions about further reduction is ongoing.
+Running your own CA works well to provide X.509 certificates to internal hosts and services, for them to offer TLS encryption. But certificate lifetimes are nowadays, 2025, limited to one year (by Apple at least), and the [Industry \[is\] to Shift to 47-Day SSL/TLS Certificate Validity by 2029](https://www.thesslstore.com/blog/47-day-ssl-certificate-validity-by-2029/).
 
-Therefore I require a one-button reissue & deploy solution, easily manageable as part of my infrastructure Git repo.
+> The certificate lifespan reductions will be implemented in phases:
+> - ~6 months (starting March 2026),
+> - ~3 months (starting March 2027), and
+> - 1.5 months (starting March 2029)
 
+Therefore a one-button reissue & deploy solution is required, easily manageable as part of an infrastructure Git repo.
+
+- “Inversion of control” of traditional CA flow: CSRs are rare, all keys are managed centrally
 - Easily rekey, reissue and deploy to many hosts with a single command, so certificates can be kept fresh with minimal infrastructure and configuration
 - Encryption of private keys, so config and store can be shared via Git
 - Modern CLI
@@ -362,23 +368,27 @@ ca:
   key_algorithm: ECP384    # RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
   hash_algorithm: SHA384   # SHA256, SHA384, SHA512
 
-  # Password management
-  password:
-    min_length: 12
-    env_var: REACTOR_CA_PASSWORD  # Environment variable for password
-    # file: "/path/to/password/file"  # Optional: password file path
+  # extensions:
+  #   basic_constraints:
+  #     # The "critical" flag is a switch within an extension. If an extension is marked "critical," the system
+  #     # verifying the cert must understand and process that extension. If it doesn't, or can't, it must reject
+  #     # the certificate.
+  #     critical: true
 
 # Encryption configuration
 encryption:
   provider: password  # password | ssh | plugin
+
   password:
     min_length: 12
     env_var: REACTOR_CA_PASSWORD
+
   ssh:
     identity_file: "~/.ssh/id_ed25519"  # SSH private key for decryption
     recipients:  # SSH public keys for encryption
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample user@host"
       - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgExample user@host"
+
   plugin:
     identity_file: "~/.age/plugin-identity.txt"  # age plugin identity
     recipients:  # age plugin recipients
@@ -453,6 +463,8 @@ store/
 ## Cryptographic Options
 
 See [browser support matrix](#browser-compatibility-matrix) for real-life test results.
+
+Rule of thumb: use ECP; for cheap Chinese plastic appliances it might be necessary to fall back to RSA2048-SHA256.
 
 ### Supported Key Algorithms
 

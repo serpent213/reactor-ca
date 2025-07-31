@@ -45,6 +45,9 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 	if cfg.CA.KeyAlgorithm == "" {
 		return nil, fmt.Errorf("%w: ca.key_algorithm is required in ca.yaml", domain.ErrValidation)
 	}
+	if cfg.CA.HashAlgorithm == "" {
+		return nil, fmt.Errorf("%w: ca.hash_algorithm is required in ca.yaml", domain.ErrValidation)
+	}
 
 	return &cfg, nil
 }

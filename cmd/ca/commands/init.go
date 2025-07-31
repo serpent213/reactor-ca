@@ -252,10 +252,10 @@ hosts:
 
     # Algorithm for this specific host's key. Defaults to CA's key_algorithm if unset.
     # Supported: RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
-    key_algorithm: RSA2048
+    # key_algorithm: RSA2048
     # Signing hash for this specific certificate. Defaults to CA's hash_algorithm if unset.
     # Supported: SHA256, SHA384, SHA512
-    hash_algorithm: SHA256
+    # hash_algorithm: SHA256
 
     # Optional: Defines where to copy the certificate files after they are issued.
     # The parent directory will be created if it doesn't exist.
