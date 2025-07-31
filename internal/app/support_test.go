@@ -288,10 +288,11 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 func GetTestCAConfig() *domain.CAConfig {
 	return &domain.CAConfig{
 		CA: struct {
-			Subject       domain.SubjectConfig `yaml:"subject"`
-			Validity      domain.Validity      `yaml:"validity"`
-			KeyAlgorithm  domain.KeyAlgorithm  `yaml:"key_algorithm"`
-			HashAlgorithm domain.HashAlgorithm `yaml:"hash_algorithm"`
+			Subject       domain.SubjectConfig    `yaml:"subject"`
+			Validity      domain.Validity         `yaml:"validity"`
+			KeyAlgorithm  domain.KeyAlgorithm     `yaml:"key_algorithm"`
+			HashAlgorithm domain.HashAlgorithm    `yaml:"hash_algorithm"`
+			Extensions    domain.ExtensionsConfig `yaml:"extensions,omitempty"`
 		}{
 			Subject:      domain.SubjectConfig{CommonName: "Test CA"},
 			Validity:     domain.Validity{Years: 1},
@@ -323,10 +324,11 @@ func GetTestCACert(t *testing.T) (*x509.Certificate, crypto.Signer) {
 	}
 	cert, err := svc.CreateRootCertificate(&domain.CAConfig{
 		CA: struct {
-			Subject       domain.SubjectConfig `yaml:"subject"`
-			Validity      domain.Validity      `yaml:"validity"`
-			KeyAlgorithm  domain.KeyAlgorithm  `yaml:"key_algorithm"`
-			HashAlgorithm domain.HashAlgorithm `yaml:"hash_algorithm"`
+			Subject       domain.SubjectConfig    `yaml:"subject"`
+			Validity      domain.Validity         `yaml:"validity"`
+			KeyAlgorithm  domain.KeyAlgorithm     `yaml:"key_algorithm"`
+			HashAlgorithm domain.HashAlgorithm    `yaml:"hash_algorithm"`
+			Extensions    domain.ExtensionsConfig `yaml:"extensions,omitempty"`
 		}{
 			Subject:  domain.SubjectConfig{CommonName: "Test CA"},
 			Validity: domain.Validity{Years: 1},

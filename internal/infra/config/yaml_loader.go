@@ -9,16 +9,21 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/crypto/extensions"
 )
 
 // YAMLConfigLoader implements the domain.ConfigLoader interface for YAML files.
 type YAMLConfigLoader struct {
-	configPath string
+	configPath       string
+	extensionFactory domain.ExtensionFactory
 }
 
 // NewYAMLConfigLoader creates a new config loader.
 func NewYAMLConfigLoader(configPath string) *YAMLConfigLoader {
-	return &YAMLConfigLoader{configPath: configPath}
+	return &YAMLConfigLoader{
+		configPath:       configPath,
+		extensionFactory: extensions.NewRegistry(),
+	}
 }
 
 // LoadCA loads the CA configuration from ca.yaml.
@@ -47,6 +52,11 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 	}
 	if cfg.CA.HashAlgorithm == "" {
 		return nil, fmt.Errorf("%w: ca.hash_algorithm is required in ca.yaml", domain.ErrValidation)
+	}
+
+	// Validate extensions configuration
+	if err := l.validateExtensions(cfg.CA.Extensions, "ca.extensions"); err != nil {
+		return nil, err
 	}
 
 	return &cfg, nil
@@ -86,14 +96,64 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 				}
 			}
 			if !cnInSAN {
-				return nil, fmt.Errorf("%w: hosts.%s.subject.common_name “%s” must be included in alternative_names.dns for modern browser compatibility", domain.ErrValidation, id, host.Subject.CommonName)
+				return nil, fmt.Errorf("%w: hosts.%s.subject.common_name '%s' must be included in alternative_names.dns for modern browser compatibility", domain.ErrValidation, id, host.Subject.CommonName)
 			}
 		}
 
 		if host.Validity.Years == 0 && host.Validity.Months == 0 && host.Validity.Days == 0 {
-			return nil, fmt.Errorf("%w: hosts.%s.validity must have either “years”, “months”, or “days” set in hosts.yaml", domain.ErrValidation, id)
+			return nil, fmt.Errorf("%w: hosts.%s.validity must have either 'years', 'months', or 'days' set in hosts.yaml", domain.ErrValidation, id)
+		}
+
+		// Validate extensions configuration for this host
+		if err := l.validateExtensions(host.Extensions, fmt.Sprintf("hosts.%s.extensions", id)); err != nil {
+			return nil, err
 		}
 	}
 
 	return &cfg, nil
+}
+
+// validateExtensions validates the extensions configuration
+func (l *YAMLConfigLoader) validateExtensions(extensions domain.ExtensionsConfig, configPath string) error {
+	if len(extensions) == 0 {
+		return nil // No extensions to validate
+	}
+
+	for name, rawConfig := range extensions {
+		// Check if it's a known extension
+		if l.extensionFactory.IsRegistered(name) {
+			// Try to parse the known extension to validate its configuration
+			ext := l.extensionFactory.CreateExtension(name)
+			if err := ext.ParseFromYAML(rawConfig.Critical, rawConfig.Fields); err != nil {
+				return fmt.Errorf("%w: %s.%s: %v", domain.ErrValidation, configPath, name, err)
+			}
+		} else {
+			// For unknown extensions, validate that they have required fields
+			if err := l.validateUnknownExtension(rawConfig.Fields, fmt.Sprintf("%s.%s", configPath, name)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateUnknownExtension validates unknown extension configuration
+func (l *YAMLConfigLoader) validateUnknownExtension(fields map[string]interface{}, configPath string) error {
+	// Unknown extensions must have 'oid' and 'value' fields
+	if _, hasOID := fields["oid"]; !hasOID {
+		return fmt.Errorf("%w: %s: unknown extension must have 'oid' field", domain.ErrValidation, configPath)
+	}
+
+	if _, hasValue := fields["value"]; !hasValue {
+		return fmt.Errorf("%w: %s: unknown extension must have 'value' field", domain.ErrValidation, configPath)
+	}
+
+	// Try to create and validate the unknown extension
+	unknownExt := &extensions.UnknownExtension{}
+	if err := unknownExt.ParseFromYAML(false, fields); err != nil {
+		return fmt.Errorf("%w: %s: %v", domain.ErrValidation, configPath, err)
+	}
+
+	return nil
 }

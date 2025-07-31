@@ -1,7 +1,7 @@
 [![asciicast](docs/assets/asciinema_thumbnail.webp)](https://asciinema.org/a/730862)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-63.9%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-66.2%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
@@ -43,6 +43,17 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
 * [Configuration](#configuration)
   * [CA Configuration (config/ca.yaml)](#ca-configuration-configcayaml)
   * [Hosts Configuration (config/hosts.yaml)](#hosts-configuration-confighostsyaml)
+* [X.509 Certificate Extensions](#x509-certificate-extensions)
+  * [Certificate Defaults](#certificate-defaults)
+  * [Extension Examples by Use Case](#extension-examples-by-use-case)
+  * [Available Extensions](#available-extensions)
+    * [Basic Constraints](#basic-constraints)
+    * [Key Usage](#key-usage)
+    * [Extended Key Usage](#extended-key-usage)
+    * [Subject Key Identifier](#subject-key-identifier)
+    * [Authority Key Identifier](#authority-key-identifier)
+    * [Name Constraints](#name-constraints)
+    * [Custom Extensions (Unknown OIDs)](#custom-extensions-unknown-oids)
 * [Store Structure](#store-structure)
 * [Cryptographic Options](#cryptographic-options)
   * [Supported Key Algorithms](#supported-key-algorithms)
@@ -368,12 +379,12 @@ ca:
   key_algorithm: ECP384    # RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
   hash_algorithm: SHA384   # SHA256, SHA384, SHA512
 
+  # X.509 certificate extensions (optional) - see X.509 Certificate Extensions section for details
   # extensions:
-  #   basic_constraints:
-  #     # The "critical" flag is a switch within an extension. If an extension is marked "critical," the system
-  #     # verifying the cert must understand and process that extension. If it doesn't, or can't, it must reject
-  #     # the certificate.
+  #   name_constraints:        # Good idea for security
   #     critical: true
+  #     permitted_dns_domains: [".homelab.local", ".internal"]
+  #     permitted_ip_ranges: ["192.168.0.0/16", "10.0.0.0/8"]
 
 # Encryption configuration
 encryption:
@@ -422,6 +433,13 @@ hosts:
     key_algorithm: RSA2048
     hash_algorithm: SHA256
 
+    # X.509 certificate extensions (optional) - see X.509 Certificate Extensions section for all options
+    # extensions:
+    #   custom_homelab_tag:          # Custom extension for environment identification
+    #     critical: false
+    #     oid: "1.3.6.1.4.1.99999.1"
+    #     value: "asn1:string:homelab-production"
+
     # Export paths (optional) - files written during 'host issue'
     export:
       cert: "/etc/ssl/certs/web-server.pem"           # Certificate in PEM format
@@ -440,6 +458,231 @@ hosts:
         echo 'Deploying certificates...'
         scp ${cert} ${chain} server:/etc/ssl/
         ssh server systemctl reload nginx
+```
+
+For detailed information about certificate extensions (Key Usage, Extended Key Usage, Name Constraints, custom OIDs, etc.), see the **[X.509 Certificate Extensions](#x509-certificate-extensions)** section.
+
+[↑ TOC](#table-of-contents)
+
+## X.509 Certificate Extensions
+
+ReactorCA supports fine-grained configuration of X.509 certificate extensions for both CA and host certificates. Extensions provide additional constraints, identifiers, and capabilities beyond the basic certificate fields.
+
+### Certificate Defaults
+
+ReactorCA provides sensible defaults for basic TLS use cases:
+
+- **CA certificates** (`ca ca create`, `ca ca renew`, `ca ca rekey`):
+  - Basic Constraints (critical, `CA=true`)
+  - Key Usage (critical, `cert_sign` + `crl_sign`)
+
+- **Host certificates** (`ca host issue`):
+  - Key Usage (`digital_signature` + `key_encipherment`)
+  - Extended Key Usage (`server_auth` + `client_auth`)
+  - Subject Alternative Names are populated from `alternative_names` configuration
+
+When you specify extensions, ReactorCA applies defaults first, then merges your configuration at the field level.
+
+### Extension Examples by Use Case
+
+**Homelab CA with Name Constraints** (recommended for security):
+```yaml
+ca:
+  extensions:
+    basic_constraints:
+      critical: true
+      ca: true
+      path_length: 0        # No intermediate CAs allowed
+    name_constraints:
+      critical: true
+      permitted_dns_domains: [".homelab.local", ".internal"]
+      permitted_ip_ranges: ["192.168.0.0/16", "10.0.0.0/8"]
+```
+
+**Web Server Certificate**:
+```yaml
+hosts:
+  web-server:
+    extensions:
+      key_usage:
+        critical: false
+        digital_signature: true
+        key_encipherment: true
+      extended_key_usage:
+        critical: false
+        server_auth: true
+        client_auth: true    # For mutual TLS
+```
+
+**Code Signing Certificate** (disable TLS capabilities):
+```yaml
+hosts:
+  code-signer:
+    extensions:
+      key_usage:
+        critical: true
+        digital_signature: true
+        content_commitment: true  # Non-repudiation for code signing
+      extended_key_usage:
+        critical: true
+        server_auth: false        # Disable TLS server auth
+        client_auth: false        # Disable TLS client auth
+        code_signing: true        # Enable code signing only
+```
+
+**Email Certificate** (S/MIME only, no TLS):
+```yaml
+hosts:
+  email-cert:
+    extensions:
+      key_usage:
+        critical: false
+        digital_signature: true
+        content_commitment: true  # Non-repudiation for email
+        key_encipherment: true    # For encrypted email
+      extended_key_usage:
+        critical: false
+        server_auth: false        # Disable TLS server auth
+        client_auth: false        # Disable TLS client auth
+        email_protection: true    # Enable S/MIME email protection
+```
+
+### Available Extensions
+
+See [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.2) for details.
+
+#### Basic Constraints
+Controls whether a certificate can act as a CA and limits certification path length.
+
+```yaml
+extensions:
+  basic_constraints:
+    critical: true                   # Must be critical for CA certificates
+    ca: true                         # Whether this certificate can sign other certificates
+    path_length: 2                   # Maximum intermediate CAs in the chain (optional)
+    path_length_zero: true           # Explicitly set path length to zero (mutually exclusive with path_length)
+```
+
+#### Key Usage
+Specifies the cryptographic operations for which the public key may be used.
+
+```yaml
+extensions:
+  key_usage:
+    critical: true                   # Recommended for CAs
+    digital_signature: true          # Digital signatures (excluding certificates and CRLs)
+    content_commitment: true         # Non-repudiation (formerly called non_repudiation)
+    key_encipherment: true           # Key transport (RSA encryption)
+    data_encipherment: true          # Data encryption (rarely used)
+    key_agreement: true              # Key agreement (ECDH, DH)
+    key_cert_sign: true              # Certificate signing (required for CAs)
+    crl_sign: true                   # CRL signing (recommended for CAs)
+    encipher_only: true              # Restrict key agreement to encryption only
+    decipher_only: true              # Restrict key agreement to decryption only
+```
+
+#### Extended Key Usage
+Defines specific purposes for which the public key may be used, beyond basic cryptographic operations.
+
+```yaml
+extensions:
+  extended_key_usage:
+    critical: false                  # Usually not critical for compatibility
+    server_auth: true                # TLS server authentication (1.3.6.1.5.5.7.3.1)
+    client_auth: true                # TLS client authentication (1.3.6.1.5.5.7.3.2)
+    code_signing: true               # Code signing (1.3.6.1.5.5.7.3.3)
+    email_protection: true           # S/MIME email protection (1.3.6.1.5.5.7.3.4)
+    time_stamping: true              # Time stamping (1.3.6.1.5.5.7.3.8)
+    ocsp_signing: true               # OCSP response signing (1.3.6.1.5.5.7.3.9)
+    unknown_ext_key_usage:           # Custom EKU OIDs
+      - "1.3.6.1.4.1.311.10.3.4"     # Microsoft EFS
+      - "1.3.6.1.5.5.7.3.21"         # SSH client authentication
+```
+
+#### Subject Key Identifier
+Provides a means of identifying certificates that contain a particular public key.
+
+```yaml
+extensions:
+  subject_key_identifier:
+    critical: false                  # Never critical per RFC 5280
+    method: "hash"                   # "hash" (SHA-1 of public key) or "manual"
+    manual_value: "hex:01234567..."  # Required when method is "manual"
+```
+
+#### Authority Key Identifier
+Identifies the public key corresponding to the private key used to sign a certificate.
+
+```yaml
+extensions:
+  authority_key_identifier:
+    critical: false                  # Never critical per RFC 5280
+    key_id: "hex:FEDCBA98..."        # Key identifier (usually matches issuer's SKI)
+```
+
+#### Name Constraints
+**Powerful security feature**: Restricts the namespace within which all subject names in subsequent certificates must be located. Ideal for homelab CAs to prevent certificate misuse.
+
+```yaml
+extensions:
+  name_constraints:
+    critical: true                       # Should be critical for security
+    permitted_dns_domains:
+      - ".homelab.local"                 # Permits subdomains of homelab.local
+      - ".internal"                      # Permits *.internal domains
+    excluded_dns_domains:
+      - ".example.com"                   # Explicitly excludes example.com
+    permitted_ip_ranges:
+      - "192.168.0.0/16"                 # Private network ranges
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+    excluded_ip_ranges:
+      - "169.254.0.0/16"                 # Link-local addresses
+    permitted_email_addresses:
+      - "homelab.local"                  # Domain constraint for email
+      - "admin@homelab.local"            # Specific email address
+    excluded_email_addresses:
+      - "test@example.com"
+    permitted_uri_domains:
+      - "homelab.local"                  # Permits URIs with homelab.local domain
+    excluded_uri_domains:
+      - "public.example.com"             # Excludes URIs with public.example.com domain
+```
+
+#### Custom Extensions (Unknown OIDs)
+Define custom extensions using Object Identifiers (OIDs) with flexible encoding options.
+
+```yaml
+extensions:
+  custom_policy_extension:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.1.2.3"       # Your organization's OID space
+    value: "base64:SGVsbG8gV29ybGQ="     # Base64-encoded data
+
+  custom_metadata:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.2"
+    value: "hex:48656c6c6f20576f726c64"  # Hex-encoded data
+
+  custom_asn1_string:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.3"
+    value: "asn1:string:Environment=Production"  # ASN.1 UTF8String
+
+  custom_asn1_integer:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.4"
+    value: "asn1:int:42"                 # ASN.1 INTEGER
+
+  custom_asn1_boolean:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.5"
+    value: "asn1:bool:true"              # ASN.1 BOOLEAN
+
+  custom_asn1_oid:
+    critical: false
+    oid: "1.3.6.1.4.1.12345.6"
+    value: "asn1:oid:1.2.840.113549.1.1.11"  # ASN.1 OBJECT IDENTIFIER
 ```
 
 [↑ TOC](#table-of-contents)
@@ -501,6 +744,8 @@ alternative_names:
   uri:
     - "https://example.com"
 ```
+
+Note that `alternative_name` is special, for convenience it is an entity-level parameter for an extension, which usually live under `extensions`.
 
 [↑ TOC](#table-of-contents)
 

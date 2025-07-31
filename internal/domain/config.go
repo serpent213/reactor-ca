@@ -5,10 +5,11 @@ import "time"
 // CAConfig holds the configuration for the root CA.
 type CAConfig struct {
 	CA struct {
-		Subject       SubjectConfig `yaml:"subject"`
-		Validity      Validity      `yaml:"validity"`
-		KeyAlgorithm  KeyAlgorithm  `yaml:"key_algorithm"`
-		HashAlgorithm HashAlgorithm `yaml:"hash_algorithm"`
+		Subject       SubjectConfig    `yaml:"subject"`
+		Validity      Validity         `yaml:"validity"`
+		KeyAlgorithm  KeyAlgorithm     `yaml:"key_algorithm"`
+		HashAlgorithm HashAlgorithm    `yaml:"hash_algorithm"`
+		Extensions    ExtensionsConfig `yaml:"extensions,omitempty"`
 	} `yaml:"ca"`
 	Encryption EncryptionConfig `yaml:"encryption"`
 	Display    DisplayConfig    `yaml:"display"`
@@ -21,14 +22,15 @@ type HostsConfig struct {
 
 // HostConfig holds the configuration for a single host certificate.
 type HostConfig struct {
-	Subject          SubjectConfig   `yaml:"subject"`
-	AlternativeNames SANs            `yaml:"alternative_names"`
-	Validity         Validity        `yaml:"validity"`
-	KeyAlgorithm     KeyAlgorithm    `yaml:"key_algorithm"`
-	HashAlgorithm    HashAlgorithm   `yaml:"hash_algorithm"`
-	Export           ExportConfig    `yaml:"export"`
-	Deploy           DeployConfig    `yaml:"deploy"`
-	Encryption       *HostEncryption `yaml:"encryption,omitempty"`
+	Subject          SubjectConfig    `yaml:"subject"`
+	AlternativeNames SANs             `yaml:"alternative_names"`
+	Validity         Validity         `yaml:"validity"`
+	KeyAlgorithm     KeyAlgorithm     `yaml:"key_algorithm"`
+	HashAlgorithm    HashAlgorithm    `yaml:"hash_algorithm"`
+	Extensions       ExtensionsConfig `yaml:"extensions,omitempty"`
+	Export           ExportConfig     `yaml:"export"`
+	Deploy           DeployConfig     `yaml:"deploy"`
+	Encryption       *HostEncryption  `yaml:"encryption,omitempty"`
 }
 
 // SubjectConfig defines the fields for a certificate's subject.

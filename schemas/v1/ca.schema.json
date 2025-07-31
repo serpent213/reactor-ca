@@ -28,6 +28,9 @@
         },
         "hash_algorithm": {
           "$ref": "#/$defs/HashAlgorithm"
+        },
+        "extensions": {
+          "$ref": "#/$defs/ExtensionsConfig"
         }
       }
     },
@@ -264,6 +267,324 @@
           "description": "Days remaining to show yellow warning",
           "minimum": 1,
           "default": 30
+        }
+      }
+    },
+    "ExtensionsConfig": {
+      "type": "object",
+      "description": "X.509 certificate extensions configuration",
+      "additionalProperties": {
+        "$ref": "#/$defs/UnknownExtension"
+      },
+      "properties": {
+        "basic_constraints": {
+          "$ref": "#/$defs/BasicConstraintsExtension"
+        },
+        "key_usage": {
+          "$ref": "#/$defs/KeyUsageExtension"
+        },
+        "extended_key_usage": {
+          "$ref": "#/$defs/ExtendedKeyUsageExtension"
+        },
+        "subject_key_identifier": {
+          "$ref": "#/$defs/SubjectKeyIdentifierExtension"
+        },
+        "authority_key_identifier": {
+          "$ref": "#/$defs/AuthorityKeyIdentifierExtension"
+        },
+        "name_constraints": {
+          "$ref": "#/$defs/NameConstraintsExtension"
+        }
+      }
+    },
+    "BasicConstraintsExtension": {
+      "type": "object",
+      "description": "Basic Constraints extension (RFC 5280 Section 4.2.1.9)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": true
+        },
+        "ca": {
+          "type": "boolean",
+          "description": "Whether this certificate can act as a CA",
+          "default": false
+        },
+        "path_length": {
+          "type": "integer",
+          "description": "Maximum number of non-self-issued intermediate certificates that may follow this certificate in a valid certification path",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "path_length_zero": {
+          "type": "boolean",
+          "description": "Explicitly set path length to zero (can only be true when path_length is 0 or unset)",
+          "default": false
+        }
+      }
+    },
+    "KeyUsageExtension": {
+      "type": "object",
+      "description": "Key Usage extension (RFC 5280 Section 4.2.1.3)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "digital_signature": {
+          "type": "boolean",
+          "description": "Digital signature key usage",
+          "default": false
+        },
+        "content_commitment": {
+          "type": "boolean",
+          "description": "Content commitment (non-repudiation) key usage",
+          "default": false
+        },
+        "key_encipherment": {
+          "type": "boolean",
+          "description": "Key encipherment key usage",
+          "default": false
+        },
+        "data_encipherment": {
+          "type": "boolean",
+          "description": "Data encipherment key usage",
+          "default": false
+        },
+        "key_agreement": {
+          "type": "boolean",
+          "description": "Key agreement key usage",
+          "default": false
+        },
+        "key_cert_sign": {
+          "type": "boolean",
+          "description": "Certificate signing key usage",
+          "default": false
+        },
+        "crl_sign": {
+          "type": "boolean",
+          "description": "CRL signing key usage",
+          "default": false
+        },
+        "encipher_only": {
+          "type": "boolean",
+          "description": "Encipher only key usage (only valid if key_agreement is true)",
+          "default": false
+        },
+        "decipher_only": {
+          "type": "boolean",
+          "description": "Decipher only key usage (only valid if key_agreement is true)",
+          "default": false
+        }
+      }
+    },
+    "ExtendedKeyUsageExtension": {
+      "type": "object",
+      "description": "Extended Key Usage extension (RFC 5280 Section 4.2.1.12)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "server_auth": {
+          "type": "boolean",
+          "description": "TLS Web Server Authentication (1.3.6.1.5.5.7.3.1)",
+          "default": false
+        },
+        "client_auth": {
+          "type": "boolean",
+          "description": "TLS Web Client Authentication (1.3.6.1.5.5.7.3.2)",
+          "default": false
+        },
+        "code_signing": {
+          "type": "boolean",
+          "description": "Code Signing (1.3.6.1.5.5.7.3.3)",
+          "default": false
+        },
+        "email_protection": {
+          "type": "boolean",
+          "description": "E-mail Protection (1.3.6.1.5.5.7.3.4)",
+          "default": false
+        },
+        "time_stamping": {
+          "type": "boolean",
+          "description": "Time Stamping (1.3.6.1.5.5.7.3.8)",
+          "default": false
+        },
+        "ocsp_signing": {
+          "type": "boolean",
+          "description": "OCSP Signing (1.3.6.1.5.5.7.3.9)",
+          "default": false
+        },
+        "unknown_ext_key_usage": {
+          "type": "array",
+          "description": "Custom Extended Key Usage OIDs",
+          "items": {
+            "type": "string",
+            "description": "Object Identifier (OID) in dotted decimal notation",
+            "pattern": "^[0-9]+(\\.[0-9]+)*$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "SubjectKeyIdentifierExtension": {
+      "type": "object",
+      "description": "Subject Key Identifier extension (RFC 5280 Section 4.2.1.2)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "method": {
+          "type": "string",
+          "description": "Method for generating the key identifier",
+          "enum": [
+            "hash",
+            "manual"
+          ],
+          "default": "hash"
+        },
+        "manual_value": {
+          "type": "string",
+          "description": "Manual key identifier value (required when method is 'manual'). Supports hex: prefix for hexadecimal encoding",
+          "pattern": "^(hex:[0-9A-Fa-f]+|[0-9A-Za-z+/]+=*)$"
+        }
+      }
+    },
+    "AuthorityKeyIdentifierExtension": {
+      "type": "object",
+      "description": "Authority Key Identifier extension (RFC 5280 Section 4.2.1.1)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "key_id": {
+          "type": "string",
+          "description": "Authority key identifier value. Supports hex: prefix for hexadecimal encoding",
+          "pattern": "^(hex:[0-9A-Fa-f]+|[0-9A-Za-z+/]+=*)$"
+        }
+      }
+    },
+    "NameConstraintsExtension": {
+      "type": "object",
+      "description": "Name Constraints extension (RFC 5280 Section 4.2.1.10)",
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": true
+        },
+        "permitted_dns_domains": {
+          "type": "array",
+          "description": "DNS domains that are permitted (including subdomains)",
+          "items": {
+            "type": "string",
+            "description": "DNS domain name (use leading dot for subdomains, e.g., '.example.com')"
+          },
+          "uniqueItems": true
+        },
+        "excluded_dns_domains": {
+          "type": "array",
+          "description": "DNS domains that are excluded (including subdomains)",
+          "items": {
+            "type": "string",
+            "description": "DNS domain name (use leading dot for subdomains, e.g., '.example.com')"
+          },
+          "uniqueItems": true
+        },
+        "permitted_ip_ranges": {
+          "type": "array",
+          "description": "IP address ranges that are permitted (CIDR notation)",
+          "items": {
+            "type": "string",
+            "description": "IP address range in CIDR notation (e.g., '192.168.0.0/16')",
+            "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$|^([0-9a-fA-F:]+)/[0-9]{1,3}$"
+          },
+          "uniqueItems": true
+        },
+        "excluded_ip_ranges": {
+          "type": "array",
+          "description": "IP address ranges that are excluded (CIDR notation)",
+          "items": {
+            "type": "string",
+            "description": "IP address range in CIDR notation (e.g., '192.168.0.0/16')",
+            "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$|^([0-9a-fA-F:]+)/[0-9]{1,3}$"
+          },
+          "uniqueItems": true
+        },
+        "permitted_email_addresses": {
+          "type": "array",
+          "description": "Email addresses or domains that are permitted",
+          "items": {
+            "type": "string",
+            "description": "Email address or domain (e.g., 'user@example.com' or 'example.com')"
+          },
+          "uniqueItems": true
+        },
+        "excluded_email_addresses": {
+          "type": "array",
+          "description": "Email addresses or domains that are excluded",
+          "items": {
+            "type": "string",
+            "description": "Email address or domain (e.g., 'user@example.com' or 'example.com')"
+          },
+          "uniqueItems": true
+        },
+        "permitted_uri_domains": {
+          "type": "array",
+          "description": "URI domains that are permitted",
+          "items": {
+            "type": "string",
+            "description": "URI domain name (e.g., 'example.com')"
+          },
+          "uniqueItems": true
+        },
+        "excluded_uri_domains": {
+          "type": "array",
+          "description": "URI domains that are excluded",
+          "items": {
+            "type": "string",
+            "description": "URI domain name (e.g., 'example.com')"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "UnknownExtension": {
+      "type": "object",
+      "description": "Custom extension specified by OID",
+      "required": [
+        "oid",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "oid": {
+          "type": "string",
+          "description": "Object Identifier (OID) in dotted decimal notation",
+          "pattern": "^[0-9]+(\\.[0-9]+)*$"
+        },
+        "value": {
+          "type": "string",
+          "description": "Extension value. Supports multiple encodings: base64:, hex:, asn1:string:, asn1:int:, asn1:bool:, asn1:oid:"
         }
       }
     }

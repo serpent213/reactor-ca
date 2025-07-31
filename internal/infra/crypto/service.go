@@ -19,14 +19,19 @@ import (
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/crypto/extensions"
 )
 
 // Service implements the domain.CryptoService interface.
-type Service struct{}
+type Service struct {
+	extensionFactory domain.ExtensionFactory
+}
 
-// NewService creates a new crypto service.
+// NewService creates a new crypto service with extension support.
 func NewService() *Service {
-	return &Service{}
+	return &Service{
+		extensionFactory: extensions.NewRegistry(),
+	}
 }
 
 // GeneratePrivateKey generates a new private key based on the specified algorithm.
@@ -59,10 +64,12 @@ func (s *Service) CreateRootCertificate(cfg *domain.CAConfig, key crypto.Signer)
 		return nil, err
 	}
 
-	template.IsCA = true
-	template.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
-	template.BasicConstraintsValid = true
 	template.SignatureAlgorithm = s.getSignatureAlgorithm(cfg.CA.HashAlgorithm, key)
+
+	// Apply extensions from configuration, with default CA extensions if none specified
+	if err := s.applyExtensions(template, cfg.CA.Extensions, s.defaultCAExtensions()); err != nil {
+		return nil, fmt.Errorf("failed to apply extensions: %w", err)
+	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	if err != nil {
@@ -81,9 +88,7 @@ func (s *Service) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509
 	// Set signature algorithm based on hash algorithm and CA key type
 	template.SignatureAlgorithm = s.getSignatureAlgorithm(hostCfg.HashAlgorithm, caKey)
 
-	template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
-	template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-
+	// Set Subject Alternative Names
 	template.DNSNames = append(template.DNSNames, hostCfg.AlternativeNames.DNS...)
 	for _, ipStr := range hostCfg.AlternativeNames.IP {
 		if ip := net.ParseIP(ipStr); ip != nil {
@@ -95,6 +100,11 @@ func (s *Service) CreateHostCertificate(hostCfg *domain.HostConfig, caCert *x509
 		if uri, err := url.Parse(uriStr); err == nil {
 			template.URIs = append(template.URIs, uri)
 		}
+	}
+
+	// Apply extensions from configuration, with default host extensions if none specified
+	if err := s.applyExtensions(template, hostCfg.Extensions, s.defaultHostExtensions()); err != nil {
+		return nil, fmt.Errorf("failed to apply extensions: %w", err)
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, hostPublicKey, caKey)
@@ -116,12 +126,15 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 		Subject:        csr.Subject,
 		NotBefore:      time.Now().Add(-5 * time.Minute).UTC(),
 		NotAfter:       time.Now().AddDate(0, 0, validityDays).UTC(),
-		KeyUsage:       x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:    []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		DNSNames:       csr.DNSNames,
 		IPAddresses:    csr.IPAddresses,
 		EmailAddresses: csr.EmailAddresses,
 		URIs:           csr.URIs,
+	}
+
+	// Apply default host extensions for CSR signing
+	if err := s.applyExtensions(template, nil, s.defaultHostExtensions()); err != nil {
+		return nil, fmt.Errorf("failed to apply extensions: %w", err)
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, csr.PublicKey, caKey)
@@ -295,5 +308,120 @@ func (s *Service) getSignatureAlgorithm(hashAlgo domain.HashAlgorithm, key crypt
 		return x509.PureEd25519
 	default:
 		return x509.SHA256WithRSA
+	}
+}
+
+// applyExtensions applies extensions from config to the certificate template
+// Defaults are applied first, then user config is merged on top (allowing partial overrides)
+func (s *Service) applyExtensions(cert *x509.Certificate, config domain.ExtensionsConfig, defaults domain.ExtensionsConfig) error {
+	// Merge defaults with user config - user config overrides defaults
+	mergedConfig := s.mergeExtensions(defaults, config)
+
+	for name, rawConfig := range mergedConfig {
+		// Try to create a known extension first
+		ext := s.extensionFactory.CreateExtension(name)
+
+		// If not a known extension, try as unknown extension with OID
+		if ext == nil {
+			ext = &extensions.UnknownExtension{}
+		}
+
+		// Parse the extension configuration
+		if err := ext.ParseFromYAML(rawConfig.Critical, rawConfig.Fields); err != nil {
+			return fmt.Errorf("failed to parse extension '%s': %w", name, err)
+		}
+
+		// Apply the extension to the certificate
+		if err := ext.ApplyToCertificate(cert); err != nil {
+			return fmt.Errorf("failed to apply extension '%s': %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// mergeExtensions merges defaults with user config at the field level
+// For each extension, default fields are applied first, then user fields override/extend them
+func (s *Service) mergeExtensions(defaults, userConfig domain.ExtensionsConfig) domain.ExtensionsConfig {
+	merged := make(domain.ExtensionsConfig)
+
+	// Start with defaults
+	for name, defaultExt := range defaults {
+		merged[name] = domain.ExtensionRawConfig{
+			Critical: defaultExt.Critical,
+			Fields:   make(map[string]interface{}),
+		}
+
+		// Copy default fields
+		for field, value := range defaultExt.Fields {
+			merged[name].Fields[field] = value
+		}
+	}
+
+	// Merge user config at field level
+	for name, userExt := range userConfig {
+		if existingExt, exists := merged[name]; exists {
+			// Extension exists in defaults - merge fields
+			merged[name] = domain.ExtensionRawConfig{
+				Critical: userExt.Critical, // User critical flag takes precedence
+				Fields:   existingExt.Fields,
+			}
+			// Override/add user fields
+			for field, value := range userExt.Fields {
+				merged[name].Fields[field] = value
+			}
+		} else {
+			// New extension not in defaults - add as-is
+			merged[name] = domain.ExtensionRawConfig{
+				Critical: userExt.Critical,
+				Fields:   make(map[string]interface{}),
+			}
+			for field, value := range userExt.Fields {
+				merged[name].Fields[field] = value
+			}
+		}
+	}
+
+	return merged
+}
+
+// defaultCAExtensions returns the default extensions for CA certificates
+// This maintains backward compatibility with the previous hardcoded behavior
+func (s *Service) defaultCAExtensions() domain.ExtensionsConfig {
+	return domain.ExtensionsConfig{
+		"basic_constraints": {
+			Critical: true,
+			Fields: map[string]interface{}{
+				"ca": true,
+			},
+		},
+		"key_usage": {
+			Critical: true,
+			Fields: map[string]interface{}{
+				"key_cert_sign": true,
+				"crl_sign":      true,
+			},
+		},
+	}
+}
+
+// defaultHostExtensions returns the default extensions for host certificates
+// This maintains backward compatibility with the previous hardcoded behavior
+func (s *Service) defaultHostExtensions() domain.ExtensionsConfig {
+	return domain.ExtensionsConfig{
+		"key_usage": {
+			Critical: false,
+			Fields: map[string]interface{}{
+				"digital_signature": true,
+				"key_encipherment":  true,
+			},
+		},
+		"extended_key_usage": {
+			Critical: false,
+			Fields: map[string]interface{}{
+				"server_auth": true,
+				"client_auth": true,
+			},
+		},
 	}
 }
