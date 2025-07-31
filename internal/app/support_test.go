@@ -24,6 +24,8 @@ type MockConfigLoader struct {
 
 func (m *MockConfigLoader) LoadCA() (*domain.CAConfig, error)       { return m.CAConfig, m.Err }
 func (m *MockConfigLoader) LoadHosts() (*domain.HostsConfig, error) { return m.HostsConfig, m.Err }
+func (m *MockConfigLoader) ValidateCAConfig(data []byte) error      { return m.Err }
+func (m *MockConfigLoader) ValidateHostsConfig(data []byte) error   { return m.Err }
 
 type MockStore struct {
 	SaveCAFunc             func(cert, key []byte) error

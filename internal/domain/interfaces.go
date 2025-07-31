@@ -21,6 +21,8 @@ type Logger interface {
 type ConfigLoader interface {
 	LoadCA() (*CAConfig, error)
 	LoadHosts() (*HostsConfig, error)
+	ValidateCAConfig(data []byte) error
+	ValidateHostsConfig(data []byte) error
 }
 
 // Store defines the interface for persistence operations.

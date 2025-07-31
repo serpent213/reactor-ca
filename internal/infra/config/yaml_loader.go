@@ -34,6 +34,11 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 		return nil, fmt.Errorf("could not read ca.yaml: %w", err)
 	}
 
+	// Validate against JSON schema first
+	if err := l.ValidateCAConfig(data); err != nil {
+		return nil, err
+	}
+
 	var cfg domain.CAConfig
 	// Use a decoder to get strict unmarshalling
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
@@ -68,6 +73,11 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not read hosts.yaml: %w", err)
+	}
+
+	// Validate against JSON schema first
+	if err := l.ValidateHostsConfig(data); err != nil {
+		return nil, err
 	}
 
 	var cfg domain.HostsConfig
@@ -156,4 +166,14 @@ func (l *YAMLConfigLoader) validateUnknownExtension(fields map[string]interface{
 	}
 
 	return nil
+}
+
+// ValidateCAConfig validates CA configuration against JSON schema.
+func (l *YAMLConfigLoader) ValidateCAConfig(data []byte) error {
+	return validateCAConfig(data)
+}
+
+// ValidateHostsConfig validates hosts configuration against JSON schema.
+func (l *YAMLConfigLoader) ValidateHostsConfig(data []byte) error {
+	return validateHostsConfig(data)
 }

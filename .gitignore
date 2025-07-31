@@ -11,6 +11,9 @@
 /store/
 /config/
 
+# go:generate
+/internal/infra/config/schemas/
+
 # Nix
 /.direnv/
 /.devenv/

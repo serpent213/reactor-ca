@@ -166,7 +166,7 @@ encryption:
 encryption:
   provider: "password"`,
 			hostsConfig: `hosts: {}`,
-			expectedErr: "invalid OID",
+			expectedErr: "Does not match pattern",
 		},
 		{
 			name: "InvalidOIDFormat",
@@ -185,7 +185,7 @@ encryption:
 encryption:
   provider: "password"`,
 			hostsConfig: `hosts: {}`,
-			expectedErr: "OID component 0 is not a number",
+			expectedErr: "Does not match pattern",
 		},
 		{
 			name: "MissingRequiredFieldsForUnknownExtension",
@@ -203,7 +203,7 @@ encryption:
 encryption:
   provider: "password"`,
 			hostsConfig: `hosts: {}`,
-			expectedErr: "unknown extension must have 'oid' field",
+			expectedErr: "oid is required",
 		},
 	}
 

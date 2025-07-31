@@ -18,6 +18,9 @@ build mode="debug":
     #!/usr/bin/env bash
     set -e
 
+    # Copy embedded schema files
+    go generate ./internal/infra/config
+
     version_string="{{version}}"
 
     # Add unstable suffix if current commit doesn't have a semver release tag
@@ -37,6 +40,9 @@ build-cross platform="all":
     #!/usr/bin/env bash
     set -e
     mkdir -p dist
+
+    # Copy embedded schema files
+    go generate ./internal/infra/config
 
     version_string="{{version}}"
 
