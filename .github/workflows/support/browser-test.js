@@ -97,7 +97,7 @@ async function testSingleCertificate(browser, cert, browserType) {
 
 async function testBrowser(browserType) {
   const resultsFile = path.join('/var/lib/test/test-results', `${browserType}-results.json`);
-  
+
   // Read existing results file to preserve version info
   let results = {
     browser: browserType,
@@ -105,7 +105,7 @@ async function testBrowser(browserType) {
     version: 'unknown',
     results: []
   };
-  
+
   if (fs.existsSync(resultsFile)) {
     try {
       const existingData = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
