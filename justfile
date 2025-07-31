@@ -401,26 +401,24 @@ update-browser-matrix:
     local_browsers=("firefox")
     ci_browsers=("firefox" "webkit" "curl")
 
+    # Algorithm ordering - control the order of certificate rows
+    algo_order=("RSA" "ECP" "ED")
+
     echo "Downloading browser test artifacts..."
 
-    # Get latest Browser Test run ID
     run_id=$(gh run list -w "Browser Test" -L 1 --json databaseId --jq '.[0].databaseId')
     echo "Latest Browser Test run: $run_id"
 
-    # Create temp directory and download artifacts
     rm -rf tmp/browser-artifacts
     mkdir -p tmp/browser-artifacts
     cd tmp/browser-artifacts
     gh run download "$run_id"
 
-    # Artifacts are already extracted as directories, no zip files to extract
     echo "Processing artifacts..."
 
-    # Combine all results arrays from all browsers using jq
     echo "Combining JSON files..."
     mkdir -p ../../docs
 
-    # Create structured JSON with metadata and results from CI
     jq -s '
     {
       metadata: {
@@ -449,11 +447,9 @@ update-browser-matrix:
         cp docs/browser-matrix-ci.json docs/browser-matrix.json
     fi
 
-    # Convert to markdown table and update README
     echo "Converting to markdown table..."
 
     # Generate markdown table with browsers as columns and cert combos as rows
-    # Read CI and local data separately to differentiate in table
     ci_data='{}'
     local_data='{}'
     if [ -f "docs/browser-matrix-ci.json" ]; then
@@ -465,7 +461,8 @@ update-browser-matrix:
 
     full_table=$(jq -r --argjson ci "$ci_data" --argjson local "$local_data" \
         --argjson local_browsers "$(printf '%s\n' "${local_browsers[@]}" | jq -R . | jq -s .)" \
-        --argjson ci_browsers "$(printf '%s\n' "${ci_browsers[@]}" | jq -R . | jq -s .)" '
+        --argjson ci_browsers "$(printf '%s\n' "${ci_browsers[@]}" | jq -R . | jq -s .)" \
+        --argjson algo_order "$(printf '%s\n' "${algo_order[@]}" | jq -R . | jq -s .)" '
         # Helper function to format status with colors
         def format_status: if . == "PASS" then "🟢 PASS" elif . == "FAIL" then "🔴 FAIL" else . end;
 
@@ -474,10 +471,17 @@ update-browser-matrix:
             (data.results // []) | group_by(.certificate) |
             map(.[0].certificate as $cert | {($cert): (group_by(.browser) | map({(.[0].browser): .[0].status}) | add)}) | add;
 
-        # Get all unique certificates from both datasets
+        # Get all unique certificates from both datasets, sorted by algorithm order
         def get_certificates:
             [($ci.results // [])[], ($local.results // [])[]] |
-            map(.certificate) | unique | sort;
+            map(.certificate) | unique |
+            sort_by(
+                # Create sort key based on algorithm order, then by full certificate name
+                . as $cert |
+                ($algo_order | map(. as $algo | if ($cert | ascii_upcase | startswith($algo)) then ($algo_order | to_entries | map(select(.value == $algo))[0].key) else 999 end) | min) * 1000 +
+                # Secondary sort by the certificate string itself for stable ordering within algorithm groups
+                ($cert | length)
+            );
 
         # Create lookup tables and variables
         get_certificates as $certs |
@@ -500,7 +504,6 @@ update-browser-matrix:
         ) | gsub("\t"; " | ") | "| " + . + " |"
     ' docs/browser-matrix.json)
 
-    # Update README.md with browser matrix table
     awk -v table="$full_table" '
         BEGIN { in_matrix = 0; printed_table = 0 }
         /^## Browser Compatibility Matrix$/ {
@@ -521,4 +524,4 @@ update-browser-matrix:
 
     rm -rf tmp/browser-artifacts
 
-    echo "Browser matrix updated in docs/browser-matrix.json and README.md"
+    echo "Browser matrix updated in docs/browser-matrix.json, merged with docs/browser-matrix-local.json and README.md updated"
