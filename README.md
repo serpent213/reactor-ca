@@ -1,4 +1,4 @@
-![ReactorCA screenshot](docs/assets/help_screen.webp)
+[![asciicast](docs/assets/asciinema_thumbnail.webp)](https://asciinema.org/a/730862)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
 ![Coverage](https://img.shields.io/badge/Coverage-63.8%25-yellow)

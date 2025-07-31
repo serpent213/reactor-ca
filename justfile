@@ -328,9 +328,11 @@ update-toc:
             printed_toc = 1
             next
         }
-        /^## Features$/ && in_toc {
+        /^## / && in_toc {
             in_toc = 0
             print ""
+            print $0
+            next
         }
         !in_toc || !printed_toc { print }
     ' README.md > README.md.tmp
