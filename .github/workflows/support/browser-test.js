@@ -102,6 +102,7 @@ async function testBrowser(browserType) {
   let results = {
     browser: browserType,
     timestamp: new Date().toISOString(),
+    version: 'unknown',
     results: []
   };
   
@@ -135,6 +136,16 @@ async function testBrowser(browserType) {
   const certCombinations = generateCertCombinations();
 
   try {
+    // Capture browser version via Playwright API
+    try {
+      const browserVersion = browser.version();
+      results.version = browserVersion;
+      console.log(`\n=== ${browserType} version: ${browserVersion} ===`);
+    } catch (versionError) {
+      console.warn(`Could not detect ${browserType} version: ${versionError.message}`);
+      results.version = 'unknown';
+    }
+
     console.log(`\n=== Testing ${certCombinations.length} certificate combinations with ${browserType} ===`);
 
     // Test each certificate combination
