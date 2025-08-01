@@ -292,6 +292,48 @@ hosts:
 		t.Errorf("Deployment flag file has wrong content: %s", content)
 	}
 
+	// 1b. Test encrypted key deployment
+	const encryptedDeployHostYAML = `
+hosts:
+  encrypted-deploy-target:
+    alternative_names:
+      dns: [ "encrypted.reactor.test" ]
+    validity: { days: 15 }
+    export:
+      key_encrypted: "encrypted.key.age"
+    deploy:
+      command: |
+        echo "Variables available:" > encrypted-deployment.log
+        echo "Cert: ${cert}" >> encrypted-deployment.log
+        echo "Chain: ${chain}" >> encrypted-deployment.log
+        echo "Private Key: ${private_key}" >> encrypted-deployment.log
+        echo "Encrypted Key: ${key_encrypted}" >> encrypted-deployment.log
+        # Test that encrypted key file exists and has content
+        if [ -f "${key_encrypted}" ]; then
+          echo "Encrypted key exists: $(wc -c < ${key_encrypted}) bytes" >> encrypted-deployment.log
+        else
+          echo "ERROR: Encrypted key missing" >> encrypted-deployment.log
+          exit 1
+        fi
+`
+	e.writeConfig("hosts.yaml", encryptedDeployHostYAML)
+	e.runWithCheck(testPassword, "host", "issue", "encrypted-deploy-target", "--deploy")
+	e.assertFileExists("encrypted-deployment.log")
+	encContent, err := os.ReadFile(e.path("encrypted-deployment.log"))
+	if err != nil {
+		t.Fatalf("Could not read encrypted deployment log: %v", err)
+	}
+	logContent := string(encContent)
+	if !strings.Contains(logContent, "Encrypted Key: ") {
+		t.Errorf("Encrypted key variable missing from deployment log: %s", logContent)
+	}
+	if !strings.Contains(logContent, "Encrypted key exists: ") {
+		t.Errorf("Encrypted key file check failed in deployment log: %s", logContent)
+	}
+	if strings.Contains(logContent, "ERROR:") {
+		t.Errorf("Deployment reported error: %s", logContent)
+	}
+
 	// 2. Test cleaning
 	e.writeConfig("hosts.yaml", testHostsYAML)
 	e.runWithCheck(testPassword, "host", "issue", "--all")

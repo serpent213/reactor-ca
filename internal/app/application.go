@@ -820,6 +820,34 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	certPath := pathutil.ResolvePath(hostCfg.Export.Cert, a.rootPath)
 	chainPath := pathutil.ResolvePath(hostCfg.Export.Chain, a.rootPath)
 
+	// Handle encrypted key path
+	var encryptedKeyPath string
+	if hostCfg.Export.KeyEncrypted != "" {
+		// Use configured encrypted key export path
+		encryptedKeyPath = pathutil.ResolvePath(hostCfg.Export.KeyEncrypted, a.rootPath)
+	} else {
+		// Create temporary encrypted key file from store
+		encryptedKeyData, err := a.store.LoadHostKey(hostID)
+		if err != nil {
+			return fmt.Errorf("failed to load encrypted key: %w", err)
+		}
+		tempEncryptedKeyFile, err := os.CreateTemp("", "reactor-ca-encrypted-key-*.age")
+		if err != nil {
+			return fmt.Errorf("failed to create temp encrypted key file: %w", err)
+		}
+		defer os.Remove(tempEncryptedKeyFile.Name())
+		if err := os.Chmod(tempEncryptedKeyFile.Name(), 0600); err != nil {
+			return fmt.Errorf("failed to set permissions on temp encrypted key file: %w", err)
+		}
+		if _, err := tempEncryptedKeyFile.Write(encryptedKeyData); err != nil {
+			return fmt.Errorf("failed to write encrypted key: %w", err)
+		}
+		if err := tempEncryptedKeyFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp encrypted key file: %w", err)
+		}
+		encryptedKeyPath = tempEncryptedKeyFile.Name()
+	}
+
 	// If export paths are not defined, we must create temporary files for them too.
 	if certPath == a.rootPath { // Heuristic: empty export path resolves to root
 		hostCert, err := a.store.LoadHostCert(hostID)
@@ -872,6 +900,7 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 		"${cert}", certPath,
 		"${chain}", chainPath,
 		"${private_key}", tempKeyFile.Name(),
+		"${key_encrypted}", encryptedKeyPath,
 	)
 
 	// Perform variable substitution on the command
