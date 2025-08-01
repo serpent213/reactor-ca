@@ -1,3 +1,8 @@
+# Let's Encrypt cert in comparison to ReactorCA default host cert
+
+(LLM generated)
+
+```raw
 Certificate:
     Data:
         Version: 3 (0x2)
@@ -72,5 +77,38 @@ Certificate:
         46:51:cf:3f:8c:21:f1:1b:fa:2d:67:de:53:42:de:29:fa:50:
         02:3f:61:1b:67:73:df:30:93:3c:24:7d:f1:fe:fe:1d:3a:02:
         31:00:fe:48:fb:d8:69:e5:53:f2:c8:e0:f3:ed:71:d8:cc:1b:
-        0a:1a:5a:52:b3:f9:ac:25:a7:78:c2:5f:75:a9:0d:ee:0e:62:
+        0a:1a:5a:52:b3:f9:ac:25:a7:78:c2:5f:75:a9:0d:ee:62:
         ba:43:c7:ae:76:9f:cd:f8:91:61:3d:54:96:8b
+```
+
+## **Subject Distinguished Name**
+- **ReactorCA**: `C=DE, ST=Berlin, L=Berlin, O=Reactor Industries, OU=Web Services, CN=host2.reactor.local, emailAddress=dc@reactor.de`
+- **Let's Encrypt**: `CN=example.net`
+
+**Meaning**: ReactorCA includes organizational context useful for internal certificate management. Let's Encrypt strips everything except the Common Name since they only verify domain ownership, not organizational details.
+
+## **Public Key Algorithm & Size**
+- **ReactorCA**: P-384 curve (384-bit key)
+- **Let's Encrypt**: P-256 curve (256-bit key)
+
+**Meaning**: ReactorCA uses stronger cryptography. P-384 provides ~192-bit security vs P-256's ~128-bit. For homelab use, P-256 is sufficient, but P-384 provides extra security margin at minimal computational cost on modern hardware.
+
+## **Key Usage Extensions**
+- **ReactorCA**: `Digital Signature, Key Encipherment`
+- **Let's Encrypt**: `Digital Signature` only
+
+**Meaning**: ReactorCA includes Key Encipherment for RSA-style key exchange (legacy TLS compatibility). Modern ECDHE eliminates this need - Let's Encrypt's approach is more current. The extra usage doesn't hurt but isn't necessary.
+
+## **Missing Extensions in ReactorCA**
+
+**Subject Key Identifier**: Let's Encrypt includes this for certificate chain validation. ReactorCA omits it - not critical for simple PKI but useful for complex certificate hierarchies.
+
+**Authority Information Access**: Points to CA issuer certificate location. Let's Encrypt needs this for public trust chains. ReactorCA doesn't need it since certificates are distributed through configuration.
+
+**Certificate Policies**: Let's Encrypt references WebPKI policy (2.23.140.1.2.1). ReactorCA omits this - appropriate since it's not following public CA policies.
+
+**CRL Distribution Points**: Let's Encrypt provides revocation checking via HTTP. ReactorCA omits this - acceptable for homelab where certificate lifecycle is managed through configuration.
+
+**CT Precertificate SCTs**: Certificate Transparency logging required for public CAs. ReactorCA correctly omits this since it's not subject to CT requirements.
+
+ReactorCA's certificate structure is **perfectly appropriate** for its use case - a private homelab PKI focused on simplicity and direct management rather than public internet compatibility.
