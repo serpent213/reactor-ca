@@ -274,7 +274,7 @@ cov-badge:
     echo "Updated README.md with new coverage badge"
 
 # Complete validation pipeline
-check: lint build tidy test build-nix
+check: lint build tidy retest build-nix
 
 # CI/CD pipeline
 ci: lint tidy test release

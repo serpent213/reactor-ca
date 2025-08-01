@@ -383,11 +383,13 @@ ca:
   hash_algorithm: SHA384   # SHA256, SHA384, SHA512
 
   # X.509 certificate extensions (optional) - see X.509 Certificate Extensions section for details
-  # extensions:
-  #   name_constraints:        # Good idea for security
-  #     critical: true
-  #     permitted_dns_domains: [".homelab.local", ".internal"]
-  #     permitted_ip_ranges: ["192.168.0.0/16", "10.0.0.0/8"]
+  extensions:
+    basic_constraints:
+      path_length: 0       # There can be only one CA!
+    name_constraints:      # Good idea to tighten security
+      critical: true
+      permitted_dns_domains: [".homelab.local", ".internal"]
+      permitted_ip_ranges: ["192.168.0.0/16", "10.0.0.0/8"]
 
 # Encryption configuration
 encryption:
@@ -563,8 +565,7 @@ extensions:
   basic_constraints:
     critical: true                   # Must be critical for CA certificates
     ca: true                         # Whether this certificate can sign other certificates
-    path_length: 2                   # Maximum intermediate CAs in the chain (optional)
-    path_length_zero: true           # Explicitly set path length to zero (mutually exclusive with path_length)
+    path_length: 2                   # Maximum intermediate CAs in the chain (optional, default unset)
 ```
 
 #### Key Usage

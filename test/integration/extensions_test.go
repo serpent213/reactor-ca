@@ -142,11 +142,11 @@ func TestExtensionValidationErrors(t *testing.T) {
       critical: true
       ca: true
       path_length: 5
-      path_length_zero: true  # Invalid: can't have both path_length and path_length_zero
+      path_length_zero: true  # Invalid: path_length_zero field no longer supported
 encryption:
   provider: "password"`,
 			hostsConfig: `hosts: {}`,
-			expectedErr: "path_length_zero can only be true when path_length is 0 or unset",
+			expectedErr: "additional properties 'path_length_zero' not allowed",
 		},
 		{
 			name: "InvalidExtendedKeyUsageOID",

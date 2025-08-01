@@ -192,6 +192,15 @@ ca:
   # Supported: SHA256, SHA384, SHA512
   hash_algorithm: SHA384
 
+  # X.509 certificate extensions (optional)
+  extensions:
+    basic_constraints:
+      path_length: 0       # There can be only one CA!
+    # name_constraints:      # Good idea to tighten security
+    #   critical: true
+    #   permitted_dns_domains: [".homelab.local", ".internal"]
+    #   permitted_ip_ranges: ["192.168.0.0/16", "10.0.0.0/8"]
+
 %s`
 
 const sshEncryptionSection = `# Defines how private keys are encrypted on disk using age.

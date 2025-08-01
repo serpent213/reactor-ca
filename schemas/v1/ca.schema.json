@@ -430,11 +430,6 @@
           "description": "Maximum number of non-self-issued intermediate certificates that may follow this certificate in a valid certification path",
           "minimum": 0,
           "maximum": 255
-        },
-        "path_length_zero": {
-          "type": "boolean",
-          "description": "Explicitly set path length to zero (can only be true when path_length is 0 or unset)",
-          "default": false
         }
       }
     },

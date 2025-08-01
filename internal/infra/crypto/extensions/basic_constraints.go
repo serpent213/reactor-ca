@@ -3,7 +3,6 @@ package extensions
 import (
 	"crypto/x509"
 	"encoding/asn1"
-	"fmt"
 )
 
 // BasicConstraintsExtension implements the X.509 Basic Constraints extension (RFC 5280)
@@ -30,22 +29,15 @@ func (e *BasicConstraintsExtension) OID() asn1.ObjectIdentifier {
 //	critical: true/false (required)
 //	ca: true/false (default: false)
 //	path_length: integer or null (default: null, no constraint)
-//	path_length_zero: true/false (default: false, explicit zero handling)
+//	           when set to 0, automatically enables zero constraint behavior
 func (e *BasicConstraintsExtension) ParseFromYAML(critical bool, data map[string]interface{}) error {
 	e.Critical = critical
 	e.CA = parseFieldAs(data, "ca", false)
 	e.PathLength = parseFieldAsPtr[int](data, "path_length")
-	e.PathLengthZero = parseFieldAs(data, "path_length_zero", false)
 
-	// Validate path_length_zero usage
-	if e.PathLengthZero && e.PathLength != nil && *e.PathLength != 0 {
-		return fmt.Errorf("path_length_zero can only be true when path_length is 0 or unset")
-	}
-
-	// If path_length_zero is true, set path_length to 0
-	if e.PathLengthZero {
-		zero := 0
-		e.PathLength = &zero
+	// Auto-detect PathLengthZero when path_length is explicitly set to 0
+	if e.PathLength != nil && *e.PathLength == 0 {
+		e.PathLengthZero = true
 	}
 
 	return nil
