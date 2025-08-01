@@ -24,7 +24,7 @@
             version = "0.4.0";
             src = ./.;
 
-            vendorHash = "sha256-e8LT/yaMAkzTXcni0I6vNSXK7NI1mHeVn1KtWIPnKmo=";
+            vendorHash = "sha256-LSl7GbmPO69JrADbhWNNk8nNDEAy690dOqg9PVi9jTE=";
 
             preBuild = ''
               go generate ./...

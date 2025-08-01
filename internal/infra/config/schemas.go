@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xeipuuv/gojsonschema"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,21 +19,39 @@ var caSchemaJSON []byte
 var hostsSchemaJSON []byte
 
 var (
-	caSchema    *gojsonschema.Schema
-	hostsSchema *gojsonschema.Schema
+	caSchema    *jsonschema.Schema
+	hostsSchema *jsonschema.Schema
 )
 
 func init() {
 	var err error
 
-	caSchema, err = gojsonschema.NewSchema(gojsonschema.NewBytesLoader(caSchemaJSON))
+	compiler := jsonschema.NewCompiler()
+
+	// Parse and add CA schema
+	caSchemaData, err := jsonschema.UnmarshalJSON(strings.NewReader(string(caSchemaJSON)))
 	if err != nil {
-		panic("failed to load embedded CA schema: " + err.Error())
+		panic("failed to unmarshal CA schema JSON: " + err.Error())
+	}
+	if err := compiler.AddResource("ca.schema.json", caSchemaData); err != nil {
+		panic("failed to add CA schema resource: " + err.Error())
+	}
+	caSchema, err = compiler.Compile("ca.schema.json")
+	if err != nil {
+		panic("failed to compile CA schema: " + err.Error())
 	}
 
-	hostsSchema, err = gojsonschema.NewSchema(gojsonschema.NewBytesLoader(hostsSchemaJSON))
+	// Parse and add hosts schema
+	hostsSchemaData, err := jsonschema.UnmarshalJSON(strings.NewReader(string(hostsSchemaJSON)))
 	if err != nil {
-		panic("failed to load embedded hosts schema: " + err.Error())
+		panic("failed to unmarshal hosts schema JSON: " + err.Error())
+	}
+	if err := compiler.AddResource("hosts.schema.json", hostsSchemaData); err != nil {
+		panic("failed to add hosts schema resource: " + err.Error())
+	}
+	hostsSchema, err = compiler.Compile("hosts.schema.json")
+	if err != nil {
+		panic("failed to compile hosts schema: " + err.Error())
 	}
 }
 
@@ -49,17 +67,13 @@ func validateCAConfig(data []byte) error {
 		return fmt.Errorf("failed to convert YAML to JSON: %w", err)
 	}
 
-	result, err := caSchema.Validate(gojsonschema.NewBytesLoader(jsonData))
-	if err != nil {
-		return fmt.Errorf("schema validation failed: %w", err)
+	var jsonInterface interface{}
+	if err := json.Unmarshal(jsonData, &jsonInterface); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	if !result.Valid() {
-		var errors []string
-		for _, desc := range result.Errors() {
-			errors = append(errors, desc.String())
-		}
-		return fmt.Errorf("configuration validation failed:\n%s", strings.Join(errors, "\n"))
+	if err := caSchema.Validate(jsonInterface); err != nil {
+		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return nil
@@ -77,17 +91,13 @@ func validateHostsConfig(data []byte) error {
 		return fmt.Errorf("failed to convert YAML to JSON: %w", err)
 	}
 
-	result, err := hostsSchema.Validate(gojsonschema.NewBytesLoader(jsonData))
-	if err != nil {
-		return fmt.Errorf("schema validation failed: %w", err)
+	var jsonInterface interface{}
+	if err := json.Unmarshal(jsonData, &jsonInterface); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	if !result.Valid() {
-		var errors []string
-		for _, desc := range result.Errors() {
-			errors = append(errors, desc.String())
-		}
-		return fmt.Errorf("configuration validation failed:\n%s", strings.Join(errors, "\n"))
+	if err := hostsSchema.Validate(jsonInterface); err != nil {
+		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return nil

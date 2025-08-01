@@ -394,13 +394,13 @@ validate-schemas:
     if [ -d "example_config" ]; then
         for config in example_config/ca*.yaml example_config/ca*.yml; do
             if [ -f "$config" ]; then
-                go tool yajsv -s schemas/v1/ca.schema.json "$config"
+                go tool jv schemas/v1/ca.schema.json "$config"
             fi
         done
 
         for config in example_config/hosts.yaml example_config/hosts.yml; do
             if [ -f "$config" ]; then
-                go tool yajsv -s schemas/v1/hosts.schema.json "$config"
+                go tool jv schemas/v1/hosts.schema.json "$config"
             fi
         done
     else

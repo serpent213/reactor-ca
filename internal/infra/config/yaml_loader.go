@@ -150,15 +150,6 @@ func (l *YAMLConfigLoader) validateExtensions(extensions domain.ExtensionsConfig
 
 // validateUnknownExtension validates unknown extension configuration
 func (l *YAMLConfigLoader) validateUnknownExtension(fields map[string]interface{}, configPath string) error {
-	// Unknown extensions must have 'oid' and 'value' fields
-	if _, hasOID := fields["oid"]; !hasOID {
-		return fmt.Errorf("%w: %s: unknown extension must have 'oid' field", domain.ErrValidation, configPath)
-	}
-
-	if _, hasValue := fields["value"]; !hasValue {
-		return fmt.Errorf("%w: %s: unknown extension must have 'value' field", domain.ErrValidation, configPath)
-	}
-
 	// Try to create and validate the unknown extension
 	unknownExt := &extensions.UnknownExtension{}
 	// Extract critical field from fields map, defaulting to false if not present
