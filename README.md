@@ -11,7 +11,7 @@
 
 A Go CLI tool to manage a homelab/small-office Certificate Authority with [age](https://age-encryption.org/) encrypted private keys.
 
-Typical usage scenario: Run it on your desktop to renew and deploy certificates for your LAN/VPN devices once a year or once a month, while keeping your CA store and config in a Git repo.
+Typical usage scenario: Run it on your desktop once a year or once a month to issue and deploy TLS certificates for your LAN/VPN devices, enabling them to provide HTTPS access without warnings. For easy management, you can keep your (encrypted) CA store and configuration within a Git repository.
 
 ## Table of Contents
 
