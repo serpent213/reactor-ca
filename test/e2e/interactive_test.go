@@ -216,7 +216,7 @@ func TestE2E_InfoDisplayAllExtensions(t *testing.T) {
   subject:
     common_name: "All Extensions Test CA"
     organization: "Extension Test Org"
-    organization_unit: "Testing Unit"
+    organizational_unit: "Testing Unit"
     country: "US"
     state: "California"
     locality: "San Francisco"
@@ -299,7 +299,7 @@ encryption:
     subject:
       common_name: "comprehensive-host.extensions-test.local"
       organization: "Extension Test Org"
-      organization_unit: "Test Host Unit"
+      organizational_unit: "Test Host Unit"
       country: "US"
       state: "California"
       locality: "San Francisco"

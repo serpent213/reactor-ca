@@ -74,7 +74,7 @@
           "maxLength": 64,
           "pattern": "^[a-zA-Z0-9\\s\\-\\._,&()]*$"
         },
-        "organization_unit": {
+        "organizational_unit": {
           "type": "string",
           "description": "Organizational Unit (OU) - inherits from CA if not specified",
           "minLength": 1,

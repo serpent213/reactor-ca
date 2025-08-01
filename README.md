@@ -368,7 +368,7 @@ ca:
   subject:
     common_name: Reactor Homelab CA
     organization: Reactor Industries
-    organization_unit: IT Department
+    organizational_unit: IT Department
     country: DE
     state: Berlin
     locality: Berlin

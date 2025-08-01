@@ -173,7 +173,7 @@ ca:
   subject:
     common_name: Reactor Homelab CA
     organization: Reactor Industries
-    organization_unit: EDV
+    organizational_unit: EDV
     country: DE                 # 2-letter country code
     state: Niedersachsen        # State or province
     locality: Springfeld        # City or locality
@@ -234,7 +234,7 @@ hosts:
     # Subject is optional and will inherit from ca.yaml if not specified (except for 'common_name').
     # subject:
     #   common_name: web.reactor.local
-    #   organization_unit: "Web Services"
+    #   organizational_unit: "Web Services"
 
     # The names (SANs) the certificate should be valid for. Make sure they match!
     alternative_names:

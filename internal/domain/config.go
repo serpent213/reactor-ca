@@ -33,13 +33,13 @@ type HostConfig struct {
 
 // SubjectConfig defines the fields for a certificate's subject.
 type SubjectConfig struct {
-	CommonName       string `yaml:"common_name"`
-	Organization     string `yaml:"organization"`
-	OrganizationUnit string `yaml:"organization_unit"`
-	Country          string `yaml:"country"`
-	State            string `yaml:"state"`
-	Locality         string `yaml:"locality"`
-	Email            string `yaml:"email"`
+	CommonName         string `yaml:"common_name"`
+	Organization       string `yaml:"organization"`
+	OrganizationalUnit string `yaml:"organizational_unit"`
+	Country            string `yaml:"country"`
+	State              string `yaml:"state"`
+	Locality           string `yaml:"locality"`
+	Email              string `yaml:"email"`
 }
 
 // Validity defines the duration for which a certificate is valid.

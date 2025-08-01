@@ -8,7 +8,7 @@ ca:
   subject:
     common_name: Reactor Homelab CA
     organization: Reactor Industries
-    organization_unit: IT Department
+    organizational_unit: IT Department
     country: DE # 2-letter country code
     state: Berlin # State or province
     locality: Berlin # City or locality

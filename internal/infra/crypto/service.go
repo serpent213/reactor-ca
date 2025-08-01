@@ -259,7 +259,7 @@ func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity dom
 	pkixName := pkix.Name{
 		CommonName:         subject.CommonName,
 		Organization:       stringToSlice(subject.Organization),
-		OrganizationalUnit: stringToSlice(subject.OrganizationUnit),
+		OrganizationalUnit: stringToSlice(subject.OrganizationalUnit),
 		Country:            stringToSlice(subject.Country),
 		Province:           stringToSlice(subject.State),
 		Locality:           stringToSlice(subject.Locality),

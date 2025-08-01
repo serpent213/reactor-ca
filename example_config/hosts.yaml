@@ -39,7 +39,7 @@ hosts:
   # IoT device with custom subject fields
   iot-gateway:
     subject:
-      organization_unit: IoT Division
+      organizational_unit: IoT Division
     alternative_names:
       dns:
         - iot.reactor.local
@@ -61,7 +61,7 @@ hosts:
   # Client certificate for user authentication (VPN, web auth, email signing)
   client-user:
     subject:
-      organization_unit: Users
+      organizational_unit: Users
     alternative_names:
       email:
         - "john.doe@reactor.local"
@@ -93,7 +93,7 @@ hosts:
   # Additional recipients for runtime decryption on the target system
   nixos-homelab:
     subject:
-      organization_unit: Infrastructure
+      organizational_unit: Infrastructure
     alternative_names:
       dns:
         - homelab.reactor.local

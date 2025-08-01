@@ -1396,8 +1396,8 @@ func (a *Application) resolveHostConfig(hostCfg domain.HostConfig, caCfg *domain
 	if resolved.Subject.Organization == "" {
 		resolved.Subject.Organization = caCfg.CA.Subject.Organization
 	}
-	if resolved.Subject.OrganizationUnit == "" {
-		resolved.Subject.OrganizationUnit = caCfg.CA.Subject.OrganizationUnit
+	if resolved.Subject.OrganizationalUnit == "" {
+		resolved.Subject.OrganizationalUnit = caCfg.CA.Subject.OrganizationalUnit
 	}
 	if resolved.Subject.Country == "" {
 		resolved.Subject.Country = caCfg.CA.Subject.Country

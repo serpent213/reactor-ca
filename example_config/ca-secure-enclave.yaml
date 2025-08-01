@@ -6,7 +6,7 @@ ca:
   subject:
     common_name: Reactor Homelab CA
     organization: Reactor Industries
-    organization_unit: IT Department
+    organizational_unit: IT Department
     country: US
     state: California
     locality: San Francisco
