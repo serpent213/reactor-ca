@@ -1361,6 +1361,45 @@ func (a *Application) ValidateCAConfig(skipKeyWarnings bool) error {
 	return nil
 }
 
+// ValidateHostKeyAlgorithm checks if existing host key matches the configured algorithm.
+// Uses cache-aware approach - only validates if key can be decrypted without authentication prompts.
+func (a *Application) ValidateHostKeyAlgorithm(hostID string, hostCfg domain.HostConfig, caCfg *domain.CAConfig) {
+	keyExists, err := a.store.HostKeyExists(hostID)
+	if err != nil || !keyExists {
+		return // Skip if key doesn't exist or can't check
+	}
+
+	// Determine correct crypto service (same logic as issueHostWithKey)
+	var hostCryptoSvc domain.CryptoService
+	if hostCfg.Encryption != nil && len(hostCfg.Encryption.AdditionalRecipients) > 0 {
+		var err error
+		hostCryptoSvc, err = a.createHostCryptoService(caCfg, &hostCfg)
+		if err != nil {
+			return // Skip if can't create crypto service
+		}
+	} else {
+		// Use base crypto service for hosts without additional recipients
+		hostCryptoSvc = a.cryptoSvc
+	}
+
+	hostKeyData, err := a.store.LoadHostKey(hostID)
+	if err != nil {
+		return // Skip if can't load key data
+	}
+
+	// Try to decrypt - only validate if succeeds (cached or immediate auth)
+	// Same pattern as ValidateCAConfig to avoid authentication prompts
+	hostKey, err := hostCryptoSvc.DecryptPrivateKey(hostKeyData)
+	if err == nil {
+		resolvedCfg := a.resolveHostConfig(hostCfg, caCfg)
+		if !a.keyAlgorithmMatches(hostKey, resolvedCfg.KeyAlgorithm) {
+			a.logger.Warning("Existing key for '%s' does not match configured algorithm (%s)", hostID, resolvedCfg.KeyAlgorithm)
+			ui.Warning("Existing key for '%s' does not match configured algorithm (%s). Use '--rekey' to regenerate.", hostID, resolvedCfg.KeyAlgorithm)
+		}
+	}
+	// If decryption fails (auth required, etc.), silently skip validation
+}
+
 // ResolveHostConfig applies inheritance from CA config and validates host config.
 func (a *Application) ResolveHostConfig(hostID string, skipKeyWarnings bool) (domain.HostConfig, error) {
 	hostsCfg, err := a.configLoader.LoadHosts()
@@ -1380,9 +1419,10 @@ func (a *Application) ResolveHostConfig(hostID string, skipKeyWarnings bool) (do
 
 	resolvedHostCfg := a.resolveHostConfig(hostCfg, caCfg)
 
-	// Skip key algorithm checking in ResolveHostConfig to avoid password prompts.
-	// Algorithm mismatches will be detected during actual key operations when
-	// authentication is already required.
+	// Check for key algorithm mismatch if host key exists (skip if skipKeyWarnings)
+	if !skipKeyWarnings {
+		a.ValidateHostKeyAlgorithm(hostID, hostCfg, caCfg)
+	}
 
 	return resolvedHostCfg, nil
 }
