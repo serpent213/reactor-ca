@@ -642,7 +642,6 @@
       "required": [
         "oid"
       ],
-      "additionalProperties": false,
       "properties": {
         "critical": {
           "type": "boolean",
@@ -664,8 +663,18 @@
             "base64"
           ],
           "properties": {
-            "critical": true,
-            "oid": true,
+            "critical": {
+              "type": "boolean",
+              "description": "Whether this extension is critical",
+              "default": false
+            },
+            "oid": {
+              "type": "string",
+              "description": "Object Identifier (OID) in dotted decimal notation",
+              "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
+              "minLength": 3,
+              "maxLength": 512
+            },
             "base64": {
               "type": "string",
               "description": "Base64-encoded extension value",
@@ -681,12 +690,22 @@
             "hex"
           ],
           "properties": {
-            "critical": true,
-            "oid": true,
+            "critical": {
+              "type": "boolean",
+              "description": "Whether this extension is critical",
+              "default": false
+            },
+            "oid": {
+              "type": "string",
+              "description": "Object Identifier (OID) in dotted decimal notation",
+              "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
+              "minLength": 3,
+              "maxLength": 512
+            },
             "hex": {
               "type": "string",
               "description": "Hexadecimal-encoded extension value (even number of hex digits)",
-              "pattern": "^[0-9A-Fa-f]*$",
+              "pattern": "^([0-9A-Fa-f]{2})+$",
               "minLength": 2
             }
           },
@@ -698,8 +717,18 @@
             "asn1"
           ],
           "properties": {
-            "critical": true,
-            "oid": true,
+            "critical": {
+              "type": "boolean",
+              "description": "Whether this extension is critical",
+              "default": false
+            },
+            "oid": {
+              "type": "string",
+              "description": "Object Identifier (OID) in dotted decimal notation",
+              "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
+              "minLength": 3,
+              "maxLength": 512
+            },
             "asn1": {
               "$ref": "#/$defs/ASN1Value"
             }
@@ -711,7 +740,6 @@
     "ASN1Value": {
       "type": "object",
       "description": "ASN.1 value with strict type validation - exactly one type must be specified",
-      "additionalProperties": false,
       "oneOf": [
         {
           "description": "ASN.1 UTF8String value",
@@ -735,9 +763,7 @@
           "properties": {
             "int": {
               "type": "integer",
-              "description": "Integer value for ASN.1 encoding",
-              "minimum": -2147483648,
-              "maximum": 2147483647
+              "description": "Integer value for ASN.1 encoding"
             }
           }
         },

@@ -34,6 +34,8 @@ mcp__tree-sitter__register_project_tool --path /Users/self/Documents/projects/Re
 
 ## Development Commands
 
+**IMPORTANT**: If you want to use the `cd` shell command, ALWAYS wrap it like `sh -c "cd dir && ls"`.
+
 This project uses [just](https://github.com/casey/just) for task automation. Run `just help` to see available commands.
 
 ### Common Commands
