@@ -438,7 +438,8 @@ hosts:
     #   custom_homelab_tag:          # Custom extension for environment identification
     #     critical: false
     #     oid: "1.3.6.1.4.1.99999.1"
-    #     value: "asn1:string:homelab-production"
+    #     asn1:
+    #       string: "homelab-production"
 
     # Export paths (optional) - files written during 'host issue'
     export:
@@ -680,37 +681,69 @@ extensions:
 #### Custom Extensions (Unknown OIDs)
 Define custom extensions using Object Identifiers (OIDs) with flexible encoding options. Start the extension name with `custom_`.
 
+##### Value Encoding Notation
+
+ReactorCA supports multiple encoding formats for custom extension values:
+
+**Simple Encodings:**
+- `base64: "data"` - Base64-encoded binary data
+- `hex: "data"` - Hexadecimal-encoded binary data
+
+**ASN.1 Types:**
+- `asn1: {string: "text"}` - UTF-8 string
+- `asn1: {int: 123}` - Integer value
+- `asn1: {bool: true}` - Boolean value
+- `asn1: {oid: "1.2.3.4"}` - Object identifier
+- `asn1: {sequence: [{string: "foo"}, {int: 64}]}` - SEQUENCE of values
+- `asn1: {octetstring: {string: "wrapped data"}}` - OCTET STRING wrapper
+- `asn1: {bitstring: "10110000"}` - BIT STRING from binary string
+- `asn1: {bitstring: [0, 2, 3]}` - BIT STRING from bit positions
+
+##### Examples
+
 ```yaml
 extensions:
   custom_policy_extension:
-    critical: false
     oid: "1.3.6.1.4.1.12345.1.2.3"       # Your organization's OID space
-    value: "base64:SGVsbG8gV29ybGQ="     # Base64-encoded data
+    base64: "SGVsbG8gV29ybGQ="           # Base64-encoded data
 
-  custom_metadata:
-    critical: false
-    oid: "1.3.6.1.4.1.12345.2"
-    value: "hex:48656c6c6f20576f726c64"  # Hex-encoded data
+  custom_device_metadata:
+    oid: "1.3.6.1.4.1.12345.100"
+    # Structured device information using SEQUENCE
+    asn1:
+      sequence:
+        - string: "raspberry-pi"
+        - string: "homelab"
+        - int: 2024
 
-  custom_asn1_string:
-    critical: false
+  custom_permissions:
+    oid: "1.3.6.1.4.1.12345.200"
+    # Permission flags using BIT STRING (read=bit0, write=bit1, admin=bit3)
+    asn1:
+      bitstring: [0, 1, 3]
+
+  custom_wrapped_data:
+    oid: "1.3.6.1.4.1.12345.300"
+    # OCTET STRING containing UTF8 string
+    asn1:
+      octetstring:
+        string: "Environment=Production"
+
+  custom_simple_tag:
     oid: "1.3.6.1.4.1.12345.3"
-    value: "asn1:string:Environment=Production"  # ASN.1 UTF8String
+    asn1:
+      string: "homelab-production"  # ASN.1 UTF8String
 
-  custom_asn1_integer:
-    critical: false
+  custom_build_number:
     oid: "1.3.6.1.4.1.12345.4"
-    value: "asn1:int:42"                 # ASN.1 INTEGER
+    asn1:
+      int: 42                 # ASN.1 INTEGER
 
-  custom_asn1_boolean:
-    critical: false
+  custom_enabled_flag:
+    critical: true
     oid: "1.3.6.1.4.1.12345.5"
-    value: "asn1:bool:true"              # ASN.1 BOOLEAN
-
-  custom_asn1_oid:
-    critical: false
-    oid: "1.3.6.1.4.1.12345.6"
-    value: "asn1:oid:1.2.840.113549.1.1.11"  # ASN.1 OBJECT IDENTIFIER
+    asn1:
+      bool: true              # ASN.1 BOOLEAN
 ```
 
 [↑ TOC](#table-of-contents)

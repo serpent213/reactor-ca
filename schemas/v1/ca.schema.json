@@ -640,8 +640,7 @@
       "type": "object",
       "description": "Custom extension specified by OID",
       "required": [
-        "oid",
-        "value"
+        "oid"
       ],
       "additionalProperties": false,
       "properties": {
@@ -652,14 +651,124 @@
         },
         "oid": {
           "type": "string",
-          "description": "Object Identifier (OID) in dotted decimal notation",
-          "pattern": "^[0-9]+(\\.[0-9]+)*$"
-        },
-        "value": {
-          "type": "string",
-          "description": "Extension value. Supports multiple encodings: base64:, hex:, asn1:string:, asn1:int:, asn1:bool:, asn1:oid:"
+          "description": "Object Identifier (OID) in dotted decimal notation (minimum 2 arcs, maximum 128 arcs, each arc 0-4294967295)",
+          "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
+          "minLength": 3,
+          "maxLength": 512
         }
-      }
+      },
+      "oneOf": [
+        {
+          "description": "Extension with base64-encoded value",
+          "required": [
+            "base64"
+          ],
+          "properties": {
+            "critical": true,
+            "oid": true,
+            "base64": {
+              "type": "string",
+              "description": "Base64-encoded extension value",
+              "pattern": "^[A-Za-z0-9+/]+=*$",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Extension with hexadecimal-encoded value",
+          "required": [
+            "hex"
+          ],
+          "properties": {
+            "critical": true,
+            "oid": true,
+            "hex": {
+              "type": "string",
+              "description": "Hexadecimal-encoded extension value (even number of hex digits)",
+              "pattern": "^[0-9A-Fa-f]*$",
+              "minLength": 2
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Extension with ASN.1 structured value",
+          "required": [
+            "asn1"
+          ],
+          "properties": {
+            "critical": true,
+            "oid": true,
+            "asn1": {
+              "$ref": "#/$defs/ASN1Value"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ASN1Value": {
+      "type": "object",
+      "description": "ASN.1 value with strict type validation - exactly one type must be specified",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "description": "ASN.1 UTF8String value",
+          "required": [
+            "string"
+          ],
+          "properties": {
+            "string": {
+              "type": "string",
+              "description": "UTF-8 string value for ASN.1 encoding",
+              "minLength": 1,
+              "maxLength": 65535
+            }
+          }
+        },
+        {
+          "description": "ASN.1 INTEGER value",
+          "required": [
+            "int"
+          ],
+          "properties": {
+            "int": {
+              "type": "integer",
+              "description": "Integer value for ASN.1 encoding",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
+          }
+        },
+        {
+          "description": "ASN.1 BOOLEAN value",
+          "required": [
+            "bool"
+          ],
+          "properties": {
+            "bool": {
+              "type": "boolean",
+              "description": "Boolean value for ASN.1 encoding"
+            }
+          }
+        },
+        {
+          "description": "ASN.1 OBJECT IDENTIFIER value",
+          "required": [
+            "oid"
+          ],
+          "properties": {
+            "oid": {
+              "type": "string",
+              "description": "Object Identifier (OID) value for ASN.1 encoding",
+              "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
+              "minLength": 3,
+              "maxLength": 512
+            }
+          }
+        }
+      ]
     },
     "CRLDistributionPointsExtension": {
       "type": "object",

@@ -161,7 +161,14 @@ func (l *YAMLConfigLoader) validateUnknownExtension(fields map[string]interface{
 
 	// Try to create and validate the unknown extension
 	unknownExt := &extensions.UnknownExtension{}
-	if err := unknownExt.ParseFromYAML(false, fields); err != nil {
+	// Extract critical field from fields map, defaulting to false if not present
+	critical := false
+	if criticalVal, exists := fields["critical"]; exists {
+		if criticalBool, ok := criticalVal.(bool); ok {
+			critical = criticalBool
+		}
+	}
+	if err := unknownExt.ParseFromYAML(critical, fields); err != nil {
 		return fmt.Errorf("%w: %s: %v", domain.ErrValidation, configPath, err)
 	}
 
