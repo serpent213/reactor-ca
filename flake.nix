@@ -21,10 +21,10 @@
         packages = {
           reactor-ca = pkgs.buildGoModule {
             pname = "reactor-ca";
-            version = "0.4.0";
+            version = "0.5.0";
             src = ./.;
 
-            vendorHash = "sha256-LSl7GbmPO69JrADbhWNNk8nNDEAy690dOqg9PVi9jTE=";
+            vendorHash = "sha256-ZenB176n/CEU3C0JqCaCELAyH67AIxD/vikHeDo0hVE=";
 
             preBuild = ''
               go generate ./...

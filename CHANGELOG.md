@@ -5,6 +5,43 @@ All notable changes to ReactorCA will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-08-01
+
+### Added
+- **X.509 extensions**: Full support for certificate extensions (Key Usage, Basic Constraints, CRL Distribution Points, etc.)
+- **CA export-key command**: New `ca export-key` command for exporting CA private keys
+- **Browser compatibility testing**: Comprehensive browser testing with Chrome, Firefox, Safari across multiple certificate algorithms
+- **Cross-platform testing**: Windows and macOS CI test runners
+- **Runtime schema validation**: JSON schema validation of configuration files at runtime
+- **OpenSSL integration**: `--openssl` flag for certificate info commands to show OpenSSL-compatible output
+
+### Changed
+- **Subject fields**: Empty subject name fields now properly set to nil
+  - `organization_unit` renamed to `organizational_unit`, config migration required!
+- **JSON schema library**: Migrated to santhosh-tekuri/jsonschema for better validation
+- **Schema strictness**: Added `additionalProperties: false` for stricter YAML validation
+- **Certificate extensions**: Extensions now displayed in certificate info output
+- **Deploy variable substitution**: Added `${key_encrypted}` variable for deploy scripts
+- **Algorithm names**: Support for lowercase algorithm names in configuration
+- **Days calculation**: Improved calendar days calculations and rounding in certificate info
+- **Path resolution**: Enhanced path resolution with `~` support in export paths
+- **Console output**: Better status and error message formatting
+- **Build versioning**: Version string now includes Git commit information
+
+### Fixed
+- **Key type validation**: Proper validation for host certificate key types
+- **Path length constraints**: Auto-detection instead of explicit `path_length_zero` configuration
+- **Schema validation**: Corrected YAML and JSON schema definitions
+- **CA key usage**: Restricted key usage appropriately for CA certificates
+- **Cross-platform compatibility**: PTY shell support ported to Windows
+- **Certificate validation**: Stricter validation for CA import operations
+
+### Improved
+- **Documentation**: Enhanced README with TOC, examples, and browser compatibility matrix
+- **Test coverage**: Expanded e2e and integration test suites
+- **Build system**: Improved cross-compilation and schema validation processes
+- **Error messages**: Better schema validation error reporting
+
 ## [0.4.0] - 2025-07-28
 
 ### Added
