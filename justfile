@@ -170,7 +170,7 @@ cov type="all":
         (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/unit.out | grep -v 'internal/testutil/') > coverage/unit.filtered.out
         mv coverage/unit.filtered.out coverage/unit.out
         go tool cover -html=coverage/unit.out -o coverage/unit.html
-        go tool cover -func=coverage/unit.out | tail -1
+        go tool cover -func=coverage/unit.out | tail -1 | sed -E 's/\s+/ /g'
     elif [[ "{{type}}" =~ ^i ]]; then # integration
         # Run integration tests with traditional text coverage profile
         go test -coverprofile=coverage/integration.out -covermode=atomic -tags integration -coverpkg=./cmd/...,./internal/... ./test/integration/...
@@ -178,7 +178,7 @@ cov type="all":
         (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/integration.out | grep -v 'internal/testutil/') > coverage/integration.filtered.out
         mv coverage/integration.filtered.out coverage/integration.out
         go tool cover -html=coverage/integration.out -o coverage/integration.html
-        go tool cover -func=coverage/integration.out | tail -1
+        go tool cover -func=coverage/integration.out | tail -1 | sed -E 's/\s+/ /g'
     elif [[ "{{type}}" =~ ^e ]]; then # e2e
         # Clean up any existing e2e coverage data
         rm -rf coverage/e2e-covdata
@@ -190,7 +190,7 @@ cov type="all":
         (echo "mode: atomic"; grep "reactor.de/reactor-ca" coverage/e2e.out | grep -v 'internal/testutil/') > coverage/e2e.filtered.out
         mv coverage/e2e.filtered.out coverage/e2e.out
         go tool cover -html=coverage/e2e.out -o coverage/e2e.html
-        go tool cover -func=coverage/e2e.out | tail -1
+        go tool cover -func=coverage/e2e.out | tail -1 | sed -E 's/\s+/ /g'
     elif [[ "{{type}}" =~ ^a ]]; then # all
         echo "Running unit tests with coverage..."
         just cov unit
@@ -230,7 +230,7 @@ cov type="all":
         # Generate HTML report and show summary
         go tool cover -html=coverage/merged.out -o coverage/merged.html
         echo "=== Total Coverage ==="
-        go tool cover -func=coverage/merged.out | tail -1
+        go tool cover -func=coverage/merged.out | tail -1 | sed -E 's/\s+/ /g'
 
         # Generate coverage badge data
         just cov-badge
