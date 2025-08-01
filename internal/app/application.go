@@ -240,6 +240,8 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 		return err
 	}
 	a.logger.Log(fmt.Sprintf("Generated private key with algorithm %s", cfg.CA.KeyAlgorithm))
+	keyType := ui.GetPrivateKeyTypeDetails(key)
+	ui.Info("Generated new %s private key", keyType)
 
 	cert, err := cryptoSvc.CreateRootCertificate(cfg, key)
 	if err != nil {
@@ -705,6 +707,8 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 			}
 			return fmt.Errorf("failed to decrypt host key: %w", err)
 		}
+		keyType := ui.GetPrivateKeyTypeDetails(hostKey)
+		ui.Info("Reusing existing %s private key", keyType)
 	}
 
 	hostCert, err := a.cryptoSvc.CreateHostCertificate(&resolvedHostCfg, caCert, caKey, hostKey.Public())
@@ -770,14 +774,22 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 		}
 		a.logger.Log(fmt.Sprintf("Exported encrypted private key to %s", encryptedKeyPath))
 	}
+
+	ui.Success("Successfully issued certificate for “%s”", hostID)
 	return nil
 }
 
 // DeployHost runs the deployment command for a host.
 func (a *Application) DeployHost(ctx context.Context, hostID string) error {
-	return a.withHostKey(ctx, hostID, func(hostKey crypto.Signer) error {
+	err := a.withHostKey(ctx, hostID, func(hostKey crypto.Signer) error {
 		return a.deployHostWithKey(ctx, hostID, hostKey)
 	})
+	if err != nil {
+		return err
+	}
+
+	ui.Success("Successfully deployed certificate for “%s”", hostID)
+	return nil
 }
 
 // deployHostWithKey implements the business logic for deploying a host certificate.

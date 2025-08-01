@@ -87,14 +87,16 @@ re-issue and re-deploy all host certificates after this operation.`),
 		app := getApp(cmd)
 		force, _ := cmd.Flags().GetBool("force")
 
+		ui.Action("Creating new CA private key and certificate (re-key operation)")
+
 		if !force {
 			yellow := color.New(color.FgYellow).SprintFunc()
 			red := color.New(color.FgRed).SprintFunc()
 
-			fmt.Println(yellow("You are about to perform a CA re-key operation."))
-			fmt.Println(yellow("This will generate a new private key and certificate for your root CA."))
-			fmt.Println(red("This action is irreversible and will invalidate all previously issued certificates."))
-			fmt.Println(red("You must re-issue and deploy all host certificates afterwards."))
+			fmt.Println(yellow("  You are about to perform a CA re-key operation."))
+			fmt.Println(yellow("  This will generate a new private key and certificate for your root CA."))
+			fmt.Println(red("  This action is irreversible and will invalidate all previously issued certificates."))
+			fmt.Println(red("  You must re-issue and deploy all host certificates afterwards.") + "\n")
 		}
 
 		// Validate CA configuration (skip key warnings since rekey will fix them)
@@ -103,7 +105,6 @@ re-issue and re-deploy all host certificates after this operation.`),
 			return err
 		}
 
-		ui.Action("Creating new CA private key and certificate (re-key operation)")
 		err = app.RekeyCA(cmd.Context(), force)
 		if err != nil {
 			return err

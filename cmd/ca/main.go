@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"regexp"
 	"strings"
 
 	"reactor.de/reactor-ca/cmd/ca/commands"
@@ -19,7 +20,14 @@ func main() {
 	}
 
 	if err := commands.Execute(version); err != nil {
-		ui.Error("%s", strings.ToUpper(err.Error()[:1])+err.Error()[1:])
+		errorMsg := strings.ToUpper(err.Error()[:1]) + err.Error()[1:]
+		errorMsg = strings.ReplaceAll(errorMsg, "\n", "\n  ")
+
+		// Remove schema references from error messages
+		schemaRefRe := regexp.MustCompile(` with 'schema://\w+#'`)
+		errorMsg = schemaRefRe.ReplaceAllString(errorMsg, "")
+
+		ui.Error("%s", errorMsg)
 		os.Exit(1)
 	}
 }

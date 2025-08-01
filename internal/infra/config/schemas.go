@@ -33,10 +33,10 @@ func init() {
 	if err != nil {
 		panic("failed to unmarshal CA schema JSON: " + err.Error())
 	}
-	if err := compiler.AddResource("ca.schema.json", caSchemaData); err != nil {
+	if err := compiler.AddResource("schema://ca", caSchemaData); err != nil {
 		panic("failed to add CA schema resource: " + err.Error())
 	}
-	caSchema, err = compiler.Compile("ca.schema.json")
+	caSchema, err = compiler.Compile("schema://ca")
 	if err != nil {
 		panic("failed to compile CA schema: " + err.Error())
 	}
@@ -46,10 +46,10 @@ func init() {
 	if err != nil {
 		panic("failed to unmarshal hosts schema JSON: " + err.Error())
 	}
-	if err := compiler.AddResource("hosts.schema.json", hostsSchemaData); err != nil {
+	if err := compiler.AddResource("schema://hosts", hostsSchemaData); err != nil {
 		panic("failed to add hosts schema resource: " + err.Error())
 	}
-	hostsSchema, err = compiler.Compile("hosts.schema.json")
+	hostsSchema, err = compiler.Compile("schema://hosts")
 	if err != nil {
 		panic("failed to compile hosts schema: " + err.Error())
 	}

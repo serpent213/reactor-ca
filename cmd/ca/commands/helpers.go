@@ -59,7 +59,7 @@ func hostIDOrAllFlag(allFlagName string) cobra.PositionalArgs {
 
 // processHostCmd abstracts the logic for running a command against one or all hosts.
 func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
-	singularActionMsg, pluralActionMsg, successMsg string,
+	singularActionMsg, pluralActionMsg string,
 	actionFunc func(ctx context.Context, hostID string) error,
 ) error {
 	app := getApp(cmd)
@@ -97,9 +97,6 @@ func processHostCmd(cmd *cobra.Command, args []string, allFlagName string,
 				continue
 			}
 			return err
-		}
-		if successMsg != "" {
-			ui.Success(successMsg, id)
 		}
 	}
 

@@ -272,6 +272,38 @@ func getKeyTypeDetails(pubKey interface{}) string {
 	}
 }
 
+// GetPrivateKeyTypeDetails returns a human-readable description of the private key algorithm
+func GetPrivateKeyTypeDetails(key interface{}) string {
+	switch k := key.(type) {
+	case *rsa.PrivateKey:
+		switch k.N.BitLen() {
+		case 2048:
+			return "RSA2048"
+		case 3072:
+			return "RSA3072"
+		case 4096:
+			return "RSA4096"
+		default:
+			return fmt.Sprintf("RSA%d", k.N.BitLen())
+		}
+	case *ecdsa.PrivateKey:
+		switch k.Curve.Params().Name {
+		case "P-256":
+			return "ECP256"
+		case "P-384":
+			return "ECP384"
+		case "P-521":
+			return "ECP521"
+		default:
+			return "ECDSA"
+		}
+	case ed25519.PrivateKey:
+		return "ED25519"
+	default:
+		return "Unknown"
+	}
+}
+
 // printCertExtensions displays certificate extensions in a readable format
 func printCertExtensions(cert *x509.Certificate) {
 	// Comprehensive extension name mapping with all known extensions
