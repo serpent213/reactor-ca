@@ -273,11 +273,12 @@ func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity dom
 		}
 	}
 
+	now := time.Now()
 	return &x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               pkixName,
-		NotBefore:             time.Now().Add(-5 * time.Minute).UTC(),
-		NotAfter:              time.Now().Add(validity.ToDuration()).UTC(),
+		NotBefore:             now.Add(-5 * time.Minute).UTC(),
+		NotAfter:              now.AddDate(validity.Years, validity.Months, validity.Days).UTC(),
 		BasicConstraintsValid: true,
 	}, nil
 }

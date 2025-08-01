@@ -36,8 +36,11 @@ func formatDurationParts(duration time.Duration, p *message.Printer) string {
 	} else if days <= 365 {
 		return p.Sprintf("%d days", days)
 	} else {
-		// Calculate years with 1 decimal place
-		years := float64(days) / 365.0
+		// Calculate years with 1 decimal place using proper calendar arithmetic
+		now := time.Now()
+		oneYearLater := now.AddDate(1, 0, 0)
+		daysInYear := float64(oneYearLater.Sub(now).Hours() / 24)
+		years := float64(days) / daysInYear
 		return p.Sprintf("%d days (%.1f years)", days, years)
 	}
 }
