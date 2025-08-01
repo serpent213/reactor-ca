@@ -1,7 +1,7 @@
 [![asciicast](docs/assets/asciinema_thumbnail.webp)](https://asciinema.org/a/730862)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-66.1%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-65.5%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 
@@ -53,7 +53,10 @@ Typical usage scenario: Run it on your desktop to renew and deploy certificates 
     * [Subject Key Identifier](#subject-key-identifier)
     * [Authority Key Identifier](#authority-key-identifier)
     * [Name Constraints](#name-constraints)
+    * [CRL Distribution Points](#crl-distribution-points)
     * [Custom Extensions (Unknown OIDs)](#custom-extensions-unknown-oids)
+      * [Value Encoding Notation](#value-encoding-notation)
+      * [Examples](#examples)
 * [Store Structure](#store-structure)
 * [Cryptographic Options](#cryptographic-options)
   * [Supported Key Algorithms](#supported-key-algorithms)

@@ -58,6 +58,12 @@ just test unit        # Unit tests only
 just test integration # Integration tests only
 just test e2e         # End-to-end tests only
 
+# Direct Go test commands with build tags
+go test -v ./cmd/... ./internal/...              # Unit tests (default, no tags)
+go test -v -tags integration ./test/integration/... # Integration tests
+go test -v -tags e2e ./test/e2e/...                 # End-to-end tests
+go test -v -tags browser ./test/e2e/... -timeout=10m # Browser compatibility tests
+
 # Full CI pipeline
 just ci
 
