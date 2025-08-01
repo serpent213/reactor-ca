@@ -172,24 +172,24 @@
     },
     "Validity": {
       "type": "object",
-      "description": "Certificate validity period - specify any combination of years, months, days",
+      "description": "Certificate validity period - all specified values are added together (e.g., years: 1, months: 6, days: 15 = 1 year, 6 months, 15 days total). At least one period must be specified.",
       "additionalProperties": false,
       "properties": {
         "years": {
           "type": "integer",
-          "description": "Number of years the certificate is valid",
+          "description": "Number of years to add to validity period",
           "minimum": 0,
           "maximum": 10
         },
         "months": {
           "type": "integer",
-          "description": "Number of months the certificate is valid",
+          "description": "Number of months to add to validity period",
           "minimum": 0,
           "maximum": 120
         },
         "days": {
           "type": "integer",
-          "description": "Number of days the certificate is valid",
+          "description": "Number of days to add to validity period",
           "minimum": 0,
           "maximum": 3650
         }
@@ -209,6 +209,22 @@
           "required": [
             "days"
           ]
+        }
+      ],
+      "examples": [
+        {
+          "years": 1
+        },
+        {
+          "months": 6
+        },
+        {
+          "days": 365
+        },
+        {
+          "years": 1,
+          "months": 6,
+          "days": 15
         }
       ]
     },
@@ -296,8 +312,8 @@
           "items": {
             "type": "string",
             "description": "Age public key or SSH public key",
-            "pattern": "^(age|ssh-)",
-            "errorMessage": "Recipient must be either an SSH public key (starting with 'ssh-') or age recipient string (starting with 'age')"
+            "pattern": "^(age1|ssh-)",
+            "errorMessage": "Recipient must be either an SSH public key (starting with 'ssh-') or age recipient string (starting with 'age1')"
           },
           "uniqueItems": true
         }
@@ -464,7 +480,7 @@
           "items": {
             "type": "string",
             "description": "Object Identifier (OID) in dotted decimal notation",
-            "pattern": "^[0-9]+(\\.[0-9]+)*$",
+            "pattern": "^[0-2]\\.[0-9]+(\\.[0-9]+)*$",
             "errorMessage": "OID must be in dotted decimal notation (e.g., '1.2.3.4')"
           },
           "uniqueItems": true
@@ -492,7 +508,7 @@
         },
         "manual_value": {
           "type": "string",
-          "description": "Manual key identifier value (required when method is 'manual'). Supports hex: prefix for hexadecimal encoding",
+          "description": "Manual key identifier value (required when method is 'manual'). Base64, unless prefixed with hex: for hexadecimal encoding",
           "pattern": "^(hex:[0-9A-Fa-f]+|[0-9A-Za-z+/]+=*)$",
           "errorMessage": "Manual value must be either hexadecimal (hex:ABC123) or base64 encoded string"
         }
@@ -510,7 +526,7 @@
         },
         "key_id": {
           "type": "string",
-          "description": "Authority key identifier value. Supports hex: prefix for hexadecimal encoding",
+          "description": "Authority key identifier value. Base64, unless prefixed with hex: for hexadecimal encoding",
           "pattern": "^(hex:[0-9A-Fa-f]+|[0-9A-Za-z+/]+=*)$",
           "errorMessage": "Key ID must be either hexadecimal (hex:ABC123) or base64 encoded string"
         }
@@ -550,7 +566,7 @@
           "items": {
             "type": "string",
             "description": "IP address range in CIDR notation (e.g., '192.168.0.0/16')",
-            "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$|^([0-9a-fA-F:]+)/[0-9]{1,3}$",
+            "pattern": "^([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]{1,2})$|^([0-9a-fA-F:]+/[0-9]{1,3})$",
             "errorMessage": "IP range must be in CIDR notation (e.g., '192.168.0.0/16' for IPv4 or '2001:db8::/32' for IPv6)"
           },
           "uniqueItems": true
@@ -561,7 +577,7 @@
           "items": {
             "type": "string",
             "description": "IP address range in CIDR notation (e.g., '192.168.0.0/16')",
-            "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$|^([0-9a-fA-F:]+)/[0-9]{1,3}$",
+            "pattern": "^([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]{1,2})$|^([0-9a-fA-F:]+/[0-9]{1,3})$",
             "errorMessage": "IP range must be in CIDR notation (e.g., '192.168.0.0/16' for IPv4 or '2001:db8::/32' for IPv6)"
           },
           "uniqueItems": true
