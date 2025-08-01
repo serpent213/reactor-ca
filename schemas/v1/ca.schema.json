@@ -327,6 +327,9 @@
         },
         "name_constraints": {
           "$ref": "#/$defs/NameConstraintsExtension"
+        },
+        "crl_distribution_points": {
+          "$ref": "#/$defs/CRLDistributionPointsExtension"
         }
       }
     },
@@ -596,6 +599,43 @@
         }
       }
     },
+    "DistributionPoint": {
+      "type": "object",
+      "description": "A single CRL distribution point",
+      "required": [
+        "urls"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "urls": {
+          "type": "array",
+          "description": "Array of URLs for this distribution point",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "description": "Array of CRL reasons (optional)",
+          "items": {
+            "type": "string",
+            "enum": [
+              "unspecified",
+              "key_compromise",
+              "ca_compromise",
+              "affiliation_changed",
+              "superseded",
+              "cessation_of_operation",
+              "certificate_hold",
+              "privilege_withdrawn",
+              "aa_compromise"
+            ]
+          }
+        }
+      }
+    },
     "UnknownExtension": {
       "type": "object",
       "description": "Custom extension specified by OID",
@@ -618,6 +658,29 @@
         "value": {
           "type": "string",
           "description": "Extension value. Supports multiple encodings: base64:, hex:, asn1:string:, asn1:int:, asn1:bool:, asn1:oid:"
+        }
+      }
+    },
+    "CRLDistributionPointsExtension": {
+      "type": "object",
+      "description": "CRL Distribution Points extension with structured configuration",
+      "required": [
+        "distribution_points"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "boolean",
+          "description": "Whether this extension is critical",
+          "default": false
+        },
+        "distribution_points": {
+          "type": "array",
+          "description": "Array of CRL distribution points",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/DistributionPoint"
+          }
         }
       }
     }

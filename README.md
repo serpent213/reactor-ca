@@ -649,8 +649,36 @@ extensions:
       - "public.example.com"             # Excludes URIs with public.example.com domain
 ```
 
+#### CRL Distribution Points
+Specifies where Certificate Revocation Lists (CRLs) can be retrieved for checking certificate revocation status. Supports multiple distribution points with optional reason codes.
+
+```yaml
+extensions:
+  crl_distribution_points:
+    critical: false                      # Usually not critical for compatibility
+    distribution_points:
+      - urls:
+          - "http://crl.example.com/ca.crl"           # HTTP CRL endpoint
+          - "ldap://ldap.example.com/cn=CA,dc=example,dc=com"  # LDAP CRL endpoint
+        reasons: [key_compromise, ca_compromise]      # Optional: specific revocation reasons
+      - urls:
+          - "http://backup-crl.example.com/ca.crl"    # Backup CRL endpoint
+        # No reasons specified = all revocation reasons
+```
+
+**Supported CRL Reasons**:
+- `unspecified` - General revocation
+- `key_compromise` - Private key compromised
+- `ca_compromise` - CA key compromised
+- `affiliation_changed` - Subject's affiliation changed
+- `superseded` - Certificate replaced
+- `cessation_of_operation` - Entity ceased operation
+- `certificate_hold` - Temporary revocation
+- `privilege_withdrawn` - Privileges revoked
+- `aa_compromise` - Attribute authority compromised
+
 #### Custom Extensions (Unknown OIDs)
-Define custom extensions using Object Identifiers (OIDs) with flexible encoding options.
+Define custom extensions using Object Identifiers (OIDs) with flexible encoding options. Start the extension name with `custom_`.
 
 ```yaml
 extensions:

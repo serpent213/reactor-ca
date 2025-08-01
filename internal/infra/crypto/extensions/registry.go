@@ -101,6 +101,11 @@ func (r *Registry) registerBuiltinExtensions() {
 	r.extensions["name_constraints"] = func() domain.Extension {
 		return &NameConstraintsExtension{}
 	}
+
+	// CRL Distribution Points Extension (structured)
+	r.extensions["crl_distribution_points"] = func() domain.Extension {
+		return &CRLDistributionPointsExtension{}
+	}
 }
 
 // parseFieldAs provides type-safe field parsing utilities for extensions

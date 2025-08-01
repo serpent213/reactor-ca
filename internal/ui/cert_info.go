@@ -343,7 +343,7 @@ func printCertExtensions(cert *x509.Certificate) {
 
 		displayName := cyan(name)
 		if ext.Critical {
-			displayName = red("! ") + displayName
+			displayName = displayName + red(" !")
 		}
 
 		// Hide OID for known extensions, show for unknown ones
