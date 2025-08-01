@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ import (
 
 // formatDurationParts formats a duration into human-readable parts
 func formatDurationParts(duration time.Duration, p *message.Printer) string {
-	days := int64(duration.Hours() / 24)
+	days := int64(math.Round(duration.Hours() / 24))
 	totalHours := int64(duration.Hours())
 
 	if days == 0 && totalHours == 0 {
@@ -32,7 +33,7 @@ func formatDurationParts(duration time.Duration, p *message.Printer) string {
 		} else { // days == 2
 			return p.Sprintf("%d days (%d hours)", days, totalHours)
 		}
-	} else if days < 365 {
+	} else if days <= 365 {
 		return p.Sprintf("%d days", days)
 	} else {
 		// Calculate years with 1 decimal place
@@ -68,7 +69,7 @@ func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int) strin
 	}
 
 	// Add colored status symbols based on configurable thresholds
-	days := int64(duration.Hours() / 24)
+	days := int64(math.Round(duration.Hours() / 24))
 	if days < 0 {
 		return red("✗") + " " + timeString
 	} else if days <= int64(criticalDays) {
