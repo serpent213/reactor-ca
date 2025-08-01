@@ -8,11 +8,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -213,6 +215,13 @@ func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
 	fmt.Printf("   %s SHA256:%s\n", cyan(fmt.Sprintf("%-13s", "Fingerprint")), fingerprint)
 	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Key")), keyType)
 	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Signature")), cert.SignatureAlgorithm)
+
+	// Show extensions if present
+	if len(cert.Extensions) > 0 {
+		fmt.Printf("\n%s\n", green(bold("EXTENSIONS")))
+		printCertExtensions(cert)
+	}
+
 	fmt.Println()
 }
 
@@ -260,5 +269,197 @@ func getKeyTypeDetails(pubKey interface{}) string {
 		return "Ed25519 (256-bit)"
 	default:
 		return "Unknown"
+	}
+}
+
+// printCertExtensions displays certificate extensions in a readable format
+func printCertExtensions(cert *x509.Certificate) {
+	// Comprehensive extension name mapping with all known extensions
+	extensionNames := map[string]string{
+		// Standard RFC 5280 Extensions
+		"2.5.29.9":  "Subject Directory Attributes",
+		"2.5.29.14": "Subject Key Identifier",
+		"2.5.29.15": "Key Usage",
+		"2.5.29.16": "Private Key Usage Period",
+		"2.5.29.17": "Subject Alternative Name",
+		"2.5.29.18": "Issuer Alternative Name",
+		"2.5.29.19": "Basic Constraints",
+		"2.5.29.21": "Reason Code",
+		"2.5.29.23": "Hold Instruction Code",
+		"2.5.29.24": "Invalidity Date",
+		"2.5.29.29": "Certificate Issuer",
+		"2.5.29.30": "Name Constraints",
+		"2.5.29.31": "CRL Distribution Points",
+		"2.5.29.32": "Certificate Policies",
+		"2.5.29.33": "Policy Mappings",
+		"2.5.29.35": "Authority Key Identifier",
+		"2.5.29.36": "Policy Constraints",
+		"2.5.29.37": "Extended Key Usage",
+		"2.5.29.46": "Freshest CRL",
+		"2.5.29.54": "Inhibit anyPolicy",
+
+		// PKIX Extensions
+		"1.3.6.1.5.5.7.1.1":    "Authority Information Access",
+		"1.3.6.1.5.5.7.1.11":   "Subject Information Access",
+		"1.3.6.1.5.5.7.1.24":   "TLS Feature",
+		"1.3.6.1.5.5.7.48.1.5": "OCSP No Check",
+
+		// Certificate Transparency (RFC 6962)
+		"1.3.6.1.4.1.11129.2.4.2": "CT Signed Certificate Timestamp List",
+		"1.3.6.1.4.1.11129.2.4.3": "CT Precertificate Poison",
+
+		// Microsoft Extensions
+		"1.3.6.1.4.1.311.10.3.1":   "Microsoft Server Gated Crypto",
+		"1.3.6.1.4.1.311.10.3.3":   "Microsoft SGC Serialized",
+		"1.3.6.1.4.1.311.20.2":     "Microsoft Certificate Template Name",
+		"1.3.6.1.4.1.311.21.7":     "Microsoft Certificate Template Information",
+		"1.3.6.1.4.1.311.21.10":    "Microsoft Application Policies",
+		"1.3.6.1.4.1.311.60.2.1.1": "Microsoft Jurisdiction of Incorporation Locality",
+		"1.3.6.1.4.1.311.60.2.1.2": "Microsoft Jurisdiction of Incorporation State",
+		"1.3.6.1.4.1.311.60.2.1.3": "Microsoft Jurisdiction of Incorporation Country",
+
+		// Netscape Extensions
+		"2.16.840.1.113730.1.1":  "Netscape Certificate Type",
+		"2.16.840.1.113730.1.2":  "Netscape Base URL",
+		"2.16.840.1.113730.1.3":  "Netscape Revocation URL",
+		"2.16.840.1.113730.1.4":  "Netscape CA Revocation URL",
+		"2.16.840.1.113730.1.7":  "Netscape Certificate Renewal URL",
+		"2.16.840.1.113730.1.8":  "Netscape CA Policy URL",
+		"2.16.840.1.113730.1.12": "Netscape SSL Server Name",
+		"2.16.840.1.113730.1.13": "Netscape Certificate Comment",
+
+		// Additional Vendor Extensions
+		"1.2.840.113549.1.9.15": "SMIMECapabilities",
+		"1.2.840.10040.4.5":     "id-dsa-with-sha1",
+		"1.3.14.3.2.29":         "id-sha1WithRSAEncryption",
+	}
+
+	for _, ext := range cert.Extensions {
+		oidStr := ext.Id.String()
+		name := extensionNames[oidStr]
+		if name == "" {
+			name = oidStr
+		}
+
+		displayName := cyan(name)
+		if ext.Critical {
+			displayName = red("! ") + displayName
+		}
+
+		// Hide OID for known extensions, show for unknown ones
+		if extensionNames[oidStr] != "" {
+			fmt.Printf("   %s\n", displayName)
+		} else {
+			fmt.Printf("   %s %s\n", displayName, oidStr)
+		}
+
+		// Get and display extension values
+		values := resolveExtensionValue(cert, ext, name)
+		if len(values) > 0 {
+			// Sort keys for consistent display
+			var keys []string
+			for key := range values {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+
+			for _, key := range keys {
+				value := values[key]
+				if strings.Contains(value, "\n") {
+					// Multi-line values
+					fmt.Printf("     %s\n%s\n", cyan(key+":"), indentText(value, "       "))
+				} else {
+					// Single-line values
+					fmt.Printf("     %s %s\n", cyan(key+":"), value)
+				}
+			}
+		} else {
+			// Fallback: show raw hex data
+			fmt.Printf("     %s %s\n", cyan("Raw Data:"), hex.EncodeToString(ext.Value))
+		}
+	}
+
+	fmt.Printf("\n   %s\n", red("(! = critical)"))
+}
+
+// resolveExtensionValue returns parsed extension values for all known extensions
+func resolveExtensionValue(cert *x509.Certificate, ext pkix.Extension, name string) map[string]string {
+	oidStr := ext.Id.String()
+
+	switch oidStr {
+	case "2.5.29.15": // Key Usage
+		return parseKeyUsage(cert)
+
+	case "2.5.29.37": // Extended Key Usage
+		return parseExtendedKeyUsage(cert)
+
+	case "2.5.29.19": // Basic Constraints
+		return parseBasicConstraints(cert)
+
+	case "2.5.29.17": // Subject Alternative Name
+		return parseSubjectAltName(cert)
+
+	case "2.5.29.18": // Issuer Alternative Name
+		return parseIssuerAltName(cert)
+
+	case "2.5.29.14": // Subject Key Identifier
+		return parseSubjectKeyIdentifier(ext)
+
+	case "2.5.29.35": // Authority Key Identifier
+		return parseAuthorityKeyIdentifier(ext)
+
+	case "2.5.29.31": // CRL Distribution Points
+		return parseCRLDistributionPoints(ext)
+
+	case "1.3.6.1.5.5.7.1.1": // Authority Information Access
+		return parseAuthorityInfoAccess(ext)
+
+	case "1.3.6.1.5.5.7.1.11": // Subject Information Access
+		return parseSubjectInfoAccess(ext)
+
+	case "2.5.29.32": // Certificate Policies
+		return parseCertificatePolicies(ext)
+
+	case "2.5.29.30": // Name Constraints
+		return parseNameConstraints(ext)
+
+	case "2.5.29.33": // Policy Mappings
+		return parsePolicyMappings(ext)
+
+	case "2.5.29.36": // Policy Constraints
+		return parsePolicyConstraints(ext)
+
+	case "2.5.29.54": // Inhibit anyPolicy
+		return parseInhibitAnyPolicy(ext)
+
+	case "2.5.29.9": // Subject Directory Attributes
+		return parseSubjectDirectoryAttributes(ext)
+
+	case "1.3.6.1.4.1.11129.2.4.2": // CT SCT List
+		return parseCTSCTList(ext)
+
+	case "1.3.6.1.4.1.11129.2.4.3": // CT Precertificate Poison
+		values := make(map[string]string)
+		values["Value"] = "Present (Precertificate Poison)"
+		return values
+
+	case "1.3.6.1.4.1.311.20.2": // Microsoft Certificate Template Name
+		return parseMicrosoftTemplateName(ext)
+
+	case "1.3.6.1.4.1.311.21.7": // Microsoft Certificate Template Information
+		return parseMicrosoftTemplateInfo(ext)
+
+	case "2.16.840.1.113730.1.1": // Netscape Certificate Type
+		return parseNetscapeCertType(ext)
+
+	case "2.16.840.1.113730.1.13": // Netscape Certificate Comment
+		return parseNetscapeComment(ext)
+
+	case "1.3.6.1.5.5.7.1.24": // TLS Feature
+		return parseTLSFeature(ext)
+
+	default:
+		// Generic ASN.1 parsing for unknown extensions
+		return parseGenericASN1(ext)
 	}
 }
