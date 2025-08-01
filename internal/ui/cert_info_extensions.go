@@ -36,7 +36,6 @@ func parseKeyUsage(cert *x509.Certificate) map[string]string {
 
 		if len(usages) > 0 {
 			values["Usage"] = strings.Join(usages, ", ")
-			values["Hex Value"] = fmt.Sprintf("0x%04X", cert.KeyUsage)
 		}
 	}
 	return values
@@ -91,10 +90,10 @@ func parseBasicConstraints(cert *x509.Certificate) map[string]string {
 		} else if cert.MaxPathLenZero {
 			pathLen = "0"
 		}
-		values["CA"] = "TRUE"
+		values["CA"] = fmt.Sprintf("%t", cert.IsCA)
 		values["Path Length Constraint"] = pathLen
 	} else {
-		values["CA"] = "FALSE"
+		values["CA"] = fmt.Sprintf("%t", cert.IsCA)
 	}
 
 	return values

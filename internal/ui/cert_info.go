@@ -334,11 +334,63 @@ func printCertExtensions(cert *x509.Certificate) {
 		"1.3.14.3.2.29":         "id-sha1WithRSAEncryption",
 	}
 
+	// Reorder extensions: critical extensions first, then priority extensions, then others in original order
+	priorityOIDs := []string{
+		"2.5.29.19", // Basic Constraints
+		"2.5.29.15", // Key Usage
+		"2.5.29.37", // Extended Key Usage
+	}
+
+	var orderedExtensions []pkix.Extension
+	processedOIDs := make(map[string]bool)
+
+	// Add critical extensions first (priority order)
+	for _, priorityOID := range priorityOIDs {
+		for _, ext := range cert.Extensions {
+			if ext.Id.String() == priorityOID && ext.Critical {
+				orderedExtensions = append(orderedExtensions, ext)
+				processedOIDs[priorityOID] = true
+				break
+			}
+		}
+	}
+
+	// Add remaining critical extensions
 	for _, ext := range cert.Extensions {
+		if ext.Critical && !processedOIDs[ext.Id.String()] {
+			orderedExtensions = append(orderedExtensions, ext)
+			processedOIDs[ext.Id.String()] = true
+		}
+	}
+
+	// Add priority extensions (non-critical)
+	for _, priorityOID := range priorityOIDs {
+		for _, ext := range cert.Extensions {
+			if ext.Id.String() == priorityOID && !processedOIDs[priorityOID] {
+				orderedExtensions = append(orderedExtensions, ext)
+				processedOIDs[priorityOID] = true
+				break
+			}
+		}
+	}
+
+	// Add remaining extensions in original order
+	for _, ext := range cert.Extensions {
+		if !processedOIDs[ext.Id.String()] {
+			orderedExtensions = append(orderedExtensions, ext)
+		}
+	}
+
+	for _, ext := range orderedExtensions {
 		oidStr := ext.Id.String()
 		name := extensionNames[oidStr]
 		if name == "" {
 			name = oidStr
+		}
+
+		// Treated specially on parent level
+		if name == "Subject Alternative Name" {
+			continue
 		}
 
 		displayName := cyan(name)

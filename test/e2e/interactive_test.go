@@ -425,7 +425,7 @@ encryption:
 			"Test Extension Value",                    // Custom extension value
 			"http://crl.extensions-test.local/ca.crl", // CRL Distribution Point
 			"Path Length Constraint: 3",               // Basic Constraints path length
-			"CA: TRUE",                                // Basic Constraints CA flag
+			"CA: true",                                // Basic Constraints CA flag
 		}
 
 		for _, expected := range expectedCAContent {
