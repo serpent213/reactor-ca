@@ -240,6 +240,15 @@ func (s *Service) ValidateKeyPair(cert *x509.Certificate, key crypto.Signer) err
 	return nil
 }
 
+// stringToSlice converts a string to a []string slice, returning nil for empty strings
+// to avoid creating empty RDNs in certificates.
+func stringToSlice(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
+}
+
 // createBaseTemplate creates a base certificate template.
 func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity domain.Validity) (*x509.Certificate, error) {
 	serialNumber, err := s.newSerialNumber()
@@ -249,11 +258,11 @@ func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity dom
 
 	pkixName := pkix.Name{
 		CommonName:         subject.CommonName,
-		Organization:       []string{subject.Organization},
-		OrganizationalUnit: []string{subject.OrganizationUnit},
-		Country:            []string{subject.Country},
-		Province:           []string{subject.State},
-		Locality:           []string{subject.Locality},
+		Organization:       stringToSlice(subject.Organization),
+		OrganizationalUnit: stringToSlice(subject.OrganizationUnit),
+		Country:            stringToSlice(subject.Country),
+		Province:           stringToSlice(subject.State),
+		Locality:           stringToSlice(subject.Locality),
 	}
 	if subject.Email != "" {
 		if _, err := mail.ParseAddress(subject.Email); err == nil {
