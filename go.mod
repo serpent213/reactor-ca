@@ -6,9 +6,9 @@ require (
 	filippo.io/age v1.2.1
 	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.18.0
-	github.com/olekukonko/tablewriter v1.0.8
+	github.com/olekukonko/tablewriter v1.0.9
 	github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.9.1
 	github.com/tebeka/selenium v0.9.9
 	golang.org/x/term v0.33.0
