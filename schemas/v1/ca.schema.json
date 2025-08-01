@@ -376,26 +376,6 @@
           "description": "Digital signature key usage",
           "default": false
         },
-        "content_commitment": {
-          "type": "boolean",
-          "description": "Content commitment (non-repudiation) key usage",
-          "default": false
-        },
-        "key_encipherment": {
-          "type": "boolean",
-          "description": "Key encipherment key usage",
-          "default": false
-        },
-        "data_encipherment": {
-          "type": "boolean",
-          "description": "Data encipherment key usage",
-          "default": false
-        },
-        "key_agreement": {
-          "type": "boolean",
-          "description": "Key agreement key usage",
-          "default": false
-        },
         "key_cert_sign": {
           "type": "boolean",
           "description": "Certificate signing key usage",
@@ -404,16 +384,6 @@
         "crl_sign": {
           "type": "boolean",
           "description": "CRL signing key usage",
-          "default": false
-        },
-        "encipher_only": {
-          "type": "boolean",
-          "description": "Encipher only key usage (only valid if key_agreement is true)",
-          "default": false
-        },
-        "decipher_only": {
-          "type": "boolean",
-          "description": "Decipher only key usage (only valid if key_agreement is true)",
           "default": false
         }
       }
@@ -426,36 +396,6 @@
         "critical": {
           "type": "boolean",
           "description": "Whether this extension is critical",
-          "default": false
-        },
-        "server_auth": {
-          "type": "boolean",
-          "description": "TLS Web Server Authentication (1.3.6.1.5.5.7.3.1)",
-          "default": false
-        },
-        "client_auth": {
-          "type": "boolean",
-          "description": "TLS Web Client Authentication (1.3.6.1.5.5.7.3.2)",
-          "default": false
-        },
-        "code_signing": {
-          "type": "boolean",
-          "description": "Code Signing (1.3.6.1.5.5.7.3.3)",
-          "default": false
-        },
-        "email_protection": {
-          "type": "boolean",
-          "description": "E-mail Protection (1.3.6.1.5.5.7.3.4)",
-          "default": false
-        },
-        "time_stamping": {
-          "type": "boolean",
-          "description": "Time Stamping (1.3.6.1.5.5.7.3.8)",
-          "default": false
-        },
-        "ocsp_signing": {
-          "type": "boolean",
-          "description": "OCSP Signing (1.3.6.1.5.5.7.3.9)",
           "default": false
         },
         "unknown_ext_key_usage": {

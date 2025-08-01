@@ -238,7 +238,6 @@ func TestE2E_InfoDisplayAllExtensions(t *testing.T) {
       digital_signature: true
       key_cert_sign: true
       crl_sign: true
-      content_commitment: true
 
     # Subject Key Identifier
     subject_key_identifier:

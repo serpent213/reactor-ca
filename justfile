@@ -153,6 +153,11 @@ test type="all":
         exit 1
     fi
 
+# Clear test cache and run tests
+retest type="all":
+    go clean -testcache
+    @just test {{type}}
+
 # Generate test coverage reports
 cov type="all":
     #!/usr/bin/env bash
