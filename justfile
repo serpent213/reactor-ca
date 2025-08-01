@@ -392,17 +392,33 @@ validate-schemas:
     echo "Validating example configs against schemas..."
 
     if [ -d "example_config" ]; then
+        # Collect CA config files
+        ca_configs=()
         for config in example_config/ca*.yaml example_config/ca*.yml; do
             if [ -f "$config" ]; then
-                go tool jv schemas/v1/ca.schema.json "$config"
+                ca_configs+=("$config")
             fi
         done
 
+        # Collect hosts config files
+        hosts_configs=()
         for config in example_config/hosts.yaml example_config/hosts.yml; do
             if [ -f "$config" ]; then
-                go tool jv schemas/v1/hosts.schema.json "$config"
+                hosts_configs+=("$config")
             fi
         done
+
+        # Validate CA configs (grouped)
+        if [ ${#ca_configs[@]} -gt 0 ]; then
+            go tool jv --assert-content --assert-format schemas/v1/ca.schema.json "${ca_configs[@]}" | \
+            grep -vE '^(schema schemas/v1/.*\.schema\.json: ok|)$'
+        fi
+
+        # Validate hosts configs (grouped)
+        if [ ${#hosts_configs[@]} -gt 0 ]; then
+            go tool jv --assert-content --assert-format schemas/v1/hosts.schema.json "${hosts_configs[@]}" | \
+            grep -vE '^(schema schemas/v1/.*\.schema\.json: ok|)$'
+        fi
     else
         echo "No example_config directory found"
     fi
