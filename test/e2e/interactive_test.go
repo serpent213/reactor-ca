@@ -222,7 +222,7 @@ func TestE2E_InfoDisplayAllExtensions(t *testing.T) {
     locality: "San Francisco"
     email: "ca@extensions-test.local"
   validity:
-    years: 2
+    years: 25
   key_algorithm: "ECP384"
   hash_algorithm: "SHA384"
   extensions:
