@@ -21,7 +21,6 @@ func NewHostsTable() *tablewriter.Table {
 			Columns: []renderer.Tint{
 				{FG: renderer.Colors{color.FgMagenta}}, // Host ID
 				{},                                     // Key Algo
-				{},                                     // Key Len
 				{},                                     // Hash Algo
 				{},                                     // Expires
 				{FG: renderer.Colors{color.Reset}},     // Remaining
@@ -32,7 +31,6 @@ func NewHostsTable() *tablewriter.Table {
 			Columns: []renderer.Tint{
 				{},                                      // Host ID
 				{},                                      // Key Algo
-				{},                                      // Key Len
 				{},                                      // Hash Algo
 				{},                                      // Expires
 				{FG: renderer.Colors{color.FgHiYellow}}, // Remaining

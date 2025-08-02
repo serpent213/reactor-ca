@@ -122,40 +122,36 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	table := ui.NewHostsTable()
 
 	// Set headers
-	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES", "REMAINING"})
+	table.Header([]string{"HOST ID", "KEY ALGO", "HASH ALGO", "EXPIRES", "REMAINING"})
 
 	// Prepare data rows
 	var data [][]string
 	userLocale := localedate.GetUserLocaleTag().String()
 	for _, h := range list {
-		var expiresStr, statusStr, keyAlgoStr, keyLenStr, hashAlgoStr string
+		var expiresStr, statusStr, keyAlgoStr, hashAlgoStr string
 
 		switch h.Status {
 		case domain.HostStatusConfigured:
 			expiresStr = "-"
 			statusStr = ui.FormatHostStatus(string(h.Status))
 			keyAlgoStr = "-"
-			keyLenStr = "-"
 			hashAlgoStr = "-"
 		case domain.HostStatusOrphaned:
 			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
 			statusStr = ui.FormatHostStatus(string(h.Status))
-			keyAlgoStr = h.KeyAlgorithm
-			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
+			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
 		default:
 			// Issued hosts show normal certificate expiry info
 			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
 			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true)
-			keyAlgoStr = h.KeyAlgorithm
-			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
+			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
 		}
 
 		data = append(data, []string{
 			h.ID,
 			keyAlgoStr,
-			keyLenStr,
 			hashAlgoStr,
 			expiresStr,
 			statusStr,
@@ -165,7 +161,7 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	// Add data and footer
 	fmt.Println()
 	table.Bulk(data)
-	table.Footer([]string{"", "", "", "", "Total", fmt.Sprintf("%d", len(list))})
+	table.Footer([]string{"", "", "", "Total", fmt.Sprintf("%d", len(list))})
 	table.Render()
 }
 
