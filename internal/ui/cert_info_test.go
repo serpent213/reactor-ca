@@ -66,7 +66,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "< 0 hours",
+			expectText:    "0 hours",
 		},
 
 		// Small positive values
@@ -84,7 +84,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "0 hours",
+			expectText:    "1 hour",
 		},
 		{
 			name:          "expires in 23 hours",
@@ -92,7 +92,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "1 d (22 h)",
+			expectText:    "1 d (23 h)",
 		},
 		{
 			name:          "expires in 24 hours",
@@ -100,7 +100,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "1 d (23 h)",
+			expectText:    "1 d (24 h)",
 		},
 		{
 			name:          "expires in 25 hours",
@@ -108,7 +108,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "1 d (24 h)",
+			expectText:    "1 d (25 h)",
 		},
 
 		// Critical range tests
@@ -206,7 +206,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  0,
 			warningDays:   7,
 			expectSymbol:  "✗",
-			expectText:    "0 hours",
+			expectText:    "1 hour",
 		},
 		{
 			name:          "same critical and warning days",
@@ -232,7 +232,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "✗",
-			expectText:    "2 d (47 h)",
+			expectText:    "2 d (48 h)",
 		},
 		{
 			name:          "expires in 71 hours",
@@ -259,7 +259,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			expiryTime := now.Add(duration)
 
 			// Call the function
-			result := FormatCertExpiry(expiryTime, tt.criticalDays, tt.warningDays, true)
+			result := FormatCertExpiry(expiryTime, tt.criticalDays, tt.warningDays, true, now)
 
 			// Check symbol (first character as rune)
 			if len(result) == 0 {
@@ -295,9 +295,9 @@ func TestFormatCertExpiryEdgeCasesRounding(t *testing.T) {
 		hours    float64
 		expected string
 	}{
-		{"11 hours stays as hours", 11, "10 hours"},
-		{"12 hours stays as hours", 12, "11 hours"},
-		{"13 hours rounds to 1 day", 13, "1 d (12 h)"},
+		{"11 hours stays as hours", 11, "11 hours"},
+		{"12 hours stays as hours", 12, "1 d (12 h)"},
+		{"13 hours rounds to 1 day", 13, "1 d (13 h)"},
 		{"0.4 hours shows as 0", 0.4, "0 hours"},
 		{"0.5 hours shows as 0", 0.5, "0 hours"},
 		{"0.6 hours shows as 0", 0.6, "0 hours"},
@@ -307,7 +307,7 @@ func TestFormatCertExpiryEdgeCasesRounding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			duration := time.Duration(tt.hours * float64(time.Hour))
 			expiryTime := now.Add(duration)
-			result := FormatCertExpiry(expiryTime, 7, 30, true)
+			result := FormatCertExpiry(expiryTime, 7, 30, true, now)
 
 			// Extract text after symbol and space (using runes for proper Unicode handling)
 			runes := []rune(result)
@@ -327,7 +327,7 @@ func TestFormatCertExpiry_LongFormat(t *testing.T) {
 
 	// Test one basic case with short = false to ensure longer format works
 	expiryTime := now.Add(48 * time.Hour) // 2 days from now
-	result := FormatCertExpiry(expiryTime, 7, 30, false)
+	result := FormatCertExpiry(expiryTime, 7, 30, false, now)
 
 	// Should contain more detailed information than short format
 	if len(result) == 0 {
@@ -335,7 +335,7 @@ func TestFormatCertExpiry_LongFormat(t *testing.T) {
 	}
 
 	// The long format should contain more characters than short format
-	shortResult := FormatCertExpiry(expiryTime, 7, 30, true)
+	shortResult := FormatCertExpiry(expiryTime, 7, 30, true, now)
 	if len(result) <= len(shortResult) {
 		t.Errorf("Expected long format to be longer than short format. Long: %q, Short: %q", result, shortResult)
 	}

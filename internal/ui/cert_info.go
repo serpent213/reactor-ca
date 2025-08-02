@@ -10,13 +10,13 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"math"
-	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"reactor.de/reactor-ca/internal/localedate"
 )
 
 // formatDurationParts formats a duration into human-readable text
@@ -66,10 +66,16 @@ func formatDurationParts(duration time.Duration, short bool, p *message.Printer)
 }
 
 // FormatCertExpiry formats certificate expiry time in a user-friendly way with colored status symbols
-func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short bool) string {
-	p := message.NewPrinter(getUserLocale())
-	now := time.Now()
-	duration := expiryTime.Sub(now)
+// If now is provided, it will be used instead of time.Now() for deterministic testing
+func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short bool, now ...time.Time) string {
+	userLocaleTag := localedate.GetUserLocaleTag()
+	p := message.NewPrinter(userLocaleTag)
+
+	currentTime := time.Now()
+	if len(now) > 0 {
+		currentTime = now[0]
+	}
+	duration := expiryTime.Sub(currentTime)
 
 	// Add colored status symbols based on configurable thresholds
 	timeString := formatDurationParts(duration, short, p)
@@ -204,9 +210,10 @@ func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
 		}
 	}
 
+	userLocale := localedate.GetUserLocaleTag().String()
 	fmt.Printf("\n%s\n", green(bold("VALIDITY PERIOD")))
-	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Issued")), cert.NotBefore.Format(time.RFC1123))
-	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Expires")), cert.NotAfter.Format(time.RFC1123))
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Issued")), localedate.FormatDateTime(userLocale, cert.NotBefore, localedate.FormatLong))
+	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Expires")), localedate.FormatDateTime(userLocale, cert.NotAfter, localedate.FormatLong))
 	fmt.Printf("   %s %s\n", cyan(fmt.Sprintf("%-13s", "Remaining")), remaining)
 
 	fmt.Printf("\n%s\n", green(bold("CRYPTOGRAPHIC DETAILS")))
@@ -220,26 +227,6 @@ func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
 		fmt.Printf("\n%s\n", green(bold("EXTENSIONS")))
 		printCertExtensions(cert)
 	}
-}
-
-// getUserLocale detects the user's locale from environment variables
-func getUserLocale() language.Tag {
-	// Check environment variables in standard precedence order:
-	// LC_ALL overrides all, LC_MESSAGES for interface text, LANGUAGE for GNU systems, LANG as fallback
-	for _, env := range []string{"LC_ALL", "LC_MESSAGES", "LANGUAGE", "LANG"} {
-		if val := os.Getenv(env); val != "" {
-			// Parse locale string (e.g., "en_US.UTF-8" -> "en-US")
-			locale := strings.Split(val, ".")[0]
-			locale = strings.ReplaceAll(locale, "_", "-")
-
-			if tag, err := language.Parse(locale); err == nil {
-				return tag
-			}
-		}
-	}
-
-	// Fall back to English if we can't determine locale
-	return language.English
 }
 
 // extractEmailFromSubject extracts email address from certificate subject

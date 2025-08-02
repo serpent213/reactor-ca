@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/infra/exec"
+	"reactor.de/reactor-ca/internal/localedate"
 	"reactor.de/reactor-ca/internal/ui"
 )
 
@@ -122,10 +122,11 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	table := ui.NewHostsTable()
 
 	// Set headers
-	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES (UTC)", "REMAINING"})
+	table.Header([]string{"HOST ID", "KEY ALGO", "KEY LEN", "HASH ALGO", "EXPIRES", "REMAINING"})
 
 	// Prepare data rows
 	var data [][]string
+	userLocale := localedate.GetUserLocaleTag().String()
 	for _, h := range list {
 		var expiresStr, statusStr, keyAlgoStr, keyLenStr, hashAlgoStr string
 
@@ -137,14 +138,14 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 			keyLenStr = "-"
 			hashAlgoStr = "-"
 		case domain.HostStatusOrphaned:
-			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
+			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
 			statusStr = ui.FormatHostStatus(string(h.Status))
 			keyAlgoStr = h.KeyAlgorithm
 			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
 		default:
 			// Issued hosts show normal certificate expiry info
-			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
+			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
 			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true)
 			keyAlgoStr = h.KeyAlgorithm
 			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
