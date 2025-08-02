@@ -633,8 +633,8 @@ func TestE2E_HostListTableFormat(t *testing.T) {
 		}
 
 		// Certificates have 15 day validity - check for status symbols
-		// Could be ✓ (valid), ! (warning), or ✗ (critical) depending on thresholds
-		statusSymbols := []string{"✓", "!", "✗"}
+		// Could be ✓ (valid), ! (warning), or ⚠ (critical) depending on thresholds
+		statusSymbols := []string{"✓", "!", "⚠"}
 		hasStatusSymbol := false
 		for _, symbol := range statusSymbols {
 			if strings.Contains(stdout, symbol) {
@@ -643,7 +643,7 @@ func TestE2E_HostListTableFormat(t *testing.T) {
 			}
 		}
 		if !hasStatusSymbol {
-			t.Errorf("Expected status symbol (✓, !, or ✗) not found in output.\nActual output:\n%s", stdout)
+			t.Errorf("Expected status symbol (✓, !, or ⚠) not found in output.\nActual output:\n%s", stdout)
 		}
 
 		// Should also contain "days" text as part of the remaining time

@@ -81,9 +81,9 @@ func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short
 	timeString := formatDurationParts(duration, short, p)
 	days := int64(math.Round(duration.Hours() / 24))
 	if days < 0 {
-		return red("✗ " + timeString)
+		return red("⚠ " + timeString)
 	} else if days <= int64(criticalDays) {
-		return red("✗") + " " + timeString
+		return red("⚠") + " " + timeString
 	} else if days <= int64(warningDays) {
 		return yellow("!") + " " + timeString
 	} else {
@@ -411,7 +411,7 @@ func printCertExtensions(cert *x509.Certificate) {
 
 		displayName := cyan(name)
 		if ext.Critical {
-			displayName = displayName + red(" !")
+			displayName = displayName + yellow(" !")
 		}
 
 		fmt.Printf("   %s\n", displayName)
@@ -442,5 +442,5 @@ func printCertExtensions(cert *x509.Certificate) {
 		}
 	}
 
-	fmt.Printf("\n   %s\n", red("(! = critical)"))
+	fmt.Printf("\n   %s\n", yellow("(! = critical)"))
 }

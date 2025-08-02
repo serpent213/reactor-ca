@@ -23,7 +23,7 @@ func Success(msg string, args ...interface{}) {
 	fmt.Printf("%s %s\n", green("✓"), formatted)
 }
 
-// Error prints an error message with red ✗ symbol
+// Error prints an error message with red ⚠ symbol
 func Error(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
 	fmt.Fprintf(os.Stderr, "%s %s\n", red("⚠"), formatted)

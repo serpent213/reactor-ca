@@ -14,7 +14,7 @@ func TestFormatCertExpiry(t *testing.T) {
 		durationHours float64
 		criticalDays  int
 		warningDays   int
-		expectSymbol  string // First character of expected output (✗, !, ✓)
+		expectSymbol  string // First character of expected output (⚠, !, ✓)
 		expectText    string // Expected text portion (without ANSI codes)
 	}{
 		// Negative values (expired certificates)
@@ -23,7 +23,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: -1,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "-1 hours",
 		},
 		{
@@ -31,7 +31,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: -0.2,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "< 0 hours",
 		},
 		{
@@ -39,7 +39,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: -25,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "-1 d (-25 h)",
 		},
 		{
@@ -47,7 +47,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: -8 * 24,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "-8 d (-192 h)",
 		},
 		{
@@ -55,7 +55,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: -400 * 24,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "-400 d (-9,600 h)",
 		},
 
@@ -65,7 +65,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 0,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "0 hours",
 		},
 
@@ -75,7 +75,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 0.3,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "0 hours",
 		},
 		{
@@ -83,7 +83,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 1,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "1 hour",
 		},
 		{
@@ -91,7 +91,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 23,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "1 d (23 h)",
 		},
 		{
@@ -99,7 +99,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 24,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "1 d (24 h)",
 		},
 		{
@@ -107,7 +107,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 25,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "1 d (25 h)",
 		},
 
@@ -117,7 +117,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 7 * 24,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "7 days",
 		},
 		{
@@ -125,7 +125,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 6 * 24,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "6 days",
 		},
 
@@ -205,7 +205,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 1,
 			criticalDays:  0,
 			warningDays:   7,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "1 hour",
 		},
 		{
@@ -213,7 +213,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 7 * 24,
 			criticalDays:  7,
 			warningDays:   7,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "7 days",
 		},
 		{
@@ -221,7 +221,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 10 * 24,
 			criticalDays:  14,
 			warningDays:   7,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "10 days",
 		},
 
@@ -231,7 +231,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 48,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "2 d (48 h)",
 		},
 		{
@@ -239,7 +239,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 71,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "3 days",
 		},
 		{
@@ -247,7 +247,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			durationHours: 72,
 			criticalDays:  7,
 			warningDays:   30,
-			expectSymbol:  "✗",
+			expectSymbol:  "⚠",
 			expectText:    "3 days",
 		},
 	}
