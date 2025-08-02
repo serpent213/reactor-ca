@@ -104,56 +104,7 @@ func (a *Application) validateHostConfig(caCfg *domain.CAConfig, hostCfg *domain
 		return fmt.Errorf("additional_recipients require CA encryption provider to be 'ssh' or 'plugin', got '%s'", caCfg.Encryption.Provider)
 	}
 
-	// Lightweight validation: only check recipient syntax, no authentication
-	return a.validateAdditionalRecipients(hostCfg.Encryption.AdditionalRecipients)
-}
-
-// validateAdditionalRecipients performs lightweight syntax validation on additional recipients.
-// This only checks format validity without requiring authentication.
-func (a *Application) validateAdditionalRecipients(recipients []string) error {
-	for i, recipientStr := range recipients {
-		recipientStr = strings.TrimSpace(recipientStr)
-		if recipientStr == "" {
-			continue
-		}
-
-		if err := a.validateRecipientSyntax(recipientStr, i); err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-// validateRecipientSyntax validates the syntax of a single recipient string.
-func (a *Application) validateRecipientSyntax(recipientStr string, index int) error {
-	// SSH public key format validation
-	if strings.HasPrefix(recipientStr, "ssh-") {
-		// Basic SSH key format check: "ssh-type base64-data [comment]"
-		parts := strings.Fields(recipientStr)
-		if len(parts) < 2 {
-			return fmt.Errorf("invalid SSH recipient at index %d (%q): must have format 'ssh-type base64-data [comment]'", index, recipientStr)
-		}
-
-		keyType := parts[0]
-		if !strings.HasPrefix(keyType, "ssh-") {
-			return fmt.Errorf("invalid SSH recipient at index %d (%q): key type must start with 'ssh-'", index, recipientStr)
-		}
-
-		// Basic validation - just check key data is not empty
-		keyData := parts[1]
-		if len(keyData) == 0 {
-			return fmt.Errorf("invalid SSH recipient at index %d (%q): empty key data", index, recipientStr)
-		}
-
-		return nil
-	}
-
-	// Age recipient format validation
-	if strings.HasPrefix(recipientStr, "age") {
-		return nil
-	}
-
-	return fmt.Errorf("unsupported recipient format at index %d (%q): must be SSH public key (ssh-*) or age recipient (age*)", index, recipientStr)
 }
 
 // GetCAConfig returns the CA configuration with defaults applied.
