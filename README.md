@@ -1,7 +1,7 @@
 [![asciicast](docs/assets/asciinema_thumbnail.webp)](https://asciinema.org/a/730862)
 
 ![Go CI](https://github.com/serpent213/reactor-ca/workflows/CI/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-65.3%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-65.8%25-yellow)
 [![License: BSD-2-Clause](https://img.shields.io/badge/License-BSD_2_Clause-yellow.svg)](https://opensource.org/license/bsd-2-clause)
 [![Go Reference](https://pkg.go.dev/badge/reactor.de/reactor-ca.svg)](https://pkg.go.dev/reactor.de/reactor-ca)
 

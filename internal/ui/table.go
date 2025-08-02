@@ -11,35 +11,35 @@ import (
 
 // NewHostsTable creates a new table with consistent colorized formatting for the application
 func NewHostsTable() *tablewriter.Table {
-	// Configure colors: green headers, cyan/magenta rows, yellow footer
+	// Configure colors: green headers, cyan/magenta/grey cells, yellow footer
 	colorCfg := renderer.ColorizedConfig{
 		Header: renderer.Tint{
-			FG: renderer.Colors{color.FgGreen, color.Bold}, // Green bold headers
+			FG: renderer.Colors{color.FgGreen, color.Bold},
 		},
 		Column: renderer.Tint{
-			FG: renderer.Colors{color.FgCyan}, // Default cyan for rows
+			FG: renderer.Colors{color.FgCyan},
 			Columns: []renderer.Tint{
-				{FG: renderer.Colors{color.FgMagenta}}, // Magenta for column 0
-				{},                                     // Inherit default (cyan)
-				{},                                     // Inherit default (cyan)
-				{},                                     // Inherit default (cyan)
-				{},                                     // Inherit default (cyan)
-				{},                                     // Colored individually per table
+				{FG: renderer.Colors{color.FgMagenta}}, // Host ID
+				{},                                     // Key Algo
+				{},                                     // Key Len
+				{},                                     // Hash Algo
+				{},                                     // Expires
+				{FG: renderer.Colors{color.Reset}},     // Remaining
 			},
 		},
 		Footer: renderer.Tint{
-			FG: renderer.Colors{color.FgYellow, color.Bold}, // Yellow bold footer
+			FG: renderer.Colors{color.FgYellow, color.Bold},
 			Columns: []renderer.Tint{
-				{},                                      // Inherit default
-				{},                                      // Inherit default
-				{},                                      // Inherit default
-				{},                                      // Inherit default
-				{FG: renderer.Colors{color.FgHiYellow}}, // High-intensity yellow for totals column
-				{},                                      // Inherit default
+				{},                                      // Host ID
+				{},                                      // Key Algo
+				{},                                      // Key Len
+				{},                                      // Hash Algo
+				{},                                      // Expires
+				{FG: renderer.Colors{color.FgHiYellow}}, // Remaining
 			},
 		},
-		Border:    renderer.Tint{FG: renderer.Colors{color.FgBlue}}, // Dark blue borders
-		Separator: renderer.Tint{FG: renderer.Colors{color.FgBlue}}, // Dark blue separators
+		Border:    renderer.Tint{FG: renderer.Colors{color.FgBlue}},
+		Separator: renderer.Tint{FG: renderer.Colors{color.FgBlue}},
 	}
 
 	borders := tw.Border{

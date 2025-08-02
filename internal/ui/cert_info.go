@@ -19,64 +19,63 @@ import (
 	"time"
 )
 
-// formatDurationParts formats a duration into human-readable parts
-func formatDurationParts(duration time.Duration, p *message.Printer) string {
+// formatDurationParts formats a duration into human-readable text
+func formatDurationParts(duration time.Duration, short bool, p *message.Printer) string {
 	days := int64(math.Round(duration.Hours() / 24))
 	totalHours := int64(duration.Hours())
 
-	if days == 0 && totalHours == 0 {
-		return "today"
-	} else if days < 3 {
-		// Show total hours for durations less than 3 days
-		if days == 0 {
-			return p.Sprintf("%d hours", totalHours)
-		} else if days == 1 {
-			return p.Sprintf("1 day (%d hours)", totalHours)
-		} else { // days == 2
-			return p.Sprintf("%d days (%d hours)", days, totalHours)
+	var output string
+	if days < 3 {
+		switch days {
+		case 0:
+			switch totalHours {
+			case 0:
+				if duration.Hours() < 0 {
+					output = "< 0 hours"
+				} else {
+					output = "0 hours"
+				}
+			case 1:
+				output = "1 hour"
+			default:
+				output = p.Sprintf("%d hours", totalHours)
+			}
+		case 1:
+			output = p.Sprintf("1 day (%d hours)", totalHours)
+		default: // days >= 2
+			output = p.Sprintf("%d days (%d hours)", days, totalHours)
 		}
 	} else if days <= 365 {
-		return p.Sprintf("%d days", days)
+		output = p.Sprintf("%d days", days)
 	} else {
-		// Calculate years with 1 decimal place using proper calendar arithmetic
 		now := time.Now()
 		oneYearLater := now.AddDate(1, 0, 0)
 		daysInYear := float64(oneYearLater.Sub(now).Hours() / 24)
 		years := float64(days) / daysInYear
-		return p.Sprintf("%d days (%.1f years)", days, years)
+		output = p.Sprintf("%d days (%.1f years)", days, years)
 	}
+	if short && len(output) > 10 {
+		output = strings.Replace(output, "hours", "h", 1)
+		output = strings.Replace(output, "hour", "h", 1)
+		output = strings.Replace(output, "days", "d", 1)
+		output = strings.Replace(output, "day", "d", 1)
+		output = strings.Replace(output, "years", "y", 1)
+		output = strings.Replace(output, "year", "y", 1)
+	}
+	return output
 }
 
 // FormatCertExpiry formats certificate expiry time in a user-friendly way with colored status symbols
-func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int) string {
+func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short bool) string {
 	p := message.NewPrinter(getUserLocale())
 	now := time.Now()
 	duration := expiryTime.Sub(now)
 
-	var timeString string
-	if duration >= 0 {
-		// Certificate has not expired yet
-		formatted := formatDurationParts(duration, p)
-		if formatted == "today" {
-			timeString = "Expires today"
-		} else {
-			timeString = formatted
-		}
-	} else {
-		// Certificate has expired
-		expiredDuration := -duration // Make it positive for formatting
-		formatted := formatDurationParts(expiredDuration, p)
-		if formatted == "today" {
-			timeString = "EXPIRED today"
-		} else {
-			timeString = "EXPIRED " + formatted + " ago"
-		}
-	}
-
 	// Add colored status symbols based on configurable thresholds
+	timeString := formatDurationParts(duration, short, p)
 	days := int64(math.Round(duration.Hours() / 24))
 	if days < 0 {
-		return red("✗") + " " + timeString
+		return red("✗ " + timeString)
 	} else if days <= int64(criticalDays) {
 		return red("✗") + " " + timeString
 	} else if days <= int64(warningDays) {
@@ -89,7 +88,7 @@ func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int) strin
 // PrintCertInfo displays certificate information in a user-friendly format
 func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
 	// Calculate validity status
-	remaining := FormatCertExpiry(cert.NotAfter, criticalDays, warningDays)
+	remaining := FormatCertExpiry(cert.NotAfter, criticalDays, warningDays, false)
 
 	// Extract email from certificate subject
 	email := extractEmailFromSubject(cert.Subject)
@@ -221,8 +220,6 @@ func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
 		fmt.Printf("\n%s\n", green(bold("EXTENSIONS")))
 		printCertExtensions(cert)
 	}
-
-	fmt.Println()
 }
 
 // getUserLocale detects the user's locale from environment variables
@@ -233,7 +230,7 @@ func getUserLocale() language.Tag {
 		if val := os.Getenv(env); val != "" {
 			// Parse locale string (e.g., "en_US.UTF-8" -> "en-US")
 			locale := strings.Split(val, ".")[0]
-			locale = strings.Replace(locale, "_", "-", -1)
+			locale = strings.ReplaceAll(locale, "_", "-")
 
 			if tag, err := language.Parse(locale); err == nil {
 				return tag

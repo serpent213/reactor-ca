@@ -129,22 +129,23 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	for _, h := range list {
 		var expiresStr, statusStr, keyAlgoStr, keyLenStr, hashAlgoStr string
 
-		if h.Status == domain.HostStatusConfigured {
+		switch h.Status {
+		case domain.HostStatusConfigured:
 			expiresStr = "-"
 			statusStr = ui.FormatHostStatus(string(h.Status))
 			keyAlgoStr = "-"
 			keyLenStr = "-"
 			hashAlgoStr = "-"
-		} else if h.Status == domain.HostStatusOrphaned {
+		case domain.HostStatusOrphaned:
 			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
 			statusStr = ui.FormatHostStatus(string(h.Status))
 			keyAlgoStr = h.KeyAlgorithm
 			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
-		} else {
+		default:
 			// Issued hosts show normal certificate expiry info
 			expiresStr = h.NotAfter.UTC().Format(time.RFC3339)
-			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays)
+			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true)
 			keyAlgoStr = h.KeyAlgorithm
 			keyLenStr = fmt.Sprintf("%d", h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
