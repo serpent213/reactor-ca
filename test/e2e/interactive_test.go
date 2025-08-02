@@ -524,3 +524,140 @@ encryption:
 		t.Logf("OpenSSL verification confirms extension presence")
 	})
 }
+
+// TestE2E_HostListTableFormat tests the host list command table output format
+func TestE2E_HostListTableFormat(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+
+	// Setup PKI environment with CA and host certificates
+	e.writeConfig("ca.yaml", testCaYAML)
+	e.writeConfig("hosts.yaml", testHostsYAML)
+
+	// Initialize and create CA
+	_, stderr, err := e.run("", "init")
+	if err != nil {
+		t.Fatalf("init failed: %v\n%s", err, stderr)
+	}
+
+	_, stderr, err = e.run(testPassword, "ca", "create")
+	if err != nil {
+		t.Fatalf("ca create failed: %v\n%s", err, stderr)
+	}
+
+	// Issue certificates for both hosts
+	_, stderr, err = e.run(testPassword, "host", "issue", "web-server")
+	if err != nil {
+		t.Fatalf("host issue web-server failed: %v\n%s", err, stderr)
+	}
+
+	_, stderr, err = e.run(testPassword, "host", "issue", "db-server")
+	if err != nil {
+		t.Fatalf("host issue db-server failed: %v\n%s", err, stderr)
+	}
+
+	// Test host list table format
+	t.Run("Host_List_Table_Headers", func(t *testing.T) {
+		stdout, stderr, err := e.run("", "host", "list")
+		if err != nil {
+			t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+
+		// Check for expected table headers
+		expectedHeaders := []string{
+			"HOST ID",
+			"KEY ALGO",
+			"HASH ALGO",
+			"EXPIRES",
+			"REMAINING",
+		}
+
+		for _, header := range expectedHeaders {
+			if !strings.Contains(stdout, header) {
+				t.Errorf("Expected table header '%s' not found in output", header)
+			}
+		}
+
+	})
+
+	t.Run("Host_List_Host_IDs", func(t *testing.T) {
+		stdout, stderr, err := e.run("", "host", "list")
+		if err != nil {
+			t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+
+		// Check that both host IDs are present
+		expectedHostIDs := []string{
+			"web-server",
+			"db-server",
+		}
+
+		for _, hostID := range expectedHostIDs {
+			if !strings.Contains(stdout, hostID) {
+				t.Errorf("Expected host ID '%s' not found in table output", hostID)
+			}
+		}
+	})
+
+	t.Run("Host_List_Key_Algorithm_Format", func(t *testing.T) {
+		stdout, stderr, err := e.run("", "host", "list")
+		if err != nil {
+			t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+
+		// Check for combined key algorithm-length format
+		// The testCaYAML uses ECP256, which maps to ECDSA-256 in the output
+		expectedAlgoFormat := "ECDSA-256"
+		if !strings.Contains(stdout, expectedAlgoFormat) {
+			t.Errorf("Expected combined key algorithm format '%s' not found in output.\nActual output:\n%s", expectedAlgoFormat, stdout)
+		}
+	})
+
+	t.Run("Host_List_Hash_Algorithm", func(t *testing.T) {
+		stdout, stderr, err := e.run("", "host", "list")
+		if err != nil {
+			t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+
+		// Check for hash algorithm from testCaYAML (SHA256)
+		expectedHashAlgo := "SHA256"
+		if !strings.Contains(stdout, expectedHashAlgo) {
+			t.Errorf("Expected hash algorithm '%s' not found in output", expectedHashAlgo)
+		}
+	})
+
+	t.Run("Host_List_Status_Symbols", func(t *testing.T) {
+		stdout, stderr, err := e.run("", "host", "list")
+		if err != nil {
+			t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+		}
+
+		// Certificates have 15 day validity - check for status symbols
+		// Could be ✓ (valid), ! (warning), or ✗ (critical) depending on thresholds
+		statusSymbols := []string{"✓", "!", "✗"}
+		hasStatusSymbol := false
+		for _, symbol := range statusSymbols {
+			if strings.Contains(stdout, symbol) {
+				hasStatusSymbol = true
+				break
+			}
+		}
+		if !hasStatusSymbol {
+			t.Errorf("Expected status symbol (✓, !, or ✗) not found in output.\nActual output:\n%s", stdout)
+		}
+
+		// Should also contain "days" text as part of the remaining time
+		if !strings.Contains(stdout, "days") {
+			t.Error("Expected 'days' text in remaining time column not found in output")
+		}
+
+		// Verify total count in footer
+		if !strings.Contains(stdout, "Total") {
+			t.Error("Expected 'Total' footer not found in table output")
+		}
+
+		if !strings.Contains(stdout, "2") {
+			t.Error("Expected total count '2' not found in table footer")
+		}
+	})
+}
