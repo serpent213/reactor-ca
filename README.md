@@ -855,7 +855,7 @@ If you are using [agenix](https://github.com/ryantm/agenix) (or a similar system
 
 [↑ TOC](#table-of-contents)
 
-## Development Environment
+## Development
 
 This project uses `devenv.nix` for reproducible development and Just as build helper:
 
@@ -863,12 +863,18 @@ This project uses `devenv.nix` for reproducible development and Just as build he
 # Enter development shell
 devenv shell
 
-# Build, lint and test
-just build
+# List commands
+just
+
+# Most important
+just build && ./ca --version
+just docs
 just lint
 just test
-./ca --version
+just check
 ```
+
+PRs to the `develop` branch welcome!
 
 [↑ TOC](#table-of-contents)
 
