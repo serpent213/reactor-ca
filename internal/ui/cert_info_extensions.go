@@ -10,6 +10,88 @@ import (
 	"strings"
 )
 
+// resolveExtensionValue returns parsed extension values for all known extensions
+func resolveExtensionValue(cert *x509.Certificate, ext pkix.Extension, name string) map[string]string {
+	oidStr := ext.Id.String()
+
+	switch oidStr {
+	case "2.5.29.15": // Key Usage
+		return parseKeyUsage(cert)
+
+	case "2.5.29.37": // Extended Key Usage
+		return parseExtendedKeyUsage(cert)
+
+	case "2.5.29.19": // Basic Constraints
+		return parseBasicConstraints(cert)
+
+	case "2.5.29.17": // Subject Alternative Name
+		return parseSubjectAltName(cert)
+
+	case "2.5.29.18": // Issuer Alternative Name
+		return parseIssuerAltName(cert)
+
+	case "2.5.29.14": // Subject Key Identifier
+		return parseSubjectKeyIdentifier(ext)
+
+	case "2.5.29.35": // Authority Key Identifier
+		return parseAuthorityKeyIdentifier(ext)
+
+	case "2.5.29.31": // CRL Distribution Points
+		return parseCRLDistributionPoints(ext)
+
+	case "1.3.6.1.5.5.7.1.1": // Authority Information Access
+		return parseAuthorityInfoAccess(ext)
+
+	case "1.3.6.1.5.5.7.1.11": // Subject Information Access
+		return parseSubjectInfoAccess(ext)
+
+	case "2.5.29.32": // Certificate Policies
+		return parseCertificatePolicies(ext)
+
+	case "2.5.29.30": // Name Constraints
+		return parseNameConstraints(ext)
+
+	case "2.5.29.33": // Policy Mappings
+		return parsePolicyMappings(ext)
+
+	case "2.5.29.36": // Policy Constraints
+		return parsePolicyConstraints(ext)
+
+	case "2.5.29.54": // Inhibit anyPolicy
+		return parseInhibitAnyPolicy(ext)
+
+	case "2.5.29.9": // Subject Directory Attributes
+		return parseSubjectDirectoryAttributes(ext)
+
+	case "1.3.6.1.4.1.11129.2.4.2": // CT SCT List
+		return parseCTSCTList(ext)
+
+	case "1.3.6.1.4.1.11129.2.4.3": // CT Precertificate Poison
+		values := make(map[string]string)
+		values["Value"] = "Present (Precertificate Poison)"
+		return values
+
+	case "1.3.6.1.4.1.311.20.2": // Microsoft Certificate Template Name
+		return parseMicrosoftTemplateName(ext)
+
+	case "1.3.6.1.4.1.311.21.7": // Microsoft Certificate Template Information
+		return parseMicrosoftTemplateInfo(ext)
+
+	case "2.16.840.1.113730.1.1": // Netscape Certificate Type
+		return parseNetscapeCertType(ext)
+
+	case "2.16.840.1.113730.1.13": // Netscape Certificate Comment
+		return parseNetscapeComment(ext)
+
+	case "1.3.6.1.5.5.7.1.24": // TLS Feature
+		return parseTLSFeature(ext)
+
+	default:
+		// Generic ASN.1 parsing for unknown extensions
+		return parseGenericASN1(ext)
+	}
+}
+
 // Individual parser functions for each extension type
 
 func parseKeyUsage(cert *x509.Certificate) map[string]string {
@@ -418,38 +500,38 @@ func parseGenericASN1Extension(name string, data []byte) map[string]string {
 	// Try as OCTET STRING
 	var octets []byte
 	if _, err := asn1.Unmarshal(data, &octets); err == nil && len(octets) > 0 {
-		values["OCTET STRING"] = fmt.Sprintf("%s (%d bytes)",
+		values["Octet String"] = fmt.Sprintf("%s (%d bytes)",
 			hex.EncodeToString(octets), len(octets))
 	}
 
 	// Try as INTEGER
 	var intVal int
 	if _, err := asn1.Unmarshal(data, &intVal); err == nil {
-		values["INTEGER"] = fmt.Sprintf("%d", intVal)
+		values["Integer"] = fmt.Sprintf("%d", intVal)
 	}
 
 	// Try as BOOLEAN
 	var boolVal bool
 	if _, err := asn1.Unmarshal(data, &boolVal); err == nil {
-		values["BOOLEAN"] = fmt.Sprintf("%t", boolVal)
+		values["Boolean"] = fmt.Sprintf("%t", boolVal)
 	}
 
 	// Try as IA5String (ASCII)
 	var stringVal string
 	if _, err := asn1.Unmarshal(data, &stringVal); err == nil && isPrintableASCII(stringVal) {
-		values["STRING"] = stringVal
+		values["String"] = stringVal
 	}
 
 	// Try as BIT STRING
 	var bitString asn1.BitString
 	if _, err := asn1.Unmarshal(data, &bitString); err == nil {
-		values["BIT STRING"] = fmt.Sprintf("%d bits", bitString.BitLength)
+		values["Bit String"] = fmt.Sprintf("%d bits", bitString.BitLength)
 	}
 
 	// Try as SEQUENCE
 	var sequence []asn1.RawValue
 	if _, err := asn1.Unmarshal(data, &sequence); err == nil && len(sequence) > 0 {
-		values["SEQUENCE"] = fmt.Sprintf("%d elements", len(sequence))
+		values["Sequence"] = fmt.Sprintf("%d elements", len(sequence))
 	}
 
 	// Fallback: show raw hex

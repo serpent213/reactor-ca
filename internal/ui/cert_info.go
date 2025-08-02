@@ -350,7 +350,7 @@ func printCertExtensions(cert *x509.Certificate) {
 		"1.3.14.3.2.29":         "id-sha1WithRSAEncryption",
 	}
 
-	// Reorder extensions: critical extensions first, then priority extensions, then others in original order
+	// Sort extensions: critical extensions first, then priority extensions, then others in original order
 	priorityOIDs := []string{
 		"2.5.29.19", // Basic Constraints
 		"2.5.29.15", // Key Usage
@@ -401,7 +401,7 @@ func printCertExtensions(cert *x509.Certificate) {
 		oidStr := ext.Id.String()
 		name := extensionNames[oidStr]
 		if name == "" {
-			name = oidStr
+			name = "Unknown OID " + oidStr
 		}
 
 		// Treated specially on parent level
@@ -414,12 +414,7 @@ func printCertExtensions(cert *x509.Certificate) {
 			displayName = displayName + red(" !")
 		}
 
-		// Hide OID for known extensions, show for unknown ones
-		if extensionNames[oidStr] != "" {
-			fmt.Printf("   %s\n", displayName)
-		} else {
-			fmt.Printf("   %s %s\n", displayName, oidStr)
-		}
+		fmt.Printf("   %s\n", displayName)
 
 		// Get and display extension values
 		values := resolveExtensionValue(cert, ext, name)
@@ -448,86 +443,4 @@ func printCertExtensions(cert *x509.Certificate) {
 	}
 
 	fmt.Printf("\n   %s\n", red("(! = critical)"))
-}
-
-// resolveExtensionValue returns parsed extension values for all known extensions
-func resolveExtensionValue(cert *x509.Certificate, ext pkix.Extension, name string) map[string]string {
-	oidStr := ext.Id.String()
-
-	switch oidStr {
-	case "2.5.29.15": // Key Usage
-		return parseKeyUsage(cert)
-
-	case "2.5.29.37": // Extended Key Usage
-		return parseExtendedKeyUsage(cert)
-
-	case "2.5.29.19": // Basic Constraints
-		return parseBasicConstraints(cert)
-
-	case "2.5.29.17": // Subject Alternative Name
-		return parseSubjectAltName(cert)
-
-	case "2.5.29.18": // Issuer Alternative Name
-		return parseIssuerAltName(cert)
-
-	case "2.5.29.14": // Subject Key Identifier
-		return parseSubjectKeyIdentifier(ext)
-
-	case "2.5.29.35": // Authority Key Identifier
-		return parseAuthorityKeyIdentifier(ext)
-
-	case "2.5.29.31": // CRL Distribution Points
-		return parseCRLDistributionPoints(ext)
-
-	case "1.3.6.1.5.5.7.1.1": // Authority Information Access
-		return parseAuthorityInfoAccess(ext)
-
-	case "1.3.6.1.5.5.7.1.11": // Subject Information Access
-		return parseSubjectInfoAccess(ext)
-
-	case "2.5.29.32": // Certificate Policies
-		return parseCertificatePolicies(ext)
-
-	case "2.5.29.30": // Name Constraints
-		return parseNameConstraints(ext)
-
-	case "2.5.29.33": // Policy Mappings
-		return parsePolicyMappings(ext)
-
-	case "2.5.29.36": // Policy Constraints
-		return parsePolicyConstraints(ext)
-
-	case "2.5.29.54": // Inhibit anyPolicy
-		return parseInhibitAnyPolicy(ext)
-
-	case "2.5.29.9": // Subject Directory Attributes
-		return parseSubjectDirectoryAttributes(ext)
-
-	case "1.3.6.1.4.1.11129.2.4.2": // CT SCT List
-		return parseCTSCTList(ext)
-
-	case "1.3.6.1.4.1.11129.2.4.3": // CT Precertificate Poison
-		values := make(map[string]string)
-		values["Value"] = "Present (Precertificate Poison)"
-		return values
-
-	case "1.3.6.1.4.1.311.20.2": // Microsoft Certificate Template Name
-		return parseMicrosoftTemplateName(ext)
-
-	case "1.3.6.1.4.1.311.21.7": // Microsoft Certificate Template Information
-		return parseMicrosoftTemplateInfo(ext)
-
-	case "2.16.840.1.113730.1.1": // Netscape Certificate Type
-		return parseNetscapeCertType(ext)
-
-	case "2.16.840.1.113730.1.13": // Netscape Certificate Comment
-		return parseNetscapeComment(ext)
-
-	case "1.3.6.1.5.5.7.1.24": // TLS Feature
-		return parseTLSFeature(ext)
-
-	default:
-		// Generic ASN.1 parsing for unknown extensions
-		return parseGenericASN1(ext)
-	}
 }
