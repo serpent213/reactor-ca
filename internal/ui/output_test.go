@@ -14,11 +14,6 @@ func TestFormatHostStatus(t *testing.T) {
 		contains []string // Check that result contains these strings
 	}{
 		{
-			name:     "issued status",
-			status:   "issued",
-			contains: []string{"ISSUED", "✓"},
-		},
-		{
 			name:     "configured status",
 			status:   "configured",
 			contains: []string{"CONFIGURED", "○"},

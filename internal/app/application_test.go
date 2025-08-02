@@ -83,6 +83,7 @@ func (m *mockStore) LoadCACert() (*x509.Certificate, error)                { ret
 func (m *mockStore) LoadCAKey() ([]byte, error)                            { return nil, nil }
 func (m *mockStore) HostExists(hostID string) (bool, error)                { return false, nil }
 func (m *mockStore) HostKeyExists(hostID string) (bool, error)             { return false, nil }
+func (m *mockStore) HostCertExists(hostID string) (bool, error)            { return false, nil }
 func (m *mockStore) SaveHostCert(hostID string, cert []byte) error         { return nil }
 func (m *mockStore) SaveHostKey(hostID string, encryptedKey []byte) error  { return nil }
 func (m *mockStore) LoadHostCert(hostID string) (*x509.Certificate, error) { return nil, nil }

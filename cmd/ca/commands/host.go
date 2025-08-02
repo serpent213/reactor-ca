@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -139,6 +140,16 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 		case domain.HostStatusOrphaned:
 			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
 			statusStr = ui.FormatHostStatus(string(h.Status))
+			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
+			hashAlgoStr = h.HashAlgorithm
+		case domain.HostStatusKeyOnly:
+			expiresStr = "-"
+			statusStr = ui.FormatHostStatus(string(h.Status))
+			keyAlgoStr = "-"
+			hashAlgoStr = "-"
+		case domain.HostStatusCertOnly:
+			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
+			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true) + "\n" + color.New(color.FgRed).Sprint("⚠") + " KEY MISSING"
 			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
 			hashAlgoStr = h.HashAlgorithm
 		default:

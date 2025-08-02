@@ -36,6 +36,7 @@ type Store interface {
 	// Host operations
 	HostExists(hostID string) (bool, error)
 	HostKeyExists(hostID string) (bool, error)
+	HostCertExists(hostID string) (bool, error)
 	SaveHostCert(hostID string, cert []byte) error
 	SaveHostKey(hostID string, encryptedKey []byte) error
 	LoadHostCert(hostID string) (*x509.Certificate, error)
@@ -130,4 +131,6 @@ const (
 	HostStatusIssued     HostStatus = "issued"     // Certificate exists in store and is configured
 	HostStatusConfigured HostStatus = "configured" // Defined in config but no certificate in store
 	HostStatusOrphaned   HostStatus = "orphaned"   // Certificate exists in store but not in config
+	HostStatusKeyOnly    HostStatus = "key_only"   // Private key exists but certificate missing
+	HostStatusCertOnly   HostStatus = "cert_only"  // Certificate exists but private key missing
 )

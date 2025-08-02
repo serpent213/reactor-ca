@@ -130,6 +130,15 @@ func (s *FileStore) HostKeyExists(hostID string) (bool, error) {
 	return err == nil, err
 }
 
+// HostCertExists checks if the host's certificate exists.
+func (s *FileStore) HostCertExists(hostID string) (bool, error) {
+	_, err := os.Stat(s.GetHostCertPath(hostID))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // SaveHostCert saves a host's public certificate.
 func (s *FileStore) SaveHostCert(hostID string, cert []byte) error {
 	hostDir := filepath.Join(s.hostsPath, hostID)

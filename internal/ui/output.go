@@ -26,7 +26,7 @@ func Success(msg string, args ...interface{}) {
 // Error prints an error message with red ✗ symbol
 func Error(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Fprintf(os.Stderr, "%s %s\n", red("✗"), formatted)
+	fmt.Fprintf(os.Stderr, "%s %s\n", red("⚠"), formatted)
 }
 
 // Warning prints a warning message with yellow ! symbol
@@ -73,12 +73,14 @@ func PrintTableHeaderWithWidths(columnWidths []int, columns ...string) {
 // FormatHostStatus returns a formatted host status with appropriate symbol and color
 func FormatHostStatus(status string) string {
 	switch status {
-	case "issued":
-		return green("✓") + " ISSUED"
 	case "configured":
 		return yellow("○") + " CONFIGURED"
 	case "orphaned":
-		return red("!") + " ORPHANED"
+		return yellow("!") + " ORPHANED"
+	case "key_only":
+		return red("⚠") + " CERT MISSING"
+	case "cert_only":
+		return red("⚠") + " KEY MISSING"
 	default:
 		return "UNKNOWN"
 	}

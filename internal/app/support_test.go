@@ -50,6 +50,9 @@ func (m *MockStore) HostExists(hostID string) (bool, error) { return false, nil 
 func (m *MockStore) HostKeyExists(hostID string) (bool, error) {
 	return m.HostKeyExistsMap[hostID], m.HostKeyExistsErr
 }
+func (m *MockStore) HostCertExists(hostID string) (bool, error) {
+	return false, nil
+}
 func (m *MockStore) SaveHostCert(id string, c []byte) error            { return m.SaveHostCertFunc(id, c) }
 func (m *MockStore) SaveHostKey(id string, k []byte) error             { return m.SaveHostKeyFunc(id, k) }
 func (m *MockStore) LoadHostCert(id string) (*x509.Certificate, error) { return m.LoadHostCertFunc(id) }
