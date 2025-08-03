@@ -205,7 +205,6 @@ cov type="all":
         just cov e2e
 
         # Merge coverage profiles using proper deduplication
-        echo "Merging coverage data..."
         echo "mode: atomic" > coverage/merged.out
 
         # Combine all coverage entries, handling duplicates properly
@@ -233,11 +232,13 @@ cov type="all":
         }' >> coverage/merged.out
 
         # Generate HTML report and show summary
+        echo
         go tool cover -html=coverage/merged.out -o coverage/merged.html
         echo "=== Total Coverage ==="
-        go tool cover -func=coverage/merged.out | tail -1 | sed -E 's/\s+/ /g'
+        go tool cov-report coverage/unit.out coverage/integration.out coverage/e2e.out
 
         # Generate coverage badge data
+        echo
         just cov-badge
     else
         echo "Invalid coverage type: {{type}}. Use 'unit', 'integration', 'e2e', or 'all'."

@@ -17,6 +17,7 @@ require (
 )
 
 tool (
+	github.com/effective-security/cov-report/cmd/cov-report
 	github.com/google/yamlfmt/cmd/yamlfmt
 	github.com/santhosh-tekuri/jsonschema/cmd/jv
 	honnef.co/go/tools/cmd/staticcheck
@@ -27,7 +28,7 @@ require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar/v4 v4.7.1 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/effective-security/cov-report v1.2.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/yamlfmt v0.17.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
