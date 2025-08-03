@@ -536,6 +536,8 @@ update-browser-matrix mode="local":
         ) | gsub("\t"; " | ") | "| " + . + " |"
     ')
 
+    full_table=$(echo "$full_table" | sed "s/ --- /---/g")
+
     awk -v table="$full_table" '
         BEGIN { in_matrix = 0; printed_table = 0; skip_table = 0 }
         /^## Browser Compatibility Matrix$/ {

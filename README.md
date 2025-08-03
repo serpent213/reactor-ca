@@ -235,45 +235,45 @@ Deploy will create temp files if the required files are not exported, so `export
 
 ### CA Management
 
-| Command | Description |
-|---------|-------------|
-| `ca ca create` | Create a new CA key and self-signed certificate |
-| `ca ca renew` | Renew the CA certificate using the existing key |
-| `ca ca rekey` | Create a new key and certificate, replacing the old ones |
-| `ca ca info` | Display detailed information about the CA certificate |
-| `ca ca info --openssl` | Invoke `openssl` to display full text dump |
-| `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key |
-| `ca ca export-key` | Export unencrypted CA private key to stdout |
-| `ca ca export-key -o file.key` | Export CA private key to file |
-| `ca ca reencrypt` | Change the master password/update recipients for all encrypted keys |
+| Command                                   | Description                                                         |
+|-------------------------------------------|---------------------------------------------------------------------|
+| `ca ca create`                            | Create a new CA key and self-signed certificate                     |
+| `ca ca renew`                             | Renew the CA certificate using the existing key                     |
+| `ca ca rekey`                             | Create a new key and certificate, replacing the old ones            |
+| `ca ca info`                              | Display detailed information about the CA certificate               |
+| `ca ca info --openssl`                    | Invoke `openssl` to display full text dump                          |
+| `ca ca import --cert <path> --key <path>` | Import an existing CA certificate and private key                   |
+| `ca ca export-key`                        | Export unencrypted CA private key to stdout                         |
+| `ca ca export-key -o file.key`            | Export CA private key to file                                       |
+| `ca ca reencrypt`                         | Change the master password/update recipients for all encrypted keys |
 
 ### Host Certificate Management
 
-| Command | Description |
-|---------|-------------|
-| `ca host issue <host-id>` | Issue/renew a certificate for a host |
-| `ca host issue --all` | Issue/renew certificates for all hosts |
-| `ca host issue <host-id> --rekey` | Force generation of a new private key |
-| `ca host issue <host-id> --deploy` | Issue and deploy certificate in one step |
-| `ca host list` | List all host certificates with their status |
-| `ca host list --expired` | Show only expired certificates |
-| `ca host list --expiring-in 30` | Show certificates expiring in next 30 days |
-| `ca host list --json` | Output in JSON format |
-| `ca host info <host-id>` | Display detailed certificate information |
-| `ca host info <host-id> --openssl` | Invoke `openssl` to display full text dump |
-| `ca host deploy <host-id>` | Run deployment command for a host |
-| `ca host deploy --all` | Deploy all host certificates |
-| `ca host export-key <host-id>` | Export unencrypted private key to stdout |
-| `ca host export-key <host-id> -o file.key` | Export private key to file |
-| `ca host import-key <host-id> --key <path>` | Import existing private key |
-| `ca host sign-csr --csr <path> --out <path>` | Sign external CSR |
-| `ca host clean` | Remove certificates for hosts no longer in config |
+| Command                                      | Description                                       |
+|----------------------------------------------|---------------------------------------------------|
+| `ca host issue <host-id>`                    | Issue/renew a certificate for a host              |
+| `ca host issue --all`                        | Issue/renew certificates for all hosts            |
+| `ca host issue <host-id> --rekey`            | Force generation of a new private key             |
+| `ca host issue <host-id> --deploy`           | Issue and deploy certificate in one step          |
+| `ca host list`                               | List all host certificates with their status      |
+| `ca host list --expired`                     | Show only expired certificates                    |
+| `ca host list --expiring-in 30`              | Show certificates expiring in next 30 days        |
+| `ca host list --json`                        | Output in JSON format                             |
+| `ca host info <host-id>`                     | Display detailed certificate information          |
+| `ca host info <host-id> --openssl`           | Invoke `openssl` to display full text dump        |
+| `ca host deploy <host-id>`                   | Run deployment command for a host                 |
+| `ca host deploy --all`                       | Deploy all host certificates                      |
+| `ca host export-key <host-id>`               | Export unencrypted private key to stdout          |
+| `ca host export-key <host-id> -o file.key`   | Export private key to file                        |
+| `ca host import-key <host-id> --key <path>`  | Import existing private key                       |
+| `ca host sign-csr --csr <path> --out <path>` | Sign external CSR                                 |
+| `ca host clean`                              | Remove certificates for hosts no longer in config |
 
 ### Configuration Management
 
-| Command | Description |
-|---------|-------------|
-| `ca config validate` | Validate configuration files |
+| Command                                      | Description                                       |
+|----------------------------------------------|---------------------------------------------------|
+| `ca config validate`                         | Validate configuration files                      |
 
 [↑ TOC](#table-of-contents)
 
@@ -339,6 +339,8 @@ ca host issue web-server-example --rekey
 # Rotate all host keys and certificates, run all deploy scripts
 ca host issue --all --rekey --deploy
 ```
+
+All modifications to the store are recorded in `store/ca.log`.
 
 [↑ TOC](#table-of-contents)
 
@@ -881,7 +883,7 @@ PRs to the `develop` branch welcome!
 ## Browser Compatibility Matrix
 
 | Key/Signature | Firefox<br>141.0-macOS | Firefox<br>140.0-CI | Chromium<br>139.0-CI | Webkit<br>26.0-CI | Curl<br>8.5-CI |
-| --- | --- | --- | --- | --- | --- |
+|---|---|---|---|---|---|
 | RSA2048-SHA256 | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS | 🟢 PASS |
 | RSA2048-SHA512 | 🟢 PASS | 🔴 FAIL | 🟢 PASS | 🔴 FAIL | 🟢 PASS |
 | RSA3072-SHA256 | 🟢 PASS | 🔴 FAIL | 🔴 FAIL | 🔴 FAIL | 🟢 PASS |
