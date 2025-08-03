@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,6 +77,8 @@ type testEnv struct {
 	root     string
 	t        *testing.T
 	fakeTime string // RFC3339 timestamp for REACTOR_CA_FAKE_TIME
+	timezone string // Timezone for TZ env var
+	locale   string // Locale for LC_ALL env var
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -96,7 +99,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err := os.Mkdir(filepath.Join(root, "config"), 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
-	return &testEnv{root: root, t: t}
+	return &testEnv{
+		root:     root,
+		t:        t,
+		timezone: "UTC",
+		locale:   "C",
+	}
 }
 
 // setFakeTime sets a specific time for deterministic testing.
@@ -108,6 +116,16 @@ func (e *testEnv) setFakeTime(timeStr string) {
 // setFakeTimeFromTime sets fake time from a time.Time value.
 func (e *testEnv) setFakeTimeFromTime(t time.Time) {
 	e.fakeTime = t.Format(time.RFC3339)
+}
+
+// setTimezone sets the timezone for consistent test results.
+func (e *testEnv) setTimezone(tz string) {
+	e.timezone = tz
+}
+
+// setLocale sets the locale for consistent test results.
+func (e *testEnv) setLocale(locale string) {
+	e.locale = locale
 }
 
 func (e *testEnv) path(p ...string) string {
@@ -133,6 +151,13 @@ func (e *testEnv) run(password string, args ...string) (stdout, stderr string, e
 	// Set fake time for deterministic testing
 	if e.fakeTime != "" {
 		cmd.Env = append(cmd.Env, "REACTOR_CA_FAKE_TIME="+e.fakeTime)
+	}
+	// Set timezone and locale for consistent output formatting
+	if e.timezone != "" {
+		cmd.Env = append(cmd.Env, "TZ="+e.timezone)
+	}
+	if e.locale != "" {
+		cmd.Env = append(cmd.Env, "LC_ALL="+e.locale)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -225,12 +250,65 @@ func (e *testEnv) assertFileDoesNotExist(path string) {
 
 func (e *testEnv) copyTestData(src, dest string) {
 	e.t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", src))
+	srcPath := filepath.Join("testdata", src)
+	destPath := e.path(dest)
+
+	// Check if source is a directory or file
+	info, err := os.Stat(srcPath)
 	if err != nil {
-		e.t.Fatalf("Failed to read testdata file %s: %v", src, err)
+		e.t.Fatalf("Failed to stat testdata %s: %v", src, err)
 	}
-	if err := os.WriteFile(e.path(dest), data, 0644); err != nil {
-		e.t.Fatalf("Failed to write testdata to dest %s: %v", dest, err)
+
+	if info.IsDir() {
+		// Copy directory recursively
+		err := filepath.Walk(srcPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Calculate relative path from source
+			relPath, err := filepath.Rel(srcPath, path)
+			if err != nil {
+				return err
+			}
+			targetPath := filepath.Join(destPath, relPath)
+
+			if info.IsDir() {
+				return os.MkdirAll(targetPath, info.Mode())
+			}
+
+			// Copy file
+			srcFile, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer srcFile.Close()
+
+			destFile, err := os.Create(targetPath)
+			if err != nil {
+				return err
+			}
+			defer destFile.Close()
+
+			_, err = io.Copy(destFile, srcFile)
+			if err != nil {
+				return err
+			}
+
+			return os.Chmod(targetPath, info.Mode())
+		})
+		if err != nil {
+			e.t.Fatalf("Failed to copy testdata directory %s to %s: %v", src, dest, err)
+		}
+	} else {
+		// Copy single file (original behavior)
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			e.t.Fatalf("Failed to read testdata file %s: %v", src, err)
+		}
+		if err := os.WriteFile(destPath, data, 0644); err != nil {
+			e.t.Fatalf("Failed to write testdata to dest %s: %v", dest, err)
+		}
 	}
 }
 

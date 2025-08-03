@@ -661,3 +661,71 @@ func TestE2E_HostListTableFormat(t *testing.T) {
 		}
 	})
 }
+
+// TestE2E_HostListMixedStore tests the host list command against the mixed_store test data.
+// Also verifies detection of entity status, broken/missing certs & keys
+func TestE2E_HostListMixedStore(t *testing.T) {
+	t.Parallel()
+
+	// Create test environment
+	e := newTestEnv(t)
+
+	// Copy mixed_store test data to our test environment
+	e.copyTestData("mixed_store", ".")
+
+	// Set fake time to ensure consistent test results
+	e.setFakeTime("2025-08-03T14:13:00Z")
+	e.setTimezone("CEST")
+	e.setLocale("de_DE")
+
+	// Run host list command
+	stdout, stderr, err := e.run("", "host", "list")
+	if err != nil {
+		t.Fatalf("host list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+
+	// Expected output lines captured from actual mixed_store execution with fake time
+	expectedLines := []string{
+		"→ Listing host certificates from store",
+		"",
+		" HOST ID                   KEY ALGO      HASH ALGO      EXPIRES            VALIDITY           ",
+		"──────────────────────────────────────────────────────────────────────────────────────────────",
+		" ai-consciousness-nexus    RSA-4096      ECDSA-SHA384   02.08.2035 10:13   ✓ 3.651 d (10,0 y) ",
+		" ambassador-zyx-alpha      ECDSA-521     ECDSA-SHA512   02.08.2035 10:13   ✓ 3.651 d (10,0 y) ",
+		" broken-key                ECDSA-384     ECDSA-SHA384   02.02.2028 11:13   ! ORPHANED         ",
+		"                                                                           ⚠ KEY BROKEN       ",
+		" chrono-signer-42          Ed25519-256   ECDSA-SHA512   13.09.2035 10:13   ✓ 3.693 d (10,1 y) ",
+		" hologram-identity-prime   ECDSA-521     ECDSA-SHA512   02.08.2026 10:13   ✓ 364 days         ",
+		"                                                                           ⚠ KEY MISSING      ",
+		" host2                     ECDSA-384     ECDSA-SHA384   01.09.2025 10:13   ! 29 days          ",
+		" hp-laserjet-office        -             -              -                  ⚠ CERT BROKEN      ",
+		" john-orphan               ECDSA-384     ECDSA-SHA384   01.09.2025 10:13   ! ORPHANED         ",
+		" oracle-blockchain-sage    -             -              -                  ⚠ CERT MISSING     ",
+		" philips-hue-bedroom       -             -              -                  ○ CONFIGURED       ",
+		" ring-doorbell-front       ECDSA-384     ECDSA-SHA384   02.02.2028 11:13   ✓ 913 d (2,5 y)    ",
+		" toaster-cyberbread-3000   ECDSA-256     ECDSA-SHA256   02.09.2026 10:13   ✓ 395 d (1,1 y)    ",
+		" web-server-example        RSA-2048      ECDSA-SHA256   03.08.2025 10:13   ⚠ -3 hours         ",
+		"──────────────────────────────────────────────────────────────────────────────────────────────",
+		"                                                                   Total                   13 ",
+	}
+
+	// Split actual output into lines
+	actualLines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+
+	// Compare line by line
+	if len(actualLines) != len(expectedLines) {
+		t.Fatalf("Expected %d lines, got %d lines.\nExpected:\n%s\nActual:\n%s",
+			len(expectedLines), len(actualLines), strings.Join(expectedLines, "\n"), stdout)
+	}
+
+	for i, expected := range expectedLines {
+		if i >= len(actualLines) {
+			t.Errorf("Missing line %d: expected %q", i+1, expected)
+			continue
+		}
+		actual := actualLines[i]
+		if actual != expected {
+			t.Errorf("Line %d mismatch:\nExpected: %q\nActual:   %q", i+1, expected, actual)
+		}
+	}
+}

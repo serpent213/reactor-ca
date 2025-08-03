@@ -48,10 +48,7 @@ ca:
 # Defines how private keys are encrypted at rest.
 encryption:
   # Provider: password (default) | ssh | plugin
-  provider: "plugin"
+  provider: "password"
 
-  # Age plugin-based encryption (secure-enclave, yubikey, tpm, etc.)
-  plugin:
-    identity_file: "~/.age/se-identity.txt"
-    recipients:
-      - "age1se1qt9324n8plaj494cqalvqjlgafc2yuqhrcc2x4g2f5azvuklw0whk780tat"
+  # Note: mixed_store is currently plugin encrypted. To use it for other tests besides `host list`, it would
+  # probably make sense to convert it to password encryption.
