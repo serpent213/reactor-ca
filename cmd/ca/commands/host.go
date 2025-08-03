@@ -372,10 +372,9 @@ var hostCleanCmd = &cobra.Command{
 
 var hostRenameCmd = &cobra.Command{
 	Use:   "rename <old-host-id> <new-host-id>",
-	Short: "Rename a host certificate",
-	Long: `Rename a host certificate by updating both the configuration file and the store directory.
-This operation updates the hosts.yaml file and renames the certificate directory in the store.
-The rename preserves all comments and formatting in the configuration file.`,
+	Short: "Rename a host ID",
+	Long: `Rename a host ID by updating both the configuration file and the store directory.
+This operation updates the hosts.yaml file and renames the certificate directory in the store.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		oldHostID := args[0]

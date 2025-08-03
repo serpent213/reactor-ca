@@ -5,6 +5,18 @@ All notable changes to ReactorCA will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased] - 2025-08-04
+
+### Added
+- **Host rename command**: New `ca host rename` command for renaming host IDs
+- **Broken/missing cert & key detection**: Automatic detection and display of corrupted certs and age key files in host list
+- **Locale-aware formatting**: Internationalized date/time formatting for certificate info
+
+### Changed
+- **Host list display**: Refined table formatting
+- **Certificate info output**: Cleaner formatting for certificate info
+- **UI improvements**: Updated error symbols and table colors
+
 ## [0.5.0] - 2025-08-01
 
 ### Added
