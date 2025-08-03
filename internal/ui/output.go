@@ -53,23 +53,6 @@ func PrintBlock(text string) {
 	fmt.Println(text)
 }
 
-// PrintTableHeaderWithWidths prints a styled table header with border using specified column widths
-func PrintTableHeaderWithWidths(columnWidths []int, columns ...string) {
-	var formattedColumns []string
-	for i, col := range columns {
-		if i < len(columnWidths) {
-			formattedColumns = append(formattedColumns, fmt.Sprintf("%-*s", columnWidths[i], col))
-		} else {
-			// Last column is variable width
-			formattedColumns = append(formattedColumns, col)
-		}
-	}
-
-	header := strings.Join(formattedColumns, " | ")
-	fmt.Printf("%s\n", bold(cyan(header)))
-	fmt.Println(cyan(strings.Repeat("─", len(header))))
-}
-
 // FormatHostStatus returns a formatted host status with appropriate symbol and color
 func FormatHostStatus(status string) string {
 	switch status {
@@ -95,7 +78,7 @@ func GetColoredLogo() string {
 		{" ______                                    ", "______"},
 		{"(_____ \\                  _               ", "/ _____)  /\\"},
 		{" _____) ) ____ ____  ____| |_  ___   ____", "| /       /  \\"},
-		{"(_____ ( / _  ) _  |/ ___)  _)/ _ \\ / ___) ", "|      / /\\ \\"},
+		{"(_____ ( / _  ) _  |/ ___)  _)/ _ \\ / ___)", " |      / /\\ \\"},
 		{"      | ( (/ ( ( | ( (___| |_| |_| | |   ", "| \\_____| |__| |"},
 		{"      |_|\\____)_||_|\\____)\\___}___/|_|    ", "\\______)______|"},
 	}

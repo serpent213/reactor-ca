@@ -123,7 +123,7 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	table := ui.NewHostsTable()
 
 	// Set headers
-	table.Header([]string{"HOST ID", "KEY ALGO", "HASH ALGO", "EXPIRES", "REMAINING"})
+	table.Header([]string{"HOST ID", "KEY ALGO", "HASH ALGO", "EXPIRES", "VALIDITY"})
 
 	// Prepare data rows
 	var data [][]string

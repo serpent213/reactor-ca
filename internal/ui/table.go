@@ -23,7 +23,9 @@ func NewHostsTable() *tablewriter.Table {
 				{},                                     // Key Algo
 				{},                                     // Hash Algo
 				{},                                     // Expires
-				{FG: renderer.Colors{color.Reset}},     // Remaining
+				// Slightly hacky: printHostTable uses coloured symbols + reset now
+				// Solution: define this colour globally, use it here and in printHostTable
+				{FG: renderer.Colors{color.Reset}}, // Remaining
 			},
 		},
 		Footer: renderer.Tint{
