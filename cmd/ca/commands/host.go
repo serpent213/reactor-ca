@@ -370,6 +370,27 @@ var hostCleanCmd = &cobra.Command{
 	},
 }
 
+var hostRenameCmd = &cobra.Command{
+	Use:   "rename <old-host-id> <new-host-id>",
+	Short: "Rename a host certificate",
+	Long: `Rename a host certificate by updating both the configuration file and the store directory.
+This operation updates the hosts.yaml file and renames the certificate directory in the store.
+The rename preserves all comments and formatting in the configuration file.`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		oldHostID := args[0]
+		newHostID := args[1]
+
+		ui.Action("Renaming host: %s → %s", oldHostID, newHostID)
+		app := getApp(cmd)
+		err := app.RenameHost(cmd.Context(), oldHostID, newHostID)
+		if err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
 func init() {
 	// host issue
 	hostIssueCmd.Flags().BoolVar(&rekeyHost, "rekey", false, "Force generation of a new private key")
@@ -410,4 +431,7 @@ func init() {
 	// host clean
 	hostCleanCmd.Flags().BoolVar(&forceClean, "force", false, "Do not ask for confirmation before deleting")
 	hostCmd.AddCommand(hostCleanCmd)
+
+	// host rename
+	hostCmd.AddCommand(hostRenameCmd)
 }

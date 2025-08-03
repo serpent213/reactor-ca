@@ -592,6 +592,65 @@ func (a *Application) CleanHosts(ctx context.Context, force bool) ([]string, err
 	return toPrune, nil
 }
 
+// RenameHost renames a host certificate in both configuration and store.
+func (a *Application) RenameHost(ctx context.Context, oldHostID, newHostID string) error {
+	// Validate inputs
+	if oldHostID == "" || newHostID == "" {
+		return fmt.Errorf("%w: host IDs cannot be empty", domain.ErrValidation)
+	}
+	if oldHostID == newHostID {
+		return fmt.Errorf("%w: old and new host IDs must be different", domain.ErrValidation)
+	}
+
+	// Validate that old host exists and new host doesn't exist in config
+	hostsConfig, err := a.configLoader.LoadHosts()
+	if err != nil {
+		return fmt.Errorf("failed to load hosts config: %w", err)
+	}
+
+	if _, exists := hostsConfig.Hosts[oldHostID]; !exists {
+		return fmt.Errorf("%w: host '%s' not found in configuration", domain.ErrHostNotFoundInConfig, oldHostID)
+	}
+
+	if _, exists := hostsConfig.Hosts[newHostID]; exists {
+		return fmt.Errorf("%w: host '%s' already exists in configuration", domain.ErrValidation, newHostID)
+	}
+
+	// Check if host exists in store (optional - we'll rename if it exists)
+	storeExists, err := a.store.HostExists(oldHostID)
+	if err != nil {
+		return fmt.Errorf("failed to check if host exists in store: %w", err)
+	}
+
+	// Step 1: Update configuration file first
+	a.logger.Info("Updating configuration file...")
+	if err := a.configWriter.RenameHost(oldHostID, newHostID); err != nil {
+		return fmt.Errorf("failed to update configuration: %w", err)
+	}
+	ui.Success("Updated configuration: %s → %s", oldHostID, newHostID)
+
+	// Step 2: Rename store directory if it exists
+	if storeExists {
+		a.logger.Info("Renaming host directory in store...")
+		if err := a.store.RenameHost(oldHostID, newHostID); err != nil {
+			// Configuration was already updated, so we need to roll back
+			a.logger.Error("Failed to rename host in store, attempting to rollback configuration...")
+			if rollbackErr := a.configWriter.RenameHost(newHostID, oldHostID); rollbackErr != nil {
+				a.logger.Error(fmt.Sprintf("CRITICAL: Failed to rollback configuration change: %v. Manual intervention required.", rollbackErr))
+				return fmt.Errorf("failed to rename host in store and rollback failed: store error: %w, rollback error: %v", err, rollbackErr)
+			}
+			ui.Error("Rolled back configuration change due to store rename failure")
+			return fmt.Errorf("failed to rename host directory in store: %w", err)
+		}
+		ui.Success("Renamed host directory: %s → %s", oldHostID, newHostID)
+	} else {
+		ui.Info("Host '%s' has no certificate files in store (configuration-only rename)", oldHostID)
+	}
+
+	ui.Success("Successfully renamed host: %s → %s", oldHostID, newHostID)
+	return nil
+}
+
 // ValidateHostKeyAlgorithm checks if existing host key matches the configured algorithm.
 // Uses cache-aware approach - only validates if key can be decrypted without authentication prompts.
 func (a *Application) ValidateHostKeyAlgorithm(hostID string, hostCfg domain.HostConfig, caCfg *domain.CAConfig) {

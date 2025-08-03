@@ -35,6 +35,17 @@ func (m *MockConfigLoader) LoadHosts() (*domain.HostsConfig, error) { return m.H
 func (m *MockConfigLoader) ValidateCAConfig(data []byte) error      { return m.Err }
 func (m *MockConfigLoader) ValidateHostsConfig(data []byte) error   { return m.Err }
 
+type MockConfigWriter struct {
+	RenameHostFunc func(oldHostID, newHostID string) error
+}
+
+func (m *MockConfigWriter) RenameHost(oldHostID, newHostID string) error {
+	if m.RenameHostFunc != nil {
+		return m.RenameHostFunc(oldHostID, newHostID)
+	}
+	return nil
+}
+
 type MockStore struct {
 	SaveCAFunc             func(cert, key []byte) error
 	SaveHostCertFunc       func(hostID string, cert []byte) error
@@ -68,6 +79,7 @@ func (m *MockStore) LoadHostCert(id string) (*x509.Certificate, error) { return 
 func (m *MockStore) LoadHostKey(id string) ([]byte, error)             { return m.LoadHostKeyFunc(id) }
 func (m *MockStore) ListHostIDs() ([]string, error)                    { return m.ListHostIDsFunc() }
 func (m *MockStore) DeleteHost(id string) error                        { return m.DeleteHostFunc(id) }
+func (m *MockStore) RenameHost(oldHostID, newHostID string) error      { return nil }
 func (m *MockStore) GetAllEncryptedKeyPaths() ([]string, error)        { return m.GetAllKeysFunc() }
 func (m *MockStore) UpdateEncryptedKey(p string, d []byte) error {
 	return m.UpdateEncryptedKeyFunc(p, d)
@@ -294,6 +306,7 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 		"/test/root",
 		mocks.Logger,
 		mocks.ConfigLoader,
+		&MockConfigWriter{},
 		mocks.Store,
 		mocks.CryptoSvc,
 		mocks.Password,
@@ -598,7 +611,7 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 	mockCryptoFactory := &mockCryptoServiceFactory{cryptoSvc: mockCrypto}
 
 	application := app.NewApplication(
-		testRoot, &MockLogger{}, mockCfgLoader, mockStore, mockCrypto,
+		testRoot, &MockLogger{}, mockCfgLoader, &MockConfigWriter{}, mockStore, mockCrypto,
 		mockPwProvider, mockUserInt, &MockCommander{}, nil,
 		mockIdentityFactory, mockCryptoFactory, mockValidation,
 		&MockClock{},
@@ -659,6 +672,7 @@ func (m *mockStore) SaveHostCert(hostID string, cert []byte) error         { ret
 func (m *mockStore) SaveHostKey(hostID string, encryptedKey []byte) error  { return nil }
 func (m *mockStore) LoadHostCert(hostID string) (*x509.Certificate, error) { return nil, nil }
 func (m *mockStore) LoadHostKey(hostID string) ([]byte, error)             { return nil, nil }
+func (m *mockStore) RenameHost(oldHostID, newHostID string) error          { return nil }
 func (m *mockStore) GetHostCertPath(hostID string) string                  { return "" }
 func (m *mockStore) GetHostKeyPath(hostID string) string                   { return "" }
 func (m *mockStore) GetCACertPath() string                                 { return "" }

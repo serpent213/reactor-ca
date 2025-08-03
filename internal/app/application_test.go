@@ -105,7 +105,7 @@ func TestCleanHosts(t *testing.T) {
 			}
 
 			application := app.NewApplication(
-				"", &MockLogger{}, mockCfgLoader, mockStore, nil,
+				"", &MockLogger{}, mockCfgLoader, &MockConfigWriter{}, mockStore, nil,
 				mockPwProvider, mockUserInt, &MockCommander{}, nil,
 				&mockIdentityProviderFactory{}, &mockCryptoServiceFactory{}, &mockValidationService{},
 				&MockClock{},

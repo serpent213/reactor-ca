@@ -232,6 +232,29 @@ func (s *FileStore) DeleteHost(hostID string) error {
 	return os.RemoveAll(filepath.Join(s.hostsPath, hostID))
 }
 
+// RenameHost renames a host's directory in the store.
+func (s *FileStore) RenameHost(oldHostID, newHostID string) error {
+	oldPath := filepath.Join(s.hostsPath, oldHostID)
+	newPath := filepath.Join(s.hostsPath, newHostID)
+
+	// Check if old host directory exists
+	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+		return fmt.Errorf("%w: host directory '%s' not found in store", domain.ErrHostNotFoundInStore, oldHostID)
+	}
+
+	// Check if new host directory already exists
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("%w: host directory '%s' already exists in store", domain.ErrValidation, newHostID)
+	}
+
+	// Rename directory atomically
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return fmt.Errorf("failed to rename host directory from '%s' to '%s': %w", oldHostID, newHostID, err)
+	}
+
+	return nil
+}
+
 // GetAllEncryptedKeyPaths finds all *.key.age files in the store.
 func (s *FileStore) GetAllEncryptedKeyPaths() ([]string, error) {
 	var paths []string

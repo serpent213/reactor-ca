@@ -12,6 +12,7 @@ type Application struct {
 	rootPath                string
 	logger                  domain.Logger
 	configLoader            domain.ConfigLoader
+	configWriter            domain.ConfigWriter
 	store                   domain.Store
 	cryptoSvc               domain.CryptoService
 	passwordProvider        domain.PasswordProvider
@@ -29,6 +30,7 @@ func NewApplication(
 	rootPath string,
 	logger domain.Logger,
 	configLoader domain.ConfigLoader,
+	configWriter domain.ConfigWriter,
 	store domain.Store,
 	cryptoSvc domain.CryptoService,
 	passwordProvider domain.PasswordProvider,
@@ -44,6 +46,7 @@ func NewApplication(
 		rootPath:                rootPath,
 		logger:                  logger,
 		configLoader:            configLoader,
+		configWriter:            configWriter,
 		store:                   store,
 		cryptoSvc:               cryptoSvc,
 		passwordProvider:        passwordProvider,

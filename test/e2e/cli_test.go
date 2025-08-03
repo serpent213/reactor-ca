@@ -405,3 +405,277 @@ hosts:
 	e.assertDirExists("store/hosts/web-server")
 	e.assertDirDoesNotExist("store/hosts/db-server")
 }
+
+// TestE2E_HostRename covers renaming host certificates.
+func TestE2E_HostRename(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+	e.writeConfig("ca.yaml", testCaYAML)
+	e.runWithCheck(testPassword, "init")
+	e.runWithCheck(testPassword, "ca", "create")
+
+	// 1. Setup initial hosts configuration
+	const initialHostsYAML = `# ReactorCA: Host Certificate Configuration
+# This file defines the certificates you want to issue for your hosts/services.
+
+hosts:
+  old-server:
+    # Subject information
+    subject:
+      common_name: old.reactor.test
+      organizational_unit: Testing
+
+    # The names (SANs) the certificate should be valid for
+    alternative_names:
+      dns:
+        - old.reactor.test
+        - legacy.reactor.test
+      ip:
+        - 192.168.1.50
+
+    # Certificate validity period
+    validity:
+      days: 30
+
+    # Export configuration
+    export:
+      cert: "exports/old-server.pem"
+      chain: "exports/old-server-chain.pem"
+
+  # Another host to ensure we don't affect other entries
+  other-server:
+    alternative_names:
+      dns: [ "other.reactor.test" ]
+    validity: { days: 15 }
+`
+
+	e.writeConfig("hosts.yaml", initialHostsYAML)
+
+	// 2. Issue certificates for the initial hosts
+	e.runWithCheck(testPassword, "host", "issue", "old-server")
+	e.runWithCheck(testPassword, "host", "issue", "other-server")
+
+	// Verify initial state
+	e.assertFileExists("store/hosts/old-server/cert.crt")
+	e.assertFileExists("store/hosts/old-server/cert.key.age")
+	e.assertFileExists("store/hosts/other-server/cert.crt")
+	e.assertFileExists("store/hosts/other-server/cert.key.age")
+	e.assertFileExists("exports/old-server.pem")
+	e.assertFileExists("exports/old-server-chain.pem")
+
+	// 3. Read original host cert and key for verification
+	originalCert, err := os.ReadFile(e.path("store/hosts/old-server/cert.crt"))
+	if err != nil {
+		t.Fatalf("Failed to read original cert: %v", err)
+	}
+	originalKey, err := os.ReadFile(e.path("store/hosts/old-server/cert.key.age"))
+	if err != nil {
+		t.Fatalf("Failed to read original key: %v", err)
+	}
+
+	// 4. Perform the rename operation
+	stdout, stderr, err := e.run(testPassword, "host", "rename", "old-server", "new-server")
+	if err != nil {
+		t.Fatalf("`host rename` failed: %v\n%s", err, stderr)
+	}
+
+	// Verify the command output contains expected success messages
+	if !strings.Contains(stdout, "Updated configuration: old-server → new-server") {
+		t.Errorf("Expected configuration update message in output: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Renamed host directory: old-server → new-server") {
+		t.Errorf("Expected directory rename message in output: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Successfully renamed host: old-server → new-server") {
+		t.Errorf("Expected final success message in output: %s", stdout)
+	}
+
+	// 5. Verify store directory changes
+	e.assertDirDoesNotExist("store/hosts/old-server")
+	e.assertDirExists("store/hosts/new-server")
+	e.assertFileExists("store/hosts/new-server/cert.crt")
+	e.assertFileExists("store/hosts/new-server/cert.key.age")
+	// Verify other-server is unaffected
+	e.assertFileExists("store/hosts/other-server/cert.crt")
+
+	// 6. Verify that the certificate and key files are identical (moved, not regenerated)
+	newCert, err := os.ReadFile(e.path("store/hosts/new-server/cert.crt"))
+	if err != nil {
+		t.Fatalf("Failed to read renamed cert: %v", err)
+	}
+	newKey, err := os.ReadFile(e.path("store/hosts/new-server/cert.key.age"))
+	if err != nil {
+		t.Fatalf("Failed to read renamed key: %v", err)
+	}
+
+	if !bytes.Equal(originalCert, newCert) {
+		t.Error("Certificate file content changed during rename (should be identical)")
+	}
+	if !bytes.Equal(originalKey, newKey) {
+		t.Error("Private key file content changed during rename (should be identical)")
+	}
+
+	// 7. Verify hosts.yaml was updated correctly
+	hostsContent, err := os.ReadFile(e.path("config/hosts.yaml"))
+	if err != nil {
+		t.Fatalf("Failed to read hosts.yaml: %v", err)
+	}
+	hostsStr := string(hostsContent)
+
+	// Verify old host ID is completely gone
+	if strings.Contains(hostsStr, "old-server:") {
+		t.Error("hosts.yaml still contains old host ID 'old-server:'")
+	}
+
+	// Verify new host ID is present
+	if !strings.Contains(hostsStr, "new-server:") {
+		t.Error("hosts.yaml does not contain new host ID 'new-server:'")
+	}
+
+	// Verify comments and formatting are preserved
+	if !strings.Contains(hostsStr, "# ReactorCA: Host Certificate Configuration") {
+		t.Error("Header comment was not preserved in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "# Subject information") {
+		t.Error("Inline comments were not preserved in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "# The names (SANs) the certificate should be valid for") {
+		t.Error("Section comments were not preserved in hosts.yaml")
+	}
+
+	// Verify the host configuration content is preserved
+	if !strings.Contains(hostsStr, "old.reactor.test") {
+		t.Error("Common name was not preserved in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "legacy.reactor.test") {
+		t.Error("DNS SAN was not preserved in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "192.168.1.50") {
+		t.Error("IP SAN was not preserved in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "organizational_unit: Testing") {
+		t.Error("Subject OU was not preserved in hosts.yaml")
+	}
+
+	// Verify other-server entry is unaffected
+	if !strings.Contains(hostsStr, "other-server:") {
+		t.Error("other-server entry was unexpectedly modified in hosts.yaml")
+	}
+	if !strings.Contains(hostsStr, "other.reactor.test") {
+		t.Error("other-server DNS name was unexpectedly modified in hosts.yaml")
+	}
+
+	// 8. Test that renamed host works with other commands
+	stdout, stderr, err = e.run(testPassword, "host", "info", "new-server")
+	if err != nil {
+		t.Fatalf("`host info new-server` failed after rename: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "old.reactor.test") {
+		t.Error("Host info for renamed host doesn't show expected CN")
+	}
+
+	// 9. Test host list includes renamed host
+	stdout, stderr, err = e.run(testPassword, "host", "list", "--json")
+	if err != nil {
+		t.Fatalf("`host list --json` failed after rename: %v\n%s", err, stderr)
+	}
+	var hosts []*domain.HostInfo
+	if err := json.Unmarshal([]byte(stdout), &hosts); err != nil {
+		t.Fatalf("Failed to parse JSON from `host list`: %v", err)
+	}
+
+	// Find the renamed host in the list
+	var foundNewServer bool
+	var foundOldServer bool
+	for _, host := range hosts {
+		if host.ID == "new-server" {
+			foundNewServer = true
+			if host.CommonName != "old.reactor.test" {
+				t.Errorf("Expected CN 'old.reactor.test' for new-server, got '%s'", host.CommonName)
+			}
+		}
+		if host.ID == "old-server" {
+			foundOldServer = true
+		}
+	}
+
+	if !foundNewServer {
+		t.Error("new-server not found in host list after rename")
+	}
+	if foundOldServer {
+		t.Error("old-server still appears in host list after rename")
+	}
+
+	// 10. Test error cases
+	// Try to rename to existing host
+	_, stderr, err = e.run(testPassword, "host", "rename", "new-server", "other-server")
+	if err == nil {
+		t.Fatal("Expected error when renaming to existing host ID, but command succeeded")
+	}
+	if !strings.Contains(stderr, "already exists") {
+		t.Errorf("Expected 'already exists' error message, got: %s", stderr)
+	}
+
+	// Try to rename non-existent host
+	_, stderr, err = e.run(testPassword, "host", "rename", "nonexistent", "something")
+	if err == nil {
+		t.Fatal("Expected error when renaming non-existent host, but command succeeded")
+	}
+	if !strings.Contains(stderr, "not found") {
+		t.Errorf("Expected 'not found' error message, got: %s", stderr)
+	}
+
+	// 11. Test configuration-only rename (host with no certificates)
+	const configOnlyHostYAML = `# ReactorCA: Host Certificate Configuration
+
+hosts:
+  new-server:
+    subject:
+      common_name: old.reactor.test
+      organizational_unit: Testing
+    alternative_names:
+      dns:
+        - old.reactor.test
+        - legacy.reactor.test
+      ip:
+        - 192.168.1.50
+    validity:
+      days: 30
+    export:
+      cert: "exports/old-server.pem"
+      chain: "exports/old-server-chain.pem"
+
+  other-server:
+    alternative_names:
+      dns: [ "other.reactor.test" ]
+    validity: { days: 15 }
+
+  config-only-host:
+    alternative_names:
+      dns: [ "config.reactor.test" ]
+    validity: { days: 7 }
+`
+
+	e.writeConfig("hosts.yaml", configOnlyHostYAML)
+
+	// Rename a host that exists only in config (no certificates)
+	stdout, stderr, err = e.run(testPassword, "host", "rename", "config-only-host", "renamed-config-host")
+	if err != nil {
+		t.Fatalf("`host rename` failed for config-only host: %v\n%s", err, stderr)
+	}
+
+	// Should mention it's configuration-only
+	if !strings.Contains(stdout, "configuration-only rename") {
+		t.Errorf("Expected configuration-only message for host with no certificates: %s", stdout)
+	}
+
+	// Verify the rename worked in config
+	hostsContent, _ = os.ReadFile(e.path("config/hosts.yaml"))
+	hostsStr = string(hostsContent)
+	if strings.Contains(hostsStr, "config-only-host:") {
+		t.Error("hosts.yaml still contains old config-only host ID")
+	}
+	if !strings.Contains(hostsStr, "renamed-config-host:") {
+		t.Error("hosts.yaml does not contain new config-only host ID")
+	}
+}

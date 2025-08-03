@@ -65,6 +65,7 @@ suitable for homelab and small-to-medium business environments.`,
 		}
 		fileStore := store.NewFileStore(storePath)
 		configLoader := config.NewYAMLConfigLoader(configPath)
+		configWriter := config.NewYAMLConfigUpdater(configPath, configLoader)
 		passwordProvider := password.NewProvider()
 		userInteraction := ui.NewPrompt()
 		commander := exec.NewCommander()
@@ -93,6 +94,7 @@ suitable for homelab and small-to-medium business environments.`,
 			rootPath,
 			logger,
 			configLoader,
+			configWriter,
 			fileStore,
 			cryptoSvc,
 			passwordProvider,

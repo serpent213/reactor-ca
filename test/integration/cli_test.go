@@ -111,6 +111,7 @@ hosts:
 		tempDir,
 		logger,
 		configLoader,
+		config.NewYAMLConfigUpdater(filepath.Join(tempDir, "config"), configLoader),
 		fileStore,
 		cryptoSvc,
 		passwordProvider,

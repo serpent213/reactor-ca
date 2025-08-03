@@ -25,6 +25,11 @@ type ConfigLoader interface {
 	ValidateHostsConfig(data []byte) error
 }
 
+// ConfigWriter defines the interface for updating configuration files.
+type ConfigWriter interface {
+	RenameHost(oldHostID, newHostID string) error
+}
+
 // Store defines the interface for persistence operations.
 type Store interface {
 	// CA operations
@@ -44,6 +49,7 @@ type Store interface {
 	LoadHostKey(hostID string) ([]byte, error) // Returns encrypted key
 	ListHostIDs() ([]string, error)
 	DeleteHost(hostID string) error
+	RenameHost(oldHostID, newHostID string) error
 	GetAllEncryptedKeyPaths() ([]string, error)
 	UpdateEncryptedKey(path string, data []byte) error
 

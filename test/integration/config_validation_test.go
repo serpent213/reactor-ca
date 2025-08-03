@@ -103,6 +103,7 @@ func createTestApplication(rootPath string) *app.Application {
 		rootPath,
 		logger,
 		configLoader,
+		config.NewYAMLConfigUpdater(filepath.Join(rootPath, "config"), configLoader),
 		store,
 		nil, // cryptoSvc not needed for config validation
 		passwordProvider,

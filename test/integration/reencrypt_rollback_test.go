@@ -71,6 +71,7 @@ func TestReencryptRollback_Integration(t *testing.T) {
 		tempDir,
 		logger,
 		configLoader,
+		config.NewYAMLConfigUpdater(filepath.Join(tempDir, "config"), configLoader),
 		mockStore,
 		nil, // cryptoSvc - will be set after init
 		passwordProvider,
@@ -153,6 +154,7 @@ hosts:
 		tempDir,
 		logger,
 		configLoader,
+		config.NewYAMLConfigUpdater(filepath.Join(tempDir, "config"), configLoader),
 		mockStore,
 		cryptoSvc,
 		passwordProvider,
