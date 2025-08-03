@@ -113,6 +113,11 @@ type ValidationService interface {
 	ValidateProviderRoundTrip(provider IdentityProvider) error
 }
 
+// Clock defines the interface for time operations.
+type Clock interface {
+	Now() time.Time
+}
+
 // HostInfo is a DTO for listing hosts.
 type HostInfo struct {
 	ID            string     `json:"id"`

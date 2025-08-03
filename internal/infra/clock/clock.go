@@ -1,10 +1,20 @@
-//go:build !e2e && !integration
-
 package clock
 
-import "time"
+import (
+	"time"
 
-// Now returns the current time. Is replaced in test builds to allow time faking.
-func Now() time.Time {
-	return time.Now()
+	"reactor.de/reactor-ca/internal/domain"
+)
+
+// Service implements the Clock interface for real time operations.
+type Service struct{}
+
+// NewService creates a new real clock service.
+func NewService() domain.Clock {
+	return &Service{}
+}
+
+// Now returns the current time.
+func (s *Service) Now() time.Time {
+	return now()
 }

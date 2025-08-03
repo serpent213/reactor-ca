@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"filippo.io/age"
 
@@ -165,6 +166,17 @@ func (m *MockLogger) Error(msg string, args ...interface{})   {}
 func (m *MockLogger) Warning(msg string, args ...interface{}) {}
 func (m *MockLogger) Log(msg string)                          {}
 
+type MockClock struct {
+	NowFunc func() time.Time
+}
+
+func (m *MockClock) Now() time.Time {
+	if m.NowFunc != nil {
+		return m.NowFunc()
+	}
+	return time.Now()
+}
+
 type MockIdentityProviderFactory struct {
 	CreateIdentityProviderFunc     func(*domain.CAConfig, domain.PasswordProvider) (domain.IdentityProvider, error)
 	CreateHostIdentityProviderFunc func(*domain.CAConfig, *domain.HostConfig, domain.PasswordProvider) (domain.IdentityProvider, error)
@@ -244,7 +256,7 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 
 	// Use real crypto service for cert generation, but allow overriding specific functions.
 	// This makes it easy to test logic without mocking all of crypto.
-	realCryptoSvc := cryptosvc.NewService()
+	realCryptoSvc := cryptosvc.NewService(&MockClock{})
 
 	mockCryptoServiceFactory := &MockCryptoServiceFactory{}
 	mockIdentityProviderFactory := &MockIdentityProviderFactory{}
@@ -291,6 +303,7 @@ func SetupTestApplication(t *testing.T) (*app.Application, *Mocks) {
 		mocks.IdentityProviderFactory,
 		mocks.CryptoServiceFactory,
 		nil, // ValidationService
+		&MockClock{},
 	)
 
 	return application, mocks
@@ -330,7 +343,7 @@ func GetTestHostsConfig(hostID string) *domain.HostsConfig {
 func GetTestCACert(t *testing.T) (*x509.Certificate, crypto.Signer) {
 	t.Helper()
 	// Use the real crypto service to generate a valid CA cert for tests
-	svc := cryptosvc.NewService()
+	svc := cryptosvc.NewService(&MockClock{})
 	key, err := svc.GeneratePrivateKey(domain.ECP256)
 	if err != nil {
 		t.Fatalf("Failed to generate test CA key: %v", err)
@@ -588,6 +601,7 @@ func createTestApp(t *testing.T, config testAppConfig) (*app.Application, *mockS
 		testRoot, &MockLogger{}, mockCfgLoader, mockStore, mockCrypto,
 		mockPwProvider, mockUserInt, &MockCommander{}, nil,
 		mockIdentityFactory, mockCryptoFactory, mockValidation,
+		&MockClock{},
 	)
 
 	return application, mockStore, testRoot

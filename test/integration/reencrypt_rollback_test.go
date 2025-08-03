@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/infra/config"
 	cryptosvc "reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -61,7 +62,8 @@ func TestReencryptRollback_Integration(t *testing.T) {
 	commander := exec.NewCommander()
 	userInteraction := &mockUserInteraction{confirmResponse: true} // Auto-confirm rollback
 	identityProviderFactory := identity.NewFactory()
-	cryptoServiceFactory := cryptosvc.NewServiceFactory()
+	clockSvc := clock.NewService()
+	cryptoServiceFactory := cryptosvc.NewServiceFactory(clockSvc)
 	validationService := cryptosvc.NewValidationService()
 
 	// Create application with all required parameters (without crypto services for init)
@@ -78,6 +80,7 @@ func TestReencryptRollback_Integration(t *testing.T) {
 		identityProviderFactory,
 		cryptoServiceFactory,
 		validationService,
+		clockSvc,
 	)
 
 	// Create directory structure manually
@@ -159,6 +162,7 @@ hosts:
 		identityProviderFactory,
 		cryptoServiceFactory,
 		validationService,
+		clockSvc,
 	)
 
 	ctx := context.Background()

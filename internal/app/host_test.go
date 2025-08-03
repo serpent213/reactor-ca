@@ -31,7 +31,7 @@ func TestIssueHost_NewHost(t *testing.T) {
 	mocks.Store.HostKeyExistsMap = map[string]bool{hostID: false} // Key does not exist
 	mocks.CryptoSvc.GeneratePrivateKeyFunc = func(algo domain.KeyAlgorithm) (crypto.Signer, error) {
 		// Use real crypto service for this
-		return cryptosvc.NewService().GeneratePrivateKey(algo)
+		return cryptosvc.NewService(&MockClock{}).GeneratePrivateKey(algo)
 	}
 	mocks.CryptoSvc.EncryptPrivateKeyFunc = func(key crypto.Signer) ([]byte, error) {
 		return DummyEncryptedKey, nil
@@ -75,7 +75,7 @@ func TestIssueHost_RenewHost(t *testing.T) {
 	testHostsConfig := GetTestHostsConfig(hostID)
 	testCACert, testCAKey := GetTestCACert(t)
 	// Use real crypto service to generate a realistic host key
-	realCrypto := cryptosvc.NewService()
+	realCrypto := cryptosvc.NewService(&MockClock{})
 	existingHostKey, _ := realCrypto.GeneratePrivateKey(domain.ECP256)
 
 	// --- Mock setup ---
@@ -127,7 +127,7 @@ func TestIssueHost_RekeyHost(t *testing.T) {
 	testCAConfig := GetTestCAConfig()
 	testHostsConfig := GetTestHostsConfig(hostID)
 	testCACert, testCAKey := GetTestCACert(t)
-	realCrypto := cryptosvc.NewService()
+	realCrypto := cryptosvc.NewService(&MockClock{})
 	var newKeyGenerated bool
 
 	// --- Mock setup ---
@@ -174,7 +174,7 @@ func TestIssueHost_Deploy(t *testing.T) {
 		Deploy:       domain.DeployConfig{Command: "echo deployed"},
 	}
 	testCACert, testCAKey := GetTestCACert(t)
-	realCrypto := cryptosvc.NewService()
+	realCrypto := cryptosvc.NewService(&MockClock{})
 	hostKey, _ := realCrypto.GeneratePrivateKey(domain.ECP256)
 	var commanderCalled bool
 

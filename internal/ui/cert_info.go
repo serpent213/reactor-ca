@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"reactor.de/reactor-ca/internal/infra/clock"
+	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/localedate"
 )
 
 // formatDurationParts formats a duration into human-readable text
-func formatDurationParts(duration time.Duration, short bool, p *message.Printer) string {
+func formatDurationParts(duration time.Duration, short bool, p *message.Printer, clock domain.Clock) string {
 	days := int64(math.Round(duration.Hours() / 24))
 	totalHours := int64(duration.Hours())
 
@@ -68,18 +68,15 @@ func formatDurationParts(duration time.Duration, short bool, p *message.Printer)
 
 // FormatCertExpiry formats certificate expiry time in a user-friendly way with colored status symbols
 // If now is provided, it will be used instead of time.Now() for deterministic testing
-func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short bool, now ...time.Time) string {
+func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short bool, clock domain.Clock) string {
 	userLocaleTag := localedate.GetUserLocaleTag()
 	p := message.NewPrinter(userLocaleTag)
 
 	currentTime := clock.Now()
-	if len(now) > 0 {
-		currentTime = now[0]
-	}
 	duration := expiryTime.Sub(currentTime)
 
 	// Add colored status symbols based on configurable thresholds
-	timeString := formatDurationParts(duration, short, p)
+	timeString := formatDurationParts(duration, short, p, clock)
 	days := int64(math.Round(duration.Hours() / 24))
 	if days < 0 {
 		return red("⚠ " + timeString)
@@ -93,9 +90,9 @@ func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short
 }
 
 // PrintCertInfo displays certificate information in a user-friendly format
-func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int) {
+func PrintCertInfo(cert *x509.Certificate, criticalDays, warningDays int, clock domain.Clock) {
 	// Calculate validity status
-	remaining := FormatCertExpiry(cert.NotAfter, criticalDays, warningDays, false)
+	remaining := FormatCertExpiry(cert.NotAfter, criticalDays, warningDays, false, clock)
 
 	// Extract email from certificate subject
 	email := extractEmailFromSubject(cert.Subject)

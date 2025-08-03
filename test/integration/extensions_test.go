@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/infra/config"
 	"reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -409,7 +410,8 @@ func createTestApplicationForExtensions(rootPath string) *app.Application {
 	userInteraction := &mockUserInteraction{confirmResponse: true}
 	commander := exec.NewCommander()
 	identityProviderFactory := identity.NewFactory()
-	cryptoServiceFactory := crypto.NewServiceFactory()
+	clockSvc := clock.NewService()
+	cryptoServiceFactory := crypto.NewServiceFactory(clockSvc)
 	validationService := crypto.NewValidationService()
 
 	// Load CA config to create proper identity provider and crypto service
@@ -429,6 +431,7 @@ func createTestApplicationForExtensions(rootPath string) *app.Application {
 			identityProviderFactory,
 			cryptoServiceFactory,
 			validationService,
+			clockSvc,
 		)
 	}
 
@@ -449,6 +452,7 @@ func createTestApplicationForExtensions(rootPath string) *app.Application {
 			identityProviderFactory,
 			cryptoServiceFactory,
 			validationService,
+			clockSvc,
 		)
 	}
 
@@ -468,6 +472,7 @@ func createTestApplicationForExtensions(rootPath string) *app.Application {
 		identityProviderFactory,
 		cryptoServiceFactory,
 		validationService,
+		clockSvc,
 	)
 }
 

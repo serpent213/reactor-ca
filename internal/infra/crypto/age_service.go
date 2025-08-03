@@ -20,9 +20,9 @@ type AgeService struct {
 }
 
 // NewAgeService creates a new age-based crypto service.
-func NewAgeService(identityProvider domain.IdentityProvider) *AgeService {
+func NewAgeService(identityProvider domain.IdentityProvider, clock domain.Clock) *AgeService {
 	return &AgeService{
-		Service:          NewService(),
+		Service:          NewService(clock),
 		identityProvider: identityProvider,
 	}
 }

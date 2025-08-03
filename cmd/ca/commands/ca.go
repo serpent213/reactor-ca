@@ -136,10 +136,10 @@ var caInfoCmd = &cobra.Command{
 		if err != nil {
 			// Use domain defaults if config can't be loaded
 			var defaultThresholds domain.WarningThresholds
-			ui.PrintCertInfo(cert, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays())
+			ui.PrintCertInfo(cert, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays(), app.GetClock())
 		} else {
 			thresholds := caCfg.GetWarningThresholds()
-			ui.PrintCertInfo(cert, thresholds.GetCriticalDays(), thresholds.GetWarningDays())
+			ui.PrintCertInfo(cert, thresholds.GetCriticalDays(), thresholds.GetWarningDays(), app.GetClock())
 		}
 		return nil
 	},

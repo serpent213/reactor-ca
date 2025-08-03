@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/infra/config"
 	"reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -94,7 +95,8 @@ func createTestApplication(rootPath string) *app.Application {
 	passwordProvider := password.NewProvider()
 	commander := exec.NewCommander()
 	identityProviderFactory := identity.NewFactory()
-	cryptoServiceFactory := crypto.NewServiceFactory()
+	clockSvc := clock.NewService()
+	cryptoServiceFactory := crypto.NewServiceFactory(clockSvc)
 	validationService := crypto.NewValidationService()
 
 	return app.NewApplication(
@@ -110,6 +112,7 @@ func createTestApplication(rootPath string) *app.Application {
 		identityProviderFactory,
 		cryptoServiceFactory,
 		validationService,
+		clockSvc,
 	)
 }
 

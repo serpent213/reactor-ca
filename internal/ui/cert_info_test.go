@@ -4,10 +4,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"reactor.de/reactor-ca/internal/domain"
 )
+
+// mockClock implements domain.Clock for testing.
+type mockClock struct {
+	fixedTime time.Time
+}
+
+// Ensure mockClock implements domain.Clock interface
+var _ domain.Clock = (*mockClock)(nil)
+
+func (m *mockClock) Now() time.Time {
+	return m.fixedTime
+}
 
 func TestFormatCertExpiry(t *testing.T) {
 	now := time.Now()
+	mockClock := &mockClock{fixedTime: now}
 
 	tests := []struct {
 		name          string
@@ -259,7 +274,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			expiryTime := now.Add(duration)
 
 			// Call the function
-			result := FormatCertExpiry(expiryTime, tt.criticalDays, tt.warningDays, true, now)
+			result := FormatCertExpiry(expiryTime, tt.criticalDays, tt.warningDays, true, mockClock)
 
 			// Check symbol (first character as rune)
 			if len(result) == 0 {
@@ -288,6 +303,7 @@ func TestFormatCertExpiry(t *testing.T) {
 
 func TestFormatCertExpiryEdgeCasesRounding(t *testing.T) {
 	now := time.Now()
+	mockClock := &mockClock{fixedTime: now}
 
 	// Test rounding behavior with fractional hours
 	tests := []struct {
@@ -307,7 +323,7 @@ func TestFormatCertExpiryEdgeCasesRounding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			duration := time.Duration(tt.hours * float64(time.Hour))
 			expiryTime := now.Add(duration)
-			result := FormatCertExpiry(expiryTime, 7, 30, true, now)
+			result := FormatCertExpiry(expiryTime, 7, 30, true, mockClock)
 
 			// Extract text after symbol and space (using runes for proper Unicode handling)
 			runes := []rune(result)
@@ -324,10 +340,11 @@ func TestFormatCertExpiryEdgeCasesRounding(t *testing.T) {
 
 func TestFormatCertExpiry_LongFormat(t *testing.T) {
 	now := time.Date(2023, 6, 15, 12, 0, 0, 0, time.UTC)
+	mockClock := &mockClock{fixedTime: now}
 
 	// Test one basic case with short = false to ensure longer format works
 	expiryTime := now.Add(48 * time.Hour) // 2 days from now
-	result := FormatCertExpiry(expiryTime, 7, 30, false, now)
+	result := FormatCertExpiry(expiryTime, 7, 30, false, mockClock)
 
 	// Should contain more detailed information than short format
 	if len(result) == 0 {
@@ -335,7 +352,7 @@ func TestFormatCertExpiry_LongFormat(t *testing.T) {
 	}
 
 	// The long format should contain more characters than short format
-	shortResult := FormatCertExpiry(expiryTime, 7, 30, true, now)
+	shortResult := FormatCertExpiry(expiryTime, 7, 30, true, mockClock)
 	if len(result) <= len(shortResult) {
 		t.Errorf("Expected long format to be longer than short format. Long: %q, Short: %q", result, shortResult)
 	}

@@ -21,6 +21,7 @@ type Application struct {
 	identityProviderFactory domain.IdentityProviderFactory
 	cryptoServiceFactory    domain.CryptoServiceFactory
 	validationService       domain.ValidationService
+	clock                   domain.Clock
 }
 
 // NewApplication creates a new Application instance.
@@ -37,6 +38,7 @@ func NewApplication(
 	identityProviderFactory domain.IdentityProviderFactory,
 	cryptoServiceFactory domain.CryptoServiceFactory,
 	validationService domain.ValidationService,
+	clock domain.Clock,
 ) *Application {
 	return &Application{
 		rootPath:                rootPath,
@@ -51,6 +53,7 @@ func NewApplication(
 		identityProviderFactory: identityProviderFactory,
 		cryptoServiceFactory:    cryptoServiceFactory,
 		validationService:       validationService,
+		clock:                   clock,
 	}
 }
 
@@ -62,6 +65,11 @@ func (a *Application) GetCAConfig() (*domain.CAConfig, error) {
 // GetStore returns the store instance.
 func (a *Application) GetStore() domain.Store {
 	return a.store
+}
+
+// GetClock returns the clock instance.
+func (a *Application) GetClock() domain.Clock {
+	return a.clock
 }
 
 func (a *Application) writeFileWithDir(path string, data []byte, perm os.FileMode) error {

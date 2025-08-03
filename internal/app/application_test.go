@@ -108,6 +108,7 @@ func TestCleanHosts(t *testing.T) {
 				"", &MockLogger{}, mockCfgLoader, mockStore, nil,
 				mockPwProvider, mockUserInt, &MockCommander{}, nil,
 				&mockIdentityProviderFactory{}, &mockCryptoServiceFactory{}, &mockValidationService{},
+				&MockClock{},
 			)
 
 			// Run the method

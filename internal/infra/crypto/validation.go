@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"reactor.de/reactor-ca/internal/domain"
+	"reactor.de/reactor-ca/internal/infra/clock"
 )
 
 // ValidateProviderRoundTrip performs a test encrypt/decrypt to ensure the provider works.
@@ -22,7 +23,7 @@ func ValidateProviderRoundTrip(provider domain.IdentityProvider) error {
 	}
 
 	// Create temporary crypto service with new provider
-	tempCryptoSvc := NewAgeService(provider)
+	tempCryptoSvc := NewAgeService(provider, clock.NewService())
 
 	// Encrypt test key
 	encrypted, err := tempCryptoSvc.EncryptPrivateKey(testKey)

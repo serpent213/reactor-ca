@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/app"
+	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/infra/config"
 	"reactor.de/reactor-ca/internal/infra/crypto"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -57,7 +58,8 @@ suitable for homelab and small-to-medium business environments.`,
 		}
 
 		// Dependency Injection
-		logger, err := logging.NewFileLogger(filepath.Join(storePath, "ca.log"))
+		clockSvc := clock.NewService()
+		logger, err := logging.NewFileLogger(filepath.Join(storePath, "ca.log"), clockSvc)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger: %w", err)
 		}
@@ -75,7 +77,7 @@ suitable for homelab and small-to-medium business environments.`,
 
 		// Create factories
 		identityProviderFactory := identity.NewFactory()
-		cryptoServiceFactory := crypto.NewServiceFactory()
+		cryptoServiceFactory := crypto.NewServiceFactory(clockSvc)
 		validationService := crypto.NewValidationService()
 
 		// Create identity provider based on config
@@ -100,6 +102,7 @@ suitable for homelab and small-to-medium business environments.`,
 			identityProviderFactory,
 			cryptoServiceFactory,
 			validationService,
+			clockSvc,
 		)
 
 		ctx := context.WithValue(cmd.Context(), appContextKey, &AppContext{App: application})

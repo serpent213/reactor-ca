@@ -87,10 +87,10 @@ var hostListCmd = &cobra.Command{
 		if err != nil {
 			// Use domain defaults if config can't be loaded
 			var defaultThresholds domain.WarningThresholds
-			printHostTable(filteredList, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays())
+			printHostTable(filteredList, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays(), app.GetClock())
 		} else {
 			thresholds := caCfg.GetWarningThresholds()
-			printHostTable(filteredList, thresholds.GetCriticalDays(), thresholds.GetWarningDays())
+			printHostTable(filteredList, thresholds.GetCriticalDays(), thresholds.GetWarningDays(), app.GetClock())
 		}
 		return nil
 	},
@@ -121,14 +121,16 @@ type hostPresenter struct {
 	criticalDays int
 	warningDays  int
 	userLocale   string
+	clock        domain.Clock
 }
 
-func newHostPresenter(h *domain.HostInfo, critical, warning int) *hostPresenter {
+func newHostPresenter(h *domain.HostInfo, critical, warning int, clock domain.Clock) *hostPresenter {
 	return &hostPresenter{
 		h:            h,
 		criticalDays: critical,
 		warningDays:  warning,
 		userLocale:   localedate.GetUserLocaleTag().String(),
+		clock:        clock,
 	}
 }
 
@@ -167,7 +169,7 @@ func (p *hostPresenter) Validity() string {
 			parts = append(parts, ui.ErrorSymbol()+" CERT MISSING")
 		case domain.HostStatusKeyMissing, domain.HostStatusIssued:
 			// Show expiry status for both key missing and issued hosts
-			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true))
+			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true, p.clock))
 		}
 	}
 
@@ -185,7 +187,7 @@ func (p *hostPresenter) Validity() string {
 	return strings.Join(parts, "\n")
 }
 
-func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
+func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int, clock domain.Clock) {
 	if len(list) == 0 {
 		ui.Info("No hosts found.")
 		return
@@ -197,7 +199,7 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	var data [][]string
 	for _, h := range list {
 		// Create a presenter for the host
-		p := newHostPresenter(h, criticalDays, warningDays)
+		p := newHostPresenter(h, criticalDays, warningDays, clock)
 
 		// The row logic is now clean and declarative
 		data = append(data, []string{
@@ -238,10 +240,10 @@ var hostInfoCmd = &cobra.Command{
 		if err != nil {
 			// Use domain defaults if config can't be loaded
 			var defaultThresholds domain.WarningThresholds
-			ui.PrintCertInfo(cert, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays())
+			ui.PrintCertInfo(cert, defaultThresholds.GetCriticalDays(), defaultThresholds.GetWarningDays(), app.GetClock())
 		} else {
 			thresholds := caCfg.GetWarningThresholds()
-			ui.PrintCertInfo(cert, thresholds.GetCriticalDays(), thresholds.GetWarningDays())
+			ui.PrintCertInfo(cert, thresholds.GetCriticalDays(), thresholds.GetWarningDays(), app.GetClock())
 		}
 		return nil
 	},

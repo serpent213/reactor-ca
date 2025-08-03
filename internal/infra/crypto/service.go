@@ -19,19 +19,20 @@ import (
 	"time"
 
 	"reactor.de/reactor-ca/internal/domain"
-	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/infra/crypto/extensions"
 )
 
 // Service implements the domain.CryptoService interface.
 type Service struct {
 	extensionFactory domain.ExtensionFactory
+	clock            domain.Clock
 }
 
 // NewService creates a new crypto service with extension support.
-func NewService() *Service {
+func NewService(clock domain.Clock) *Service {
 	return &Service{
 		extensionFactory: extensions.NewRegistry(),
+		clock:            clock,
 	}
 }
 
@@ -125,8 +126,8 @@ func (s *Service) SignCSR(csr *x509.CertificateRequest, caCert *x509.Certificate
 	template := &x509.Certificate{
 		SerialNumber:   serialNumber,
 		Subject:        csr.Subject,
-		NotBefore:      clock.Now().Add(-5 * time.Minute).UTC(),
-		NotAfter:       clock.Now().AddDate(0, 0, validityDays).UTC(),
+		NotBefore:      s.clock.Now().Add(-5 * time.Minute).UTC(),
+		NotAfter:       s.clock.Now().AddDate(0, 0, validityDays).UTC(),
 		DNSNames:       csr.DNSNames,
 		IPAddresses:    csr.IPAddresses,
 		EmailAddresses: csr.EmailAddresses,
@@ -274,7 +275,7 @@ func (s *Service) createBaseTemplate(subject *domain.SubjectConfig, validity dom
 		}
 	}
 
-	now := clock.Now()
+	now := s.clock.Now()
 	return &x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               pkixName,

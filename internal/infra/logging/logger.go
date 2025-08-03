@@ -5,17 +5,18 @@ import (
 	"log"
 	"os"
 
-	"reactor.de/reactor-ca/internal/infra/clock"
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 // FileLogger implements the domain.Logger interface.
 type FileLogger struct {
 	logger *log.Logger
 	file   *os.File
+	clock  domain.Clock
 }
 
 // NewFileLogger creates a logger that writes to a file.
-func NewFileLogger(logFilePath string) (*FileLogger, error) {
+func NewFileLogger(logFilePath string, clock domain.Clock) (*FileLogger, error) {
 	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
@@ -24,12 +25,12 @@ func NewFileLogger(logFilePath string) (*FileLogger, error) {
 	// In this CLI model, that's until the command finishes.
 
 	logger := log.New(file, "", 0) // No default flags, we'll format timestamps ourselves
-	return &FileLogger{logger: logger, file: file}, nil
+	return &FileLogger{logger: logger, file: file, clock: clock}, nil
 }
 
 // formatTimestamp returns the current local time formatted with timezone followed by ": "
 func (l *FileLogger) formatTimestamp() string {
-	return clock.Now().Format("2006/01/02 15:04:05 MST") + ": "
+	return l.clock.Now().Format("2006/01/02 15:04:05 MST") + ": "
 }
 
 // Info logs an informational message.
