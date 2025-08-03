@@ -434,8 +434,9 @@ func parseNetscapeCertType(ext pkix.Extension) map[string]string {
 			7: "Object Signing CA",
 		}
 
-		for bit, typeName := range typeMap {
-			if certType.At(bit) == 1 {
+		// Iterate over bits in deterministic order (0-7)
+		for bit := 0; bit <= 7; bit++ {
+			if typeName, exists := typeMap[bit]; exists && certType.At(bit) == 1 {
 				types = append(types, typeName)
 			}
 		}
