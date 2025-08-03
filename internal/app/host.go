@@ -366,136 +366,22 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 		return nil, err
 	}
 
-	// Create sets for efficient lookup
-	configuredHosts := make(map[string]domain.HostConfig)
-	for id, cfg := range hostsCfg.Hosts {
-		configuredHosts[id] = cfg
-	}
-
-	storedHosts := make(map[string]bool)
-	for _, id := range storeHostIDs {
-		storedHosts[id] = true
-	}
-
 	// Collect all unique host IDs
 	allHostIDs := make(map[string]bool)
-	for id := range configuredHosts {
+	for id := range hostsCfg.Hosts {
 		allHostIDs[id] = true
 	}
-	for id := range storedHosts {
+	for _, id := range storeHostIDs {
 		allHostIDs[id] = true
 	}
 
 	infoList := make([]*domain.HostInfo, 0, len(allHostIDs))
-
 	for hostID := range allHostIDs {
-		_, isConfigured := configuredHosts[hostID]
-
-		// Check for separate cert and key existence
-		hasCert, err := a.store.HostCertExists(hostID)
-		if err != nil {
-			a.logger.Error(fmt.Sprintf("Could not check certificate existence for host '%s', skipping: %v", hostID, err))
-			continue
+		// Use the new helper function
+		hostInfo := a.collectHostInfo(hostID, hostsCfg.Hosts)
+		if hostInfo != nil {
+			infoList = append(infoList, hostInfo)
 		}
-		hasKey, err := a.store.HostKeyExists(hostID)
-		if err != nil {
-			a.logger.Error(fmt.Sprintf("Could not check key existence for host '%s', skipping: %v", hostID, err))
-			continue
-		}
-
-		var status domain.HostStatus
-		var commonName string
-		var notAfter time.Time
-		var daysRemaining int64
-
-		var keyAlgorithm, hashAlgorithm string
-		var keyLength int
-
-		if hasCert && hasKey && isConfigured {
-			// Host has both cert and key, and is configured
-			status = domain.HostStatusIssued
-			cert, err := a.store.LoadHostCert(hostID)
-			if err != nil {
-				a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
-				continue
-			}
-			commonName = cert.Subject.CommonName
-			notAfter = cert.NotAfter
-			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
-			keyAlgorithm = cert.PublicKeyAlgorithm.String()
-			keyLength = getKeyLength(cert.PublicKey)
-			hashAlgorithm = cert.SignatureAlgorithm.String()
-		} else if hasCert && hasKey && !isConfigured {
-			// Host has both cert and key but not configured (orphaned)
-			status = domain.HostStatusOrphaned
-			cert, err := a.store.LoadHostCert(hostID)
-			if err != nil {
-				a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
-				continue
-			}
-			commonName = cert.Subject.CommonName
-			notAfter = cert.NotAfter
-			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
-			keyAlgorithm = cert.PublicKeyAlgorithm.String()
-			keyLength = getKeyLength(cert.PublicKey)
-			hashAlgorithm = cert.SignatureAlgorithm.String()
-		} else if hasKey && !hasCert && isConfigured {
-			// Host has key but missing certificate
-			status = domain.HostStatusKeyOnly
-			hostCfg := configuredHosts[hostID]
-			commonName = hostCfg.Subject.CommonName
-		} else if hasCert && !hasKey && isConfigured {
-			// Host has certificate but missing key
-			status = domain.HostStatusCertOnly
-			cert, err := a.store.LoadHostCert(hostID)
-			if err != nil {
-				a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
-				continue
-			}
-			commonName = cert.Subject.CommonName
-			notAfter = cert.NotAfter
-			daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
-			keyAlgorithm = cert.PublicKeyAlgorithm.String()
-			keyLength = getKeyLength(cert.PublicKey)
-			hashAlgorithm = cert.SignatureAlgorithm.String()
-		} else if !hasCert && !hasKey && isConfigured {
-			// Host is configured but neither cert nor key exists
-			status = domain.HostStatusConfigured
-			hostCfg := configuredHosts[hostID]
-			commonName = hostCfg.Subject.CommonName
-		} else {
-			// Any other partial state (key_only or cert_only for orphaned hosts) - treat as orphaned
-			if hasKey || hasCert {
-				status = domain.HostStatusOrphaned
-				if hasCert {
-					cert, err := a.store.LoadHostCert(hostID)
-					if err != nil {
-						a.logger.Error(fmt.Sprintf("Could not load certificate for host '%s', skipping: %v", hostID, err))
-						continue
-					}
-					commonName = cert.Subject.CommonName
-					notAfter = cert.NotAfter
-					daysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
-					keyAlgorithm = cert.PublicKeyAlgorithm.String()
-					keyLength = getKeyLength(cert.PublicKey)
-					hashAlgorithm = cert.SignatureAlgorithm.String()
-				}
-			} else {
-				// This shouldn't happen - host is in the list but has no files and no config
-				continue
-			}
-		}
-
-		infoList = append(infoList, &domain.HostInfo{
-			ID:            hostID,
-			CommonName:    commonName,
-			NotAfter:      notAfter,
-			DaysRemaining: daysRemaining,
-			Status:        status,
-			KeyAlgorithm:  keyAlgorithm,
-			KeyLength:     keyLength,
-			HashAlgorithm: hashAlgorithm,
-		})
 	}
 
 	// Sort by host ID alphanumerically
@@ -504,6 +390,64 @@ func (a *Application) ListHosts(ctx context.Context) ([]*domain.HostInfo, error)
 	})
 
 	return infoList, nil
+}
+
+// collectHostInfo gathers all information for a single host from the store and config.
+func (a *Application) collectHostInfo(hostID string, configuredHosts map[string]domain.HostConfig) *domain.HostInfo {
+	hostInfo := &domain.HostInfo{ID: hostID}
+	_, isConfigured := configuredHosts[hostID]
+
+	// Check for cert and key existence, collecting errors.
+	hasCert, certExistsErr := a.store.HostCertExists(hostID)
+	if certExistsErr != nil {
+		hostInfo.CertReadError = fmt.Sprintf("cannot check existence: %v", certExistsErr)
+	}
+	hasKey, keyExistsErr := a.store.HostKeyExists(hostID)
+	if keyExistsErr != nil {
+		hostInfo.KeyReadError = fmt.Sprintf("cannot check existence: %v", keyExistsErr)
+	}
+
+	// Try to load certificate if it exists.
+	if hasCert {
+		cert, err := a.store.LoadHostCert(hostID)
+		if err != nil {
+			hostInfo.CertReadError = fmt.Sprintf("cannot read certificate: %v", err)
+		} else {
+			hostInfo.CommonName = cert.Subject.CommonName
+			hostInfo.NotAfter = cert.NotAfter
+			hostInfo.DaysRemaining = int64(time.Until(cert.NotAfter).Hours() / 24)
+			hostInfo.KeyAlgorithm = cert.PublicKeyAlgorithm.String()
+			hostInfo.KeyLength = getKeyLength(cert.PublicKey)
+			hostInfo.HashAlgorithm = cert.SignatureAlgorithm.String()
+		}
+	}
+
+	// If host is configured, get name from config if we don't have it from cert.
+	if isConfigured && hostInfo.CommonName == "" {
+		hostInfo.CommonName = configuredHosts[hostID].Subject.CommonName
+	}
+
+	// Determine final status
+	if hasCert && hasKey && isConfigured {
+		hostInfo.Status = domain.HostStatusIssued
+	} else if hasCert && hasKey && !isConfigured {
+		hostInfo.Status = domain.HostStatusOrphaned
+	} else if hasKey && !hasCert && isConfigured {
+		hostInfo.Status = domain.HostStatusKeyOnly
+	} else if hasCert && !hasKey && isConfigured {
+		hostInfo.Status = domain.HostStatusCertOnly
+	} else if !hasCert && !hasKey && isConfigured {
+		hostInfo.Status = domain.HostStatusConfigured
+	} else if hasKey || hasCert {
+		// An orphaned key or cert that might not have been caught above
+		hostInfo.Status = domain.HostStatusOrphaned
+	} else {
+		// This case should not be possible if the hostID came from either map.
+		// A host must be either in config or in the store.
+		return nil
+	}
+
+	return hostInfo
 }
 
 // InfoHost returns the host certificate for display formatting.

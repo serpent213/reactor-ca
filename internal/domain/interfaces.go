@@ -122,6 +122,9 @@ type HostInfo struct {
 	KeyAlgorithm  string     `json:"key_algorithm"`
 	KeyLength     int        `json:"key_length"`
 	HashAlgorithm string     `json:"hash_algorithm"`
+	// Error fields for data collection issues
+	CertReadError string `json:"cert_read_error,omitempty"`
+	KeyReadError  string `json:"key_read_error,omitempty"`
 }
 
 // HostStatus represents the status of a host certificate

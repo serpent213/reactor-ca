@@ -17,56 +17,59 @@ var (
 	bold   = color.New(color.Bold).SprintFunc()
 )
 
+// Symbol helper functions that return colored strings
+func SuccessSymbol() string {
+	return green("✓")
+}
+
+func ErrorSymbol() string {
+	return red("⚠")
+}
+
+func WarningSymbol() string {
+	return yellow("!")
+}
+
+func InfoSymbol() string {
+	return cyan("i")
+}
+
+func ActionSymbol() string {
+	return cyan("→")
+}
+
+func PendingSymbol() string {
+	return yellow("○")
+}
+
 // Success prints a success message with green ✓ symbol
 func Success(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Printf("%s %s\n", green("✓"), formatted)
+	fmt.Printf("%s %s\n", SuccessSymbol(), formatted)
 }
 
 // Error prints an error message with red ⚠ symbol
 func Error(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Fprintf(os.Stderr, "%s %s\n", red("⚠"), formatted)
+	fmt.Fprintf(os.Stderr, "%s %s\n", ErrorSymbol(), formatted)
 }
 
 // Warning prints a warning message with yellow ! symbol
 func Warning(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Printf("%s %s\n", yellow("!"), formatted)
+	fmt.Printf("%s %s\n", WarningSymbol(), formatted)
 }
 
 // Info prints an info message with cyan i symbol
 func Info(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Printf("%s %s\n", cyan("i"), formatted)
+	fmt.Printf("%s %s\n", InfoSymbol(), formatted)
 }
 
 // Action prints an action/progress message with cyan → symbol
 func Action(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	fmt.Printf("%s %s\n", cyan("→"), formatted)
-}
-
-// PrintBlock prints a block of pre-formatted text, such as certificate details.
-// This ensures all command output goes through the UI package for consistency.
-func PrintBlock(text string) {
-	fmt.Println(text)
-}
-
-// FormatHostStatus returns a formatted host status with appropriate symbol and color
-func FormatHostStatus(status string) string {
-	switch status {
-	case "configured":
-		return yellow("○") + " CONFIGURED"
-	case "orphaned":
-		return yellow("!") + " ORPHANED"
-	case "key_only":
-		return red("⚠") + " CERT MISSING"
-	case "cert_only":
-		return red("⚠") + " KEY MISSING"
-	default:
-		return "UNKNOWN"
-	}
+	fmt.Printf("%s %s\n", ActionSymbol(), formatted)
 }
 
 // GetColoredLogo returns the ReactorCA ASCII art logo with Reactor in cyan and CA in gray

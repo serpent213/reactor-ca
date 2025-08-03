@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"reactor.de/reactor-ca/internal/domain"
 	"reactor.de/reactor-ca/internal/infra/exec"
@@ -114,6 +114,77 @@ func filterHostList(list []*domain.HostInfo, expired bool, expiringIn int) []*do
 	return filtered
 }
 
+// hostPresenter is a dedicated type for formatting HostInfo for table display.
+// This encapsulates the presentation logic, keeping the command's RunE function clean.
+type hostPresenter struct {
+	h            *domain.HostInfo
+	criticalDays int
+	warningDays  int
+	userLocale   string
+}
+
+func newHostPresenter(h *domain.HostInfo, critical, warning int) *hostPresenter {
+	return &hostPresenter{
+		h:            h,
+		criticalDays: critical,
+		warningDays:  warning,
+		userLocale:   localedate.GetUserLocaleTag().String(),
+	}
+}
+
+func (p *hostPresenter) KeyAlgo() string {
+	if p.h.KeyAlgorithm != "" && p.h.KeyLength > 0 {
+		return fmt.Sprintf("%s-%d", p.h.KeyAlgorithm, p.h.KeyLength)
+	}
+	return "-"
+}
+
+func (p *hostPresenter) HashAlgo() string {
+	if p.h.HashAlgorithm != "" {
+		return p.h.HashAlgorithm
+	}
+	return "-"
+}
+
+func (p *hostPresenter) Expires() string {
+	if p.h.NotAfter.IsZero() {
+		return "-"
+	}
+	return localedate.FormatDateTime(p.userLocale, p.h.NotAfter, localedate.FormatShort)
+}
+
+func (p *hostPresenter) Validity() string {
+	var parts []string
+
+	// Handle broken states first, as they are critical.
+	if p.h.CertReadError != "" {
+		parts = append(parts, ui.ErrorSymbol()+" CERT BROKEN")
+	}
+	if p.h.KeyReadError != "" {
+		parts = append(parts, ui.ErrorSymbol()+" KEY BROKEN")
+	}
+
+	// If the cert isn't broken, show status information.
+	if p.h.CertReadError == "" {
+		switch p.h.Status {
+		case domain.HostStatusConfigured:
+			parts = append(parts, ui.PendingSymbol()+" CONFIGURED")
+		case domain.HostStatusOrphaned:
+			parts = append(parts, ui.WarningSymbol()+" ORPHANED")
+		case domain.HostStatusKeyOnly:
+			parts = append(parts, ui.ErrorSymbol()+" CERT MISSING")
+		case domain.HostStatusCertOnly:
+			// Show both expiry status and the missing key warning.
+			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true))
+			parts = append(parts, ui.ErrorSymbol()+" KEY MISSING")
+		default: // domain.HostStatusIssued
+			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true))
+		}
+	}
+
+	return strings.Join(parts, "\n")
+}
+
 func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	if len(list) == 0 {
 		ui.Info("No hosts found.")
@@ -121,55 +192,23 @@ func printHostTable(list []*domain.HostInfo, criticalDays, warningDays int) {
 	}
 
 	table := ui.NewHostsTable()
-
-	// Set headers
 	table.Header([]string{"HOST ID", "KEY ALGO", "HASH ALGO", "EXPIRES", "VALIDITY"})
 
-	// Prepare data rows
 	var data [][]string
-	userLocale := localedate.GetUserLocaleTag().String()
 	for _, h := range list {
-		var expiresStr, statusStr, keyAlgoStr, hashAlgoStr string
+		// Create a presenter for the host
+		p := newHostPresenter(h, criticalDays, warningDays)
 
-		switch h.Status {
-		case domain.HostStatusConfigured:
-			expiresStr = "-"
-			statusStr = ui.FormatHostStatus(string(h.Status))
-			keyAlgoStr = "-"
-			hashAlgoStr = "-"
-		case domain.HostStatusOrphaned:
-			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
-			statusStr = ui.FormatHostStatus(string(h.Status))
-			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
-			hashAlgoStr = h.HashAlgorithm
-		case domain.HostStatusKeyOnly:
-			expiresStr = "-"
-			statusStr = ui.FormatHostStatus(string(h.Status))
-			keyAlgoStr = "-"
-			hashAlgoStr = "-"
-		case domain.HostStatusCertOnly:
-			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
-			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true) + "\n" + color.New(color.FgRed).Sprint("⚠") + " KEY MISSING"
-			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
-			hashAlgoStr = h.HashAlgorithm
-		default:
-			// Issued hosts show normal certificate expiry info
-			expiresStr = localedate.FormatDateTime(userLocale, h.NotAfter, localedate.FormatShort)
-			statusStr = ui.FormatCertExpiry(h.NotAfter, criticalDays, warningDays, true)
-			keyAlgoStr = fmt.Sprintf("%s-%d", h.KeyAlgorithm, h.KeyLength)
-			hashAlgoStr = h.HashAlgorithm
-		}
-
+		// The row logic is now clean and declarative
 		data = append(data, []string{
-			h.ID,
-			keyAlgoStr,
-			hashAlgoStr,
-			expiresStr,
-			statusStr,
+			p.h.ID, // Direct access is fine for simple fields
+			p.KeyAlgo(),
+			p.HashAlgo(),
+			p.Expires(),
+			p.Validity(),
 		})
 	}
 
-	// Add data and footer
 	fmt.Println()
 	table.Bulk(data)
 	table.Footer([]string{"", "", "", "Total", fmt.Sprintf("%d", len(list))})

@@ -569,7 +569,7 @@ func TestE2E_HostListTableFormat(t *testing.T) {
 			"KEY ALGO",
 			"HASH ALGO",
 			"EXPIRES",
-			"REMAINING",
+			"VALIDITY",
 		}
 
 		for _, header := range expectedHeaders {
