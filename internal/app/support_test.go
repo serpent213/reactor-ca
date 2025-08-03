@@ -60,6 +60,7 @@ func (m *MockStore) HostKeyExists(hostID string) (bool, error) {
 func (m *MockStore) HostCertExists(hostID string) (bool, error) {
 	return false, nil
 }
+func (m *MockStore) ValidateAgeKeyFile(hostID string) bool             { return true }
 func (m *MockStore) SaveHostCert(id string, c []byte) error            { return m.SaveHostCertFunc(id, c) }
 func (m *MockStore) SaveHostKey(id string, k []byte) error             { return m.SaveHostKeyFunc(id, k) }
 func (m *MockStore) LoadHostCert(id string) (*x509.Certificate, error) { return m.LoadHostCertFunc(id) }
@@ -639,6 +640,7 @@ func (m *mockStore) LoadCAKey() ([]byte, error)                            { ret
 func (m *mockStore) HostExists(hostID string) (bool, error)                { return false, nil }
 func (m *mockStore) HostKeyExists(hostID string) (bool, error)             { return false, nil }
 func (m *mockStore) HostCertExists(hostID string) (bool, error)            { return false, nil }
+func (m *mockStore) ValidateAgeKeyFile(hostID string) bool                 { return true }
 func (m *mockStore) SaveHostCert(hostID string, cert []byte) error         { return nil }
 func (m *mockStore) SaveHostKey(hostID string, encryptedKey []byte) error  { return nil }
 func (m *mockStore) LoadHostCert(hostID string) (*x509.Certificate, error) { return nil, nil }

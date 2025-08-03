@@ -37,6 +37,7 @@ type Store interface {
 	HostExists(hostID string) (bool, error)
 	HostKeyExists(hostID string) (bool, error)
 	HostCertExists(hostID string) (bool, error)
+	ValidateAgeKeyFile(hostID string) bool
 	SaveHostCert(hostID string, cert []byte) error
 	SaveHostKey(hostID string, encryptedKey []byte) error
 	LoadHostCert(hostID string) (*x509.Certificate, error)
@@ -122,18 +123,20 @@ type HostInfo struct {
 	KeyAlgorithm  string     `json:"key_algorithm"`
 	KeyLength     int        `json:"key_length"`
 	HashAlgorithm string     `json:"hash_algorithm"`
-	// Error fields for data collection issues
-	CertReadError string `json:"cert_read_error,omitempty"`
-	KeyReadError  string `json:"key_read_error,omitempty"`
+	// Status flags for cert/key availability and integrity
+	CertMissing bool `json:"cert_missing,omitempty"`
+	CertBroken  bool `json:"cert_broken,omitempty"`
+	KeyMissing  bool `json:"key_missing,omitempty"`
+	KeyBroken   bool `json:"key_broken,omitempty"`
 }
 
 // HostStatus represents the status of a host certificate
 type HostStatus string
 
 const (
-	HostStatusIssued     HostStatus = "issued"     // Certificate exists in store and is configured
-	HostStatusConfigured HostStatus = "configured" // Defined in config but no certificate in store
-	HostStatusOrphaned   HostStatus = "orphaned"   // Certificate exists in store but not in config
-	HostStatusKeyOnly    HostStatus = "key_only"   // Private key exists but certificate missing
-	HostStatusCertOnly   HostStatus = "cert_only"  // Certificate exists but private key missing
+	HostStatusIssued      HostStatus = "issued"       // Certificate exists in store and is configured
+	HostStatusConfigured  HostStatus = "configured"   // Defined in config but no certificate in store
+	HostStatusOrphaned    HostStatus = "orphaned"     // Certificate exists in store but not in config
+	HostStatusCertMissing HostStatus = "cert_missing" // Private key exists but certificate missing
+	HostStatusKeyMissing  HostStatus = "key_missing"  // Certificate exists but private key missing
 )

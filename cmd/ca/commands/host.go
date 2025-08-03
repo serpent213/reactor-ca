@@ -156,30 +156,30 @@ func (p *hostPresenter) Expires() string {
 func (p *hostPresenter) Validity() string {
 	var parts []string
 
-	// Handle broken states first, as they are critical.
-	if p.h.CertReadError != "" {
-		parts = append(parts, ui.ErrorSymbol()+" CERT BROKEN")
-	}
-	if p.h.KeyReadError != "" {
-		parts = append(parts, ui.ErrorSymbol()+" KEY BROKEN")
-	}
-
-	// If the cert isn't broken, show status information.
-	if p.h.CertReadError == "" {
+	// Always show expiry status first if cert isn't broken
+	if !p.h.CertBroken {
 		switch p.h.Status {
 		case domain.HostStatusConfigured:
 			parts = append(parts, ui.PendingSymbol()+" CONFIGURED")
 		case domain.HostStatusOrphaned:
 			parts = append(parts, ui.WarningSymbol()+" ORPHANED")
-		case domain.HostStatusKeyOnly:
+		case domain.HostStatusCertMissing:
 			parts = append(parts, ui.ErrorSymbol()+" CERT MISSING")
-		case domain.HostStatusCertOnly:
-			// Show both expiry status and the missing key warning.
-			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true))
-			parts = append(parts, ui.ErrorSymbol()+" KEY MISSING")
-		default: // domain.HostStatusIssued
+		case domain.HostStatusKeyMissing, domain.HostStatusIssued:
+			// Show expiry status for both key missing and issued hosts
 			parts = append(parts, ui.FormatCertExpiry(p.h.NotAfter, p.criticalDays, p.warningDays, true))
 		}
+	}
+
+	// Handle missing/broken states last
+	if p.h.CertBroken {
+		parts = append(parts, ui.ErrorSymbol()+" CERT BROKEN")
+	}
+	if p.h.KeyBroken {
+		parts = append(parts, ui.ErrorSymbol()+" KEY BROKEN")
+	}
+	if p.h.Status == domain.HostStatusKeyMissing {
+		parts = append(parts, ui.ErrorSymbol()+" KEY MISSING")
 	}
 
 	return strings.Join(parts, "\n")

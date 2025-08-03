@@ -33,6 +33,33 @@ func NewFileStore(storePath string) *FileStore {
 	}
 }
 
+// ValidateAgeKeyFile checks if the host's age encrypted key file is valid.
+// It validates the age format structure using the official age parser logic.
+func (s *FileStore) ValidateAgeKeyFile(hostID string) bool {
+	filePath := s.GetHostKeyPath(hostID)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Use the age format validator - collapse any error to false
+	return validateAgeHeader(file) == nil
+}
+
+// ValidateAgeKeyFilePath checks if the provided file content looks like a valid age encrypted key file.
+// It validates the age format structure using the official age parser logic.
+func ValidateAgeKeyFilePath(filePath string) bool {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Use the age format validator - collapse any error to false
+	return validateAgeHeader(file) == nil
+}
+
 // Path getters
 func (s *FileStore) GetHostCertPath(hostID string) string {
 	return filepath.Join(s.hostsPath, hostID, hostCertFile)

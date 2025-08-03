@@ -397,21 +397,28 @@ func (a *Application) collectHostInfo(hostID string, configuredHosts map[string]
 	hostInfo := &domain.HostInfo{ID: hostID}
 	_, isConfigured := configuredHosts[hostID]
 
-	// Check for cert and key existence, collecting errors.
+	// Check for cert and key existence
 	hasCert, certExistsErr := a.store.HostCertExists(hostID)
 	if certExistsErr != nil {
-		hostInfo.CertReadError = fmt.Sprintf("cannot check existence: %v", certExistsErr)
-	}
-	hasKey, keyExistsErr := a.store.HostKeyExists(hostID)
-	if keyExistsErr != nil {
-		hostInfo.KeyReadError = fmt.Sprintf("cannot check existence: %v", keyExistsErr)
+		// If we can't check existence, assume missing
+		hostInfo.CertMissing = true
+	} else {
+		hostInfo.CertMissing = !hasCert
 	}
 
-	// Try to load certificate if it exists.
-	if hasCert {
+	hasKey, keyExistsErr := a.store.HostKeyExists(hostID)
+	if keyExistsErr != nil {
+		// If we can't check existence, assume missing
+		hostInfo.KeyMissing = true
+	} else {
+		hostInfo.KeyMissing = !hasKey
+	}
+
+	// Try to load certificate if it exists and validate integrity
+	if hasCert && certExistsErr == nil {
 		cert, err := a.store.LoadHostCert(hostID)
 		if err != nil {
-			hostInfo.CertReadError = fmt.Sprintf("cannot read certificate: %v", err)
+			hostInfo.CertBroken = true
 		} else {
 			hostInfo.CommonName = cert.Subject.CommonName
 			hostInfo.NotAfter = cert.NotAfter
@@ -422,23 +429,30 @@ func (a *Application) collectHostInfo(hostID string, configuredHosts map[string]
 		}
 	}
 
+	// Validate key if it exists
+	if hasKey && keyExistsErr == nil {
+		if !a.store.ValidateAgeKeyFile(hostID) {
+			hostInfo.KeyBroken = true
+		}
+	}
+
 	// If host is configured, get name from config if we don't have it from cert.
 	if isConfigured && hostInfo.CommonName == "" {
 		hostInfo.CommonName = configuredHosts[hostID].Subject.CommonName
 	}
 
-	// Determine final status
-	if hasCert && hasKey && isConfigured {
+	// Determine final status based on missing flags (ignore broken for status determination)
+	if !hostInfo.CertMissing && !hostInfo.KeyMissing && isConfigured {
 		hostInfo.Status = domain.HostStatusIssued
-	} else if hasCert && hasKey && !isConfigured {
+	} else if !hostInfo.CertMissing && !hostInfo.KeyMissing && !isConfigured {
 		hostInfo.Status = domain.HostStatusOrphaned
-	} else if hasKey && !hasCert && isConfigured {
-		hostInfo.Status = domain.HostStatusKeyOnly
-	} else if hasCert && !hasKey && isConfigured {
-		hostInfo.Status = domain.HostStatusCertOnly
-	} else if !hasCert && !hasKey && isConfigured {
+	} else if !hostInfo.KeyMissing && hostInfo.CertMissing && isConfigured {
+		hostInfo.Status = domain.HostStatusCertMissing
+	} else if !hostInfo.CertMissing && hostInfo.KeyMissing && isConfigured {
+		hostInfo.Status = domain.HostStatusKeyMissing
+	} else if hostInfo.CertMissing && hostInfo.KeyMissing && isConfigured {
 		hostInfo.Status = domain.HostStatusConfigured
-	} else if hasKey || hasCert {
+	} else if !hostInfo.KeyMissing || !hostInfo.CertMissing {
 		// An orphaned key or cert that might not have been caught above
 		hostInfo.Status = domain.HostStatusOrphaned
 	} else {
