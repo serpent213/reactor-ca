@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"reactor.de/reactor-ca/internal/infra/clock"
 	"reactor.de/reactor-ca/internal/localedate"
 )
 
@@ -48,7 +49,7 @@ func formatDurationParts(duration time.Duration, short bool, p *message.Printer)
 	} else if days <= 365 {
 		output = p.Sprintf("%d days", days)
 	} else {
-		now := time.Now()
+		now := clock.Now()
 		oneYearLater := now.AddDate(1, 0, 0)
 		daysInYear := float64(oneYearLater.Sub(now).Hours() / 24)
 		years := float64(days) / daysInYear
@@ -71,7 +72,7 @@ func FormatCertExpiry(expiryTime time.Time, criticalDays, warningDays int, short
 	userLocaleTag := localedate.GetUserLocaleTag()
 	p := message.NewPrinter(userLocaleTag)
 
-	currentTime := time.Now()
+	currentTime := clock.Now()
 	if len(now) > 0 {
 		currentTime = now[0]
 	}

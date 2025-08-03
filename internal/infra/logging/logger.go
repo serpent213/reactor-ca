@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
+
+	"reactor.de/reactor-ca/internal/infra/clock"
 )
 
 // FileLogger implements the domain.Logger interface.
@@ -28,7 +29,7 @@ func NewFileLogger(logFilePath string) (*FileLogger, error) {
 
 // formatTimestamp returns the current local time formatted with timezone followed by ": "
 func (l *FileLogger) formatTimestamp() string {
-	return time.Now().Format("2006/01/02 15:04:05 MST") + ": "
+	return clock.Now().Format("2006/01/02 15:04:05 MST") + ": "
 }
 
 // Info logs an informational message.

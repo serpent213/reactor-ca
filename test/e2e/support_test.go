@@ -1,5 +1,3 @@
-//go:build e2e || browser
-
 package e2e
 
 import (
@@ -10,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -62,7 +61,7 @@ func TestMain(m *testing.M) {
 
 	// Build instrumented binary for coverage collection (Go 1.20+ feature)
 	// Change to project root directory for build
-	buildCmd := exec.Command("go", "build", "-cover", "-coverpkg=./...", "-o", reactorCABin, "reactor.de/reactor-ca/cmd/ca")
+	buildCmd := exec.Command("go", "build", "-tags", "e2e", "-cover", "-coverpkg=./...", "-o", reactorCABin, "reactor.de/reactor-ca/cmd/ca")
 	buildCmd.Dir = projectRoot
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		fmt.Printf("Failed to build instrumented reactor-ca binary: %v\n%s\n", err, string(output))
@@ -74,8 +73,9 @@ func TestMain(m *testing.M) {
 
 // testEnv provides an isolated environment for a single test.
 type testEnv struct {
-	root string
-	t    *testing.T
+	root     string
+	t        *testing.T
+	fakeTime string // RFC3339 timestamp for REACTOR_CA_FAKE_TIME
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -99,6 +99,17 @@ func newTestEnv(t *testing.T) *testEnv {
 	return &testEnv{root: root, t: t}
 }
 
+// setFakeTime sets a specific time for deterministic testing.
+// timeStr should be in RFC3339 format (e.g., "2024-01-15T10:30:00Z").
+func (e *testEnv) setFakeTime(timeStr string) {
+	e.fakeTime = timeStr
+}
+
+// setFakeTimeFromTime sets fake time from a time.Time value.
+func (e *testEnv) setFakeTimeFromTime(t time.Time) {
+	e.fakeTime = t.Format(time.RFC3339)
+}
+
 func (e *testEnv) path(p ...string) string {
 	return filepath.Join(append([]string{e.root}, p...)...)
 }
@@ -118,6 +129,10 @@ func (e *testEnv) run(password string, args ...string) (stdout, stderr string, e
 	// Enable coverage collection for instrumented binary
 	if coverDir != "" {
 		cmd.Env = append(cmd.Env, "GOCOVERDIR="+coverDir)
+	}
+	// Set fake time for deterministic testing
+	if e.fakeTime != "" {
+		cmd.Env = append(cmd.Env, "REACTOR_CA_FAKE_TIME="+e.fakeTime)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
