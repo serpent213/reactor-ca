@@ -133,6 +133,57 @@ func TestE2E_CoreWorkflow(t *testing.T) {
 	if !strings.Contains(stderr, "Incorrect password") {
 		t.Errorf("Expected decryption error, got: %s", stderr)
 	}
+
+	// 11. Verify ca.log contains expected operation entries
+	logContent, err := os.ReadFile(e.path("store/ca.log"))
+	if err != nil {
+		t.Fatalf("Failed to read ca.log: %v", err)
+	}
+
+	// Strip datetime prefixes and compare line by line
+	logLines := strings.Split(strings.TrimRight(string(logContent), "\n"), "\n")
+	var strippedLines []string
+	for i, line := range logLines {
+		// Strip datetime prefix by removing everything until and including first ": "
+		if idx := strings.Index(line, ": "); idx != -1 {
+			strippedLines = append(strippedLines, line[idx+2:])
+		} else {
+			t.Fatalf("Log line %d missing expected datetime prefix with ': ': %q", i+1, line)
+		}
+	}
+
+	expectedLogLines := []string{
+		"Generated private key with algorithm ECP256",
+		"Created self-signed root certificate with SHA256 signature",
+		"Saved CA certificate and encrypted key to store",
+		"No key found for 'web-server'. Generating new ECP256 key.",
+		"Exported certificate to " + e.path("exports/web-server.pem"),
+		"Exported certificate chain to " + e.path("exports/web-server-chain.pem"),
+		"Successfully issued certificate for 'web-server' with SHA256 signature",
+		"No key found for 'db-server'. Generating new ECP256 key.",
+		"Successfully issued certificate for 'db-server' with SHA256 signature",
+		"Using existing key for 'web-server'",
+		"Exported certificate to " + e.path("exports/web-server.pem"),
+		"Exported certificate chain to " + e.path("exports/web-server-chain.pem"),
+		"Successfully issued certificate for 'web-server' with SHA256 signature",
+		"Exported private key for host 'web-server'",
+	}
+
+	if len(strippedLines) != len(expectedLogLines) {
+		t.Fatalf("Expected %d log lines, got %d lines.\nExpected:\n%s\nActual:\n%s",
+			len(expectedLogLines), len(strippedLines), strings.Join(expectedLogLines, "\n"), strings.Join(strippedLines, "\n"))
+	}
+
+	for i, expected := range expectedLogLines {
+		if i >= len(strippedLines) {
+			t.Errorf("Missing log line %d: expected %q", i+1, expected)
+			continue
+		}
+		actual := strippedLines[i]
+		if actual != expected {
+			t.Errorf("Log line %d mismatch:\nExpected: %q\nActual:   %q", i+1, expected, actual)
+		}
+	}
 }
 
 // TestE2E_CAManagement covers renewing and re-keying the CA.
