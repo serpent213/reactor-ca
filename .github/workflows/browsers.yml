@@ -380,10 +380,35 @@ jobs:
             echo "Warning: Some certificates failed validation, but continuing to collect results"
           fi
 
-
       - name: Upload test results JSON
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.browser }}
           path: /var/lib/test/test-results/*.json
         if: always()
+
+      - name: Validate RSA2048-SHA256 support
+        run: |-
+          cd /var/lib/test
+
+          echo "=== Validating RSA2048-SHA256 support for ${{ matrix.browser }} ==="
+
+          # Check if RSA2048-SHA256 test passed
+          if [ -f "test-results/${{ matrix.browser }}-results.json" ]; then
+            RSA2048_SHA256_STATUS=$(jq -r '.results[] | select(.certificate == "rsa2048-sha256") | .status' "test-results/${{ matrix.browser }}-results.json")
+
+            if [ "$RSA2048_SHA256_STATUS" = "PASS" ]; then
+              echo "RSA2048-SHA256 support: PASSED"
+            else
+              echo "RSA2048-SHA256 support: FAILED"
+              echo "Error details:"
+              jq -r '.results[] | select(.certificate == "rsa2048-sha256") | .error // "No error details available"' "test-results/${{ matrix.browser }}-results.json"
+              echo ""
+              echo "WORKFLOW FAILURE: ${{ matrix.browser }} does not support RSA2048-SHA256"
+              exit 1
+            fi
+          else
+            echo "No test results found for ${{ matrix.browser }}"
+            echo "WORKFLOW FAILURE: Unable to validate RSA2048-SHA256 support"
+            exit 1
+          fi
