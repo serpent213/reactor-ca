@@ -1,0 +1,57 @@
+# ReactorCA: Certificate Authority Configuration
+# This file defines the properties of your root Certificate Authority.
+# yaml-language-server: $schema=https://serpent213.github.io/reactor-ca/schemas/v1/ca.schema.json
+
+ca:
+  # --- Subject Details ---
+  # These values are used to build the distinguished name (DN) of the CA certificate.
+  subject:
+    common_name: "Reactor Homelab CA"
+    organization: "Reactor Industries"
+    organizational_unit: "IT Department"
+    country: "DE"                 # 2-letter country code
+    state: "Berlin"               # State or province
+    locality: "Berlin"            # City or locality
+    email: "admin@reactor.dev"    # Administrative contact
+
+  # --- Validity Period ---
+  # How long the CA certificate will be valid for.
+  # Specify any combination of 'years', 'months' and 'days'.
+  validity:
+    years: 20
+    # days: 3650
+
+  # --- Cryptographic Settings ---
+  # The algorithm used for the CA's private key.
+  # Supported: RSA2048, RSA3072, RSA4096, ECP256, ECP384, ECP521, ED25519
+  key_algorithm: "ECP384"
+
+  # The hash algorithm used for the certificate signature.
+  # Supported: SHA256, SHA384, SHA512
+  hash_algorithm: "SHA384"
+
+  extensions:
+    basic_constraints:
+      path_length: 2
+      # path_length_zero: true
+    name_constraints:
+      critical: true                       # Should be critical for security
+      permitted_dns_domains:
+        - ".homelab.local"                 # Permits subdomains of homelab.local
+        - ".internal"                      # Permits *.internal domains
+      excluded_dns_domains:
+        - ".example.com"                   # Explicitly excludes example.com
+      permitted_ip_ranges:
+        - "10.14.0.0/16"                   # Private network ranges
+
+# --- Encryption Configuration ---
+# Defines how private keys are encrypted at rest.
+encryption:
+  # Provider: password (default) | ssh | plugin
+  provider: "plugin"
+
+  # Age plugin-based encryption (secure-enclave, yubikey, tpm, etc.)
+  plugin:
+    identity_file: "~/.age/se-identity.txt"
+    recipients:
+      - "age1se1qt9324n8plaj494cqalvqjlgafc2yuqhrcc2x4g2f5azvuklw0whk780tat"
