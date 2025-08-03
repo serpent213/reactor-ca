@@ -273,8 +273,9 @@ cov-badge:
     sed -i "s|!\[Coverage\](https://img.shields.io/badge/[^)]*)|![Coverage](${badge_url})|" README.md
     echo "Updated README.md with new coverage badge"
 
-# Complete validation pipeline
-check: lint build tidy retest build-nix
+# Complete validation and docs update pipeline
+check: lint build tidy docs build-nix
+# (We run `docs` instead of `retest` to update README at the same time)
 
 # CI/CD pipeline
 ci: lint tidy test release
