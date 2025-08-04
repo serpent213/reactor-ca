@@ -21,7 +21,7 @@
         packages = {
           reactor-ca = pkgs.buildGoModule {
             pname = "reactor-ca";
-            version = "0.5.0";
+            version = "1.0.0-rc.1";
             src = ./.;
 
             vendorHash = "sha256-tFd1p+bY1mSODyl35kj6XFBwVhTTQ5iotUn6Om2TgpA=";
