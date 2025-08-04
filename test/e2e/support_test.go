@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -25,9 +26,96 @@ const (
 	testInteractiveChangedPassword = "interactive-test-password-369"
 )
 
+// testPluginMain implements the age plugin protocol for testing.
+// This is called when the test binary is executed as "age-plugin-reactortest".
+func testPluginMain() {
+	if len(os.Args) < 2 {
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "--age-plugin=recipient-v1":
+		// Implement encryption flow
+		scanner := bufio.NewScanner(os.Stdin)
+
+		// Read add-recipient stanza
+		scanner.Scan() // -> add-recipient
+		scanner.Scan() // body
+
+		// Read grease stanza
+		scanner.Scan() // -> grease-*
+		scanner.Scan() // body
+
+		// Read wrap-file-key stanza
+		scanner.Scan() // -> wrap-file-key
+		scanner.Scan() // body (file key to "encrypt")
+		fileKey := scanner.Text()
+
+		// Read extension-labels stanza
+		scanner.Scan() // -> extension-labels
+		scanner.Scan() // body
+
+		// Read done stanza
+		scanner.Scan() // -> done
+		scanner.Scan() // body
+
+		// Send recipient-stanza response
+		fmt.Printf("-> recipient-stanza 0 test\n")
+		fmt.Printf("%s\n", fileKey) // "encrypt" by passing through
+
+		// Wait for ack
+		scanner.Scan() // ok
+		scanner.Scan() // body
+
+		// Send done
+		fmt.Printf("-> done\n\n")
+
+	case "--age-plugin=identity-v1":
+		// Implement decryption flow
+		scanner := bufio.NewScanner(os.Stdin)
+
+		// Read add-identity stanza
+		scanner.Scan() // -> add-identity
+		scanner.Scan() // body
+
+		// Read grease stanza
+		scanner.Scan() // -> grease-*
+		scanner.Scan() // body
+
+		// Read recipient-stanza
+		scanner.Scan() // -> recipient-stanza
+		scanner.Scan() // body ("encrypted" file key)
+		encryptedFileKey := scanner.Text()
+
+		// Read done stanza
+		scanner.Scan() // -> done
+		scanner.Scan() // body
+
+		// Send file-key response
+		fmt.Printf("-> file-key 0\n")
+		fmt.Printf("%s\n", encryptedFileKey) // "decrypt" by passing through
+
+		// Wait for ack
+		scanner.Scan() // ok
+		scanner.Scan() // body
+
+		// Send done
+		fmt.Printf("-> done\n\n")
+
+	default:
+		os.Exit(1)
+	}
+}
+
 // TestMain sets up the test environment. It checks for the `openssl` dependency,
 // builds the `reactor-ca` binary once, and then runs all tests.
 func TestMain(m *testing.M) {
+	// Check if we're being run as a plugin
+	if filepath.Base(os.Args[0]) == "age-plugin-test" {
+		testPluginMain()
+		return
+	}
+
 	if _, err := exec.LookPath("openssl"); err != nil {
 		fmt.Println("WARNING: `openssl` not found in PATH, skipping e2e tests.")
 		os.Exit(0)
