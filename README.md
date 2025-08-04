@@ -920,9 +920,10 @@ PRs to the `develop` branch welcome!
 ## Alternative Solutions
 
 - [XCA](https://www.hohnstaedt.de/xca/): great, simple GUI-based CA
+- [certstrap](https://github.com/square/certstrap): didn't know about it before starting  ;)
 - [EasyRSA](https://github.com/OpenVPN/easy-rsa): a classic
 - [CFSSL](https://github.com/cloudflare/cfssl): powerful client-server solution (there'a also a [wrapper](https://github.com/1nfiniteloop/docker-pki))
-- [certstrap](https://github.com/square/certstrap): didn't know about it before starting  ;)
+- [step-ca](https://smallstep.com/docs/step-ca/): fully fledged server with ACME support
 
 [↑ TOC](#table-of-contents)
 
