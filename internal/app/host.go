@@ -154,6 +154,7 @@ func (a *Application) issueHostWithKey(ctx context.Context, hostID string, caKey
 	}
 	a.logger.Log(fmt.Sprintf("Successfully issued certificate for '%s' with %s signature", hostID, resolvedHostCfg.HashAlgorithm))
 	ui.Info("Created certificate with %s signature", resolvedHostCfg.HashAlgorithm)
+	ui.Success("Successfully issued certificate for \"%s\"", hostID)
 	return nil
 }
 
@@ -198,7 +199,6 @@ func (a *Application) exportHostFiles(hostID string, hostCert, caCert *x509.Cert
 		a.logger.Log(fmt.Sprintf("Exported encrypted private key to %s", encryptedKeyPath))
 	}
 
-	ui.Success("Successfully issued certificate for \"%s\"", hostID)
 	return nil
 }
 
