@@ -65,7 +65,7 @@ func TestE2E_AgePluginFlow(t *testing.T) {
 
 	recipient := "age1test10qdmzv9q"
 
-	// 3. Set up PATH to include our plugin
+	// 3. Set up PATH to include our plugin (per-command, no global modification)
 	oldPath := os.Getenv("PATH")
 	pluginDir := filepath.Dir(pluginPath)
 	pathSep := ":"
@@ -73,8 +73,7 @@ func TestE2E_AgePluginFlow(t *testing.T) {
 		pathSep = ";"
 	}
 	newPath := pluginDir + pathSep + oldPath
-	os.Setenv("PATH", newPath)
-	defer os.Setenv("PATH", oldPath)
+	pluginEnv := []string{"PATH=" + newPath}
 
 	// 4. Create CA config with plugin-based encryption
 	// Convert Windows paths to forward slashes for YAML compatibility
@@ -104,7 +103,7 @@ encryption:
 	e.writeConfig("ca.yaml", pluginCaYAML)
 	e.writeConfig("hosts.yaml", testHostsYAML)
 
-	stdout, stderr, err := e.run("", "ca", "create")
+	stdout, stderr, err := e.runWithEnv("", pluginEnv, "ca", "create")
 	if err != nil {
 		t.Fatalf("`ca create` with plugin failed: %v\n%s", err, stderr)
 	}
@@ -117,7 +116,7 @@ encryption:
 	e.assertFileExists("store/ca/ca.key.age")
 
 	// 6. Issue a host certificate
-	stdout, stderr, err = e.run("", "host", "issue", "web-server")
+	stdout, stderr, err = e.runWithEnv("", pluginEnv, "host", "issue", "web-server")
 	if err != nil {
 		t.Fatalf("`host issue` with plugin failed: %v\n%s", err, stderr)
 	}
@@ -135,7 +134,7 @@ encryption:
 	}
 
 	// 8. Test key export (this uses the plugin for decryption)
-	stdout, stderr, err = e.run("", "host", "export-key", "web-server", "-o", "exported.key")
+	stdout, stderr, err = e.runWithEnv("", pluginEnv, "host", "export-key", "web-server", "-o", "exported.key")
 	if err != nil {
 		t.Fatalf("`export-key` with plugin failed: %v\n%s", err, stderr)
 	}
@@ -147,7 +146,7 @@ encryption:
 	}
 
 	// 9. Test CA info (requires decrypting CA key)
-	stdout, stderr, err = e.run("", "ca", "info")
+	stdout, stderr, err = e.runWithEnv("", pluginEnv, "ca", "info")
 	if err != nil {
 		t.Fatalf("`ca info` with plugin failed: %v\n%s", err, stderr)
 	}
@@ -157,7 +156,7 @@ encryption:
 
 	// 10. Test that we can successfully use the plugin for multiple operations
 	// This demonstrates the plugin works for both encryption and decryption
-	stdout, stderr, err = e.run("", "ca", "info")
+	stdout, stderr, err = e.runWithEnv("", pluginEnv, "ca", "info")
 	if err != nil {
 		t.Fatalf("Second `ca info` with plugin failed: %v\n%s", err, stderr)
 	}
@@ -197,7 +196,7 @@ encryption:
 	e.runWithCheck("", "init")
 	e.writeConfig("ca.yaml", pluginCaYAML)
 
-	// Attempt to create CA should fail gracefully
+	// Attempt to create CA should fail gracefully (use normal PATH, no plugin available)
 	_, stderr, err := e.run("", "ca", "create")
 	if err == nil {
 		t.Fatal("Expected `ca create` to fail with non-existent plugin, but it succeeded")

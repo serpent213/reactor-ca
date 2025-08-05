@@ -221,6 +221,10 @@ func (e *testEnv) path(p ...string) string {
 }
 
 func (e *testEnv) run(password string, args ...string) (stdout, stderr string, err error) {
+	return e.runWithEnv(password, nil, args...)
+}
+
+func (e *testEnv) runWithEnv(password string, extraEnv []string, args ...string) (stdout, stderr string, err error) {
 	e.t.Helper()
 	if reactorCABin == "" {
 		return "", "", fmt.Errorf("reactorCABin is empty - TestMain may not have run")
@@ -246,6 +250,10 @@ func (e *testEnv) run(password string, args ...string) (stdout, stderr string, e
 	}
 	if e.locale != "" {
 		cmd.Env = append(cmd.Env, "LC_ALL="+e.locale)
+	}
+	// Add any extra environment variables
+	if extraEnv != nil {
+		cmd.Env = append(cmd.Env, extraEnv...)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
