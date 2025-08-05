@@ -36,7 +36,7 @@ func (l *YAMLConfigLoader) LoadCA() (*domain.CAConfig, error) {
 
 	// Validate against JSON schema first
 	if err := l.ValidateCAConfig(data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validation error: ca.yaml: %w", err)
 	}
 
 	var cfg domain.CAConfig
@@ -77,7 +77,7 @@ func (l *YAMLConfigLoader) LoadHosts() (*domain.HostsConfig, error) {
 
 	// Validate against JSON schema first
 	if err := l.ValidateHostsConfig(data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validation error: hosts.yaml: %w", err)
 	}
 
 	var cfg domain.HostsConfig
