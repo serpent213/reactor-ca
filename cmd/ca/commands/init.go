@@ -250,7 +250,7 @@ hosts:
       dns:
         - web.reactor.local
         - grafana.reactor.local
-	    - "*.dev.reactor.local"
+        - "*.dev.reactor.local"
       ip:
         - 192.168.1.100
         - 10.10.0.1

@@ -13,6 +13,44 @@ import (
 	"reactor.de/reactor-ca/internal/domain"
 )
 
+// TestE2E_InitConfig tests the basic workflow using generated config files from init.
+func TestE2E_InitConfig(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t)
+
+	// 1. Init (generates default config files)
+	_, stderr, err := e.run("", "init")
+	if err != nil {
+		t.Fatalf("`init` command failed: %v\n%s", err, stderr)
+	}
+	e.assertFileExists("config/ca.yaml")
+	e.assertFileExists("config/hosts.yaml")
+
+	// 2. Create CA using generated config
+	_, stderr, err = e.run(testPassword, "ca", "create")
+	if err != nil {
+		t.Fatalf("`ca create` failed: %v\n%s", err, stderr)
+	}
+	e.assertFileExists("store/ca/ca.crt")
+	e.assertFileExists("store/ca/ca.key.age")
+
+	// 3. Issue all host certificates from generated config
+	_, stderr, err = e.run(testPassword, "host", "issue", "--all")
+	if err != nil {
+		t.Fatalf("`host issue --all` failed: %v\n%s", err, stderr)
+	}
+
+	// 4. List hosts to verify they were created
+	_, stderr, err = e.run("", "host", "list")
+	if err != nil {
+		t.Fatalf("`host list` failed: %v\n%s", err, stderr)
+	}
+
+	// 5. Verify store structure exists for example-host from default config
+	e.assertFileExists("store/hosts/web-server-example/cert.crt")
+	e.assertFileExists("store/hosts/web-server-example/cert.key.age")
+}
+
 // TestE2E_CoreWorkflow covers the most common end-to-end scenario:
 // init -> create CA -> issue host cert -> list -> info -> export key.
 func TestE2E_CoreWorkflow(t *testing.T) {
