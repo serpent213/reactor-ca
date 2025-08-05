@@ -28,11 +28,13 @@ func (p *Provider) GetMasterPassword(ctx context.Context, cfg domain.PasswordCon
 		}
 	}
 
-	// 2. From environment variable
-	if cfg.EnvVar != "" {
-		if pw := os.Getenv(cfg.EnvVar); pw != "" {
-			return []byte(pw), nil
-		}
+	// 2. From environment variable (use config or default)
+	envVar := cfg.EnvVar
+	if envVar == "" {
+		envVar = "REACTOR_CA_PASSWORD"
+	}
+	if pw := os.Getenv(envVar); pw != "" {
+		return []byte(pw), nil
 	}
 
 	// 3. Interactive prompt
@@ -41,16 +43,20 @@ func (p *Provider) GetMasterPassword(ctx context.Context, cfg domain.PasswordCon
 }
 
 // GetNewMasterPassword prompts the user to enter and confirm a new password.
-func (p *Provider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+func (p *Provider) GetNewMasterPassword(ctx context.Context, cfg domain.PasswordConfig, minLength int) ([]byte, error) {
 	// Check if we're in a non-interactive environment and try env var fallback
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		if pw := os.Getenv("REACTOR_CA_PASSWORD"); pw != "" {
+		envVar := cfg.EnvVar
+		if envVar == "" {
+			envVar = "REACTOR_CA_PASSWORD"
+		}
+		if pw := os.Getenv(envVar); pw != "" {
 			if len(pw) < minLength {
-				return nil, fmt.Errorf("password from REACTOR_CA_PASSWORD is too short (minimum %d characters)", minLength)
+				return nil, fmt.Errorf("password from %s is too short (minimum %d characters)", envVar, minLength)
 			}
 			return []byte(pw), nil
 		}
-		return nil, fmt.Errorf("running in non-interactive environment but no password provided via REACTOR_CA_PASSWORD environment variable")
+		return nil, fmt.Errorf("running in non-interactive environment but no password provided via %s environment variable", envVar)
 	}
 
 	prompt := ui.NewPrompt()
@@ -67,6 +73,6 @@ func (s *StaticPasswordProvider) GetMasterPassword(ctx context.Context, cfg doma
 	return s.Password, nil
 }
 
-func (s *StaticPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+func (s *StaticPasswordProvider) GetNewMasterPassword(ctx context.Context, cfg domain.PasswordConfig, minLength int) ([]byte, error) {
 	return s.Password, nil
 }

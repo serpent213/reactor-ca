@@ -153,7 +153,7 @@ type MockPasswordProvider struct {
 func (m *MockPasswordProvider) GetMasterPassword(ctx context.Context, cfg domain.PasswordConfig) ([]byte, error) {
 	return m.MasterPassword, m.MasterPasswordErr
 }
-func (m *MockPasswordProvider) GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error) {
+func (m *MockPasswordProvider) GetNewMasterPassword(ctx context.Context, cfg domain.PasswordConfig, minLength int) ([]byte, error) {
 	return nil, nil
 }
 func (m *MockPasswordProvider) GetPasswordForImport(ctx context.Context, minLength int) ([]byte, error) {

@@ -5,6 +5,8 @@ package password
 import (
 	"context"
 	"testing"
+
+	"reactor.de/reactor-ca/internal/domain"
 )
 
 func TestStaticPasswordProvider_GetNewMasterPassword(t *testing.T) {
@@ -40,7 +42,7 @@ func TestStaticPasswordProvider_GetNewMasterPassword(t *testing.T) {
 				Password: tt.password,
 			}
 
-			result, err := provider.GetNewMasterPassword(context.Background(), tt.minLength)
+			result, err := provider.GetNewMasterPassword(context.Background(), domain.PasswordConfig{}, tt.minLength)
 
 			if tt.wantErr {
 				if err == nil {

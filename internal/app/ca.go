@@ -45,7 +45,7 @@ func (a *Application) createCA(ctx context.Context, force bool) error {
 
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
 		// For password encryption, prompt for new password with confirmation
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return err
 		}
@@ -218,7 +218,7 @@ func (a *Application) ImportCA(ctx context.Context, certPath, keyPath string) er
 	cryptoSvc := a.cryptoSvc
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
 		// For password encryption, prompt for new password with confirmation
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return err
 		}

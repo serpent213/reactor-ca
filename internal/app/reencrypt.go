@@ -38,7 +38,7 @@ func (a *Application) ReencryptKeys(ctx context.Context, force bool, rollback bo
 	// Create new password provider for this operation if needed
 	var newPasswordProvider domain.PasswordProvider = a.passwordProvider
 	if cfg.Encryption.Provider == "" || cfg.Encryption.Provider == "password" {
-		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password.MinLength)
+		newPassword, err := a.passwordProvider.GetNewMasterPassword(ctx, cfg.Encryption.Password, cfg.Encryption.Password.MinLength)
 		if err != nil {
 			return fmt.Errorf("failed to get new password: %w", err)
 		}

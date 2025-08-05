@@ -72,7 +72,7 @@ type UserInteraction interface {
 // PasswordProvider defines the interface for retrieving the master password.
 type PasswordProvider interface {
 	GetMasterPassword(ctx context.Context, cfg PasswordConfig) ([]byte, error)
-	GetNewMasterPassword(ctx context.Context, minLength int) ([]byte, error)
+	GetNewMasterPassword(ctx context.Context, cfg PasswordConfig, minLength int) ([]byte, error)
 }
 
 // CryptoService defines the interface for all cryptographic operations.
