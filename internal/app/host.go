@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -340,11 +341,28 @@ func (a *Application) deployHostWithKey(ctx context.Context, hostID string, host
 	// Perform variable substitution on the command
 	substitutedCommand := replacer.Replace(hostCfg.Deploy.Command)
 
-	// Create shell script with safety flags
-	shellScript := "set -euo pipefail\n" + substitutedCommand
+	// Create shell command with appropriate shell and safety flags based on platform
+	var shell, shellArgs, shellScript string
+	switch runtime.GOOS {
+	case "windows":
+		// Use PowerShell with error handling equivalent to bash set -euo pipefail
+		shell = "powershell"
+		shellArgs = "-Command"
+		shellScript = fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+%s
+`, substitutedCommand)
+
+	default:
+		// Unix-like systems (Linux, macOS, etc.)
+		shell = "bash"
+		shellArgs = "-c"
+		shellScript = "set -euo pipefail\n" + substitutedCommand
+	}
 
 	// Execute via shell with interactive PTY support
-	if err := a.commander.ExecuteInteractive("bash", "-c", shellScript); err != nil {
+	if err := a.commander.ExecuteInteractive(shell, shellArgs, shellScript); err != nil {
 		return fmt.Errorf("deploy command failed: %w", err)
 	}
 	a.logger.Log(fmt.Sprintf("Successfully executed deploy command for '%s'", hostID))

@@ -223,6 +223,8 @@ ca host issue web-server-example --deploy  # Issue certificate then deploy
 
 Deploy will create temp files if the required files are not exported, so `export` and `deploy` options can be used independently from each other.
 
+Deploy scripts run in Bash, except for Windows where they run in PowerShell.
+
 [↑ TOC](#table-of-contents)
 
 ## CLI Reference
