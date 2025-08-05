@@ -5,6 +5,16 @@ All notable changes to ReactorCA will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc.2] - 2025-08-05
+
+### Fixed
+- **Configuration formatting**: Fixed stray TAB character in `init` default config template
+- **Password environment variable**: Harmonized `REACTOR_CA_PASSWORD` config and fallback handling
+- **YAML validation errors**: Show YAML filename when validation errors occur
+
+### Changed
+- **Windows deployment**: Deploy commands now run in PowerShell instead of Bash on Windows
+
 ## [1.0.0-rc.1] - 2025-08-04
 
 ### Added
