@@ -5,7 +5,9 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -361,15 +363,22 @@ func TestE2E_DeployAndClean(t *testing.T) {
 	e.runWithCheck(testPassword, "ca", "create")
 
 	// 1. Test deployment
-	const deployHostYAML = `
+	var simpleDeployCommand string
+	if runtime.GOOS == "windows" {
+		simpleDeployCommand = `"DEPLOYED" | Out-File -FilePath "deployment.flag" -Encoding UTF8`
+	} else {
+		simpleDeployCommand = `echo DEPLOYED > deployment.flag`
+	}
+
+	deployHostYAML := fmt.Sprintf(`
 hosts:
   deploy-target:
     alternative_names:
       dns: [ "deploy.reactor.test" ]
     validity: { days: 15 }
     deploy:
-      command: "echo DEPLOYED > deployment.flag"
-`
+      command: %q
+`, simpleDeployCommand)
 	e.writeConfig("hosts.yaml", deployHostYAML)
 	e.runWithCheck(testPassword, "host", "issue", "deploy-target", "--deploy")
 	e.assertFileExists("deployment.flag")
@@ -382,17 +391,22 @@ hosts:
 	}
 
 	// 1b. Test encrypted key deployment
-	const encryptedDeployHostYAML = `
-hosts:
-  encrypted-deploy-target:
-    alternative_names:
-      dns: [ "encrypted.reactor.test" ]
-    validity: { days: 15 }
-    export:
-      key_encrypted: "encrypted.key.age"
-    deploy:
-      command: |
-        echo "Variables available:" > encrypted-deployment.log
+	var deployCommand string
+	if runtime.GOOS == "windows" {
+		deployCommand = `"Variables available:" | Out-File -FilePath "encrypted-deployment.log" -Encoding UTF8 -NoNewline
+        "Cert: ${cert}" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+        "Chain: ${chain}" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+        "Private Key: ${private_key}" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+        "Encrypted Key: ${key_encrypted}" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+        if (Test-Path "${key_encrypted}") {
+          $size = (Get-Item "${key_encrypted}").Length
+          "Encrypted key exists: $size bytes" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+        } else {
+          "ERROR: Encrypted key missing" | Out-File -FilePath "encrypted-deployment.log" -Append -Encoding UTF8
+          exit 1
+        }`
+	} else {
+		deployCommand = `echo "Variables available:" > encrypted-deployment.log
         echo "Cert: ${cert}" >> encrypted-deployment.log
         echo "Chain: ${chain}" >> encrypted-deployment.log
         echo "Private Key: ${private_key}" >> encrypted-deployment.log
@@ -403,8 +417,21 @@ hosts:
         else
           echo "ERROR: Encrypted key missing" >> encrypted-deployment.log
           exit 1
-        fi
-`
+        fi`
+	}
+
+	encryptedDeployHostYAML := fmt.Sprintf(`
+hosts:
+  encrypted-deploy-target:
+    alternative_names:
+      dns: [ "encrypted.reactor.test" ]
+    validity: { days: 15 }
+    export:
+      key_encrypted: "encrypted.key.age"
+    deploy:
+      command: |
+        %s
+`, deployCommand)
 	e.writeConfig("hosts.yaml", encryptedDeployHostYAML)
 	e.runWithCheck(testPassword, "host", "issue", "encrypted-deploy-target", "--deploy")
 	e.assertFileExists("encrypted-deployment.log")
