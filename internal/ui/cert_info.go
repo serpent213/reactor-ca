@@ -24,12 +24,14 @@ import (
 func formatDurationParts(duration time.Duration, short bool, p *message.Printer, clock domain.Clock) string {
 	days := int64(math.Round(duration.Hours() / 24))
 	totalHours := int64(duration.Hours())
+	absDays := int64(math.Abs(float64(days)))
 
 	var output string
-	if days < 3 {
-		switch days {
+	if absDays < 3 {
+		switch absDays {
 		case 0:
-			switch totalHours {
+			absTotalHours := int64(math.Abs(float64(totalHours)))
+			switch absTotalHours {
 			case 0:
 				if duration.Hours() < 0 {
 					output = "< 0 hours"
@@ -37,16 +39,20 @@ func formatDurationParts(duration time.Duration, short bool, p *message.Printer,
 					output = "0 hours"
 				}
 			case 1:
-				output = "1 hour"
+				if totalHours == 1 {
+					output = "1 hour"
+				} else {
+					output = "-1 hour"
+				}
 			default:
 				output = p.Sprintf("%d hours", totalHours)
 			}
 		case 1:
-			output = p.Sprintf("1 day (%d hours)", totalHours)
-		default: // days >= 2
+			output = p.Sprintf("%d day (%d hours)", days, totalHours)
+		default: // absDays >= 2
 			output = p.Sprintf("%d days (%d hours)", days, totalHours)
 		}
-	} else if days <= 365 {
+	} else if absDays <= 365 {
 		output = p.Sprintf("%d days", days)
 	} else {
 		now := clock.Now()

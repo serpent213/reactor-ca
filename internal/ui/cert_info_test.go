@@ -39,7 +39,7 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "⚠",
-			expectText:    "-1 hours",
+			expectText:    "-1 hour",
 		},
 		{
 			name:          "expired by 0.2 hours (12 minutes)",
@@ -58,12 +58,28 @@ func TestFormatCertExpiry(t *testing.T) {
 			expectText:    "-1 d (-25 h)",
 		},
 		{
+			name:          "expired by 5 days",
+			durationHours: -5 * 24,
+			criticalDays:  7,
+			warningDays:   30,
+			expectSymbol:  "⚠",
+			expectText:    "-5 days",
+		},
+		{
 			name:          "expired by 8 days",
 			durationHours: -8 * 24,
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "⚠",
-			expectText:    "-8 d (-192 h)",
+			expectText:    "-8 days",
+		},
+		{
+			name:          "expired by 300 days",
+			durationHours: -300 * 24,
+			criticalDays:  7,
+			warningDays:   30,
+			expectSymbol:  "⚠",
+			expectText:    "-300 days",
 		},
 		{
 			name:          "expired by 400 days",
@@ -71,7 +87,15 @@ func TestFormatCertExpiry(t *testing.T) {
 			criticalDays:  7,
 			warningDays:   30,
 			expectSymbol:  "⚠",
-			expectText:    "-400 d (-9,600 h)",
+			expectText:    "-400 d (-1.1 y)",
+		},
+		{
+			name:          "expired by 600 days",
+			durationHours: -600 * 24,
+			criticalDays:  7,
+			warningDays:   30,
+			expectSymbol:  "⚠",
+			expectText:    "-600 d (-1.6 y)",
 		},
 
 		// Zero duration (expires right now)
