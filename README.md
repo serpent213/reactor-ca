@@ -86,7 +86,11 @@ Typical usage scenario: Run it on your desktop once a year or once a month to is
 
 For a quick overview, maybe you want to have a look at the [example configs](example_config/).
 
+### Screenshots
+
 ![`host list` screenshot](docs/assets/host_list.webp)
+
+![`host info ambassador-zyx-alpha` screenshot](docs/assets/host_info.webp)
 
 [↑ TOC](#table-of-contents)
 
