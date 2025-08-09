@@ -14,6 +14,7 @@ Typical usage scenario: Run it on your desktop once a year or once a month to is
 ## Table of Contents
 
 * [Features](#features)
+  * [Screenshots](#screenshots)
 * [Motivation and Design Targets](#motivation-and-design-targets)
 * [Cryptographic Implementation](#cryptographic-implementation)
   * [Core Libraries](#core-libraries)
@@ -191,6 +192,8 @@ ca ca create
 ```
 
 This creates a self-signed CA certificate and private key (encrypted with the password you provide).
+
+That root CA certificate needs to be installed on all client devices to be able to verify the host certificate to be created in the next step. See [INSTALL_CA](INSTALL_CA.md) for details.
 
 ### 3. Issue Host Certificate
 
