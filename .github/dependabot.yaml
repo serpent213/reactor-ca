@@ -10,3 +10,7 @@ updates:
       prefix: "deps"
     labels:
       - "dependencies"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
