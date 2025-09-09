@@ -11,7 +11,7 @@ jobs:
   test-https:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.54.1-noble
+      image: mcr.microsoft.com/playwright:v1.55.0-noble
       env:
         HOME: /root
         KEY_ALGORITHMS: "RSA2048 RSA3072 RSA4096 ECP256 ECP384 ECP521 ED25519"
