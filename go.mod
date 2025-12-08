@@ -9,7 +9,7 @@ require (
 	github.com/olekukonko/tablewriter v1.0.9
 	github.com/qsocket/conpty-go v0.0.0-20230315180542-d8f8596877dc
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/tebeka/selenium v0.9.9
 	golang.org/x/term v0.35.0
 	golang.org/x/text v0.29.0
